@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+RELAY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+# OpenClaw cliBackend command for a per-folder Claude TUI relay.
+# Config bakes the folder into args[0]; OpenClaw appends the user message as the last arg.
+set -uo pipefail
+FOLDER="${1:?folder arg required}"
+PROMPT="${@: -1}"
+
+# Pull the Telegram chat id out of the RAW composed prompt (metadata JSON or the
+# "[Telegram ... id:-123]" envelope) so the relay can send native buttons there.
+CID="$(printf '%s' "$PROMPT" | grep -oE 'telegram:-?[0-9]{5,}' | head -1 | sed 's/telegram://')"
+[ -z "$CID" ] && CID="$(printf '%s' "$PROMPT" | grep -oE 'id:-?[0-9]{5,}' | head -1 | sed 's/id://')"
+export RELAY_CHAT_ID="$CID"
+
+# Extract only the actual current user message from OpenClaw's composed prompt.
+# Falls back to the original text if the expected markers aren't present.
+PROMPT="$(printf '%s' "$PROMPT" | python3 $RELAY_DIR/relay-extract-message.py)"
+
+# Slash-command passthrough: OpenClaw strips/handles real slash commands (/model,
+# /clear, ...) before they reach here. Prefix with "cc" to forward one to Claude
+# Code instead: "/cc model sonnet" or "cc model sonnet" -> types "/model sonnet"
+# into the TUI. Best for commands that take an arg (no interactive picker); for
+# interactive pickers/menus use `claude-attach <code>`.
+case "$PROMPT" in
+  "/cc "*) PROMPT="/${PROMPT#/cc }" ;;
+  "cc "*)  PROMPT="/${PROMPT#cc }" ;;
+esac
+
+exec bash $RELAY_DIR/claude-relay-group "$FOLDER" "$PROMPT"

@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+RELAY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+# Attach to a bound folder's LIVE Claude Code TUI for full interactive control:
+# slash commands (/model, /clear, /compact), multi-choice menus, plan-mode
+# approvals, model picker — everything the request/response relay can't drive.
+#
+# Usage:
+#   claude-attach <6-digit-code>      # resolve code -> folder (relay-codes.json)
+#   claude-attach <abs-folder-path>   # or pass the folder directly
+#   claude-attach --list              # show bound folders + whether their TUI is up
+#
+# Detach without killing the session: Ctrl-b then d.
+set -uo pipefail
+REG="$RELAY_DIR/relay-codes.json"
+key(){ printf 'cr-%s' "$(printf '%s' "$1" | md5 | cut -c1-10)"; }
+
+if [ "${1:-}" = "--list" ] || [ -z "${1:-}" ]; then
+  echo "code        folder                                              tui"
+  python3 - "$REG" <<'PY'
+import json,sys,hashlib,subprocess
+reg=json.load(open(sys.argv[1]))
+for code,folder in reg.items():
+    k="cr-"+hashlib.md5(folder.encode()).hexdigest()[:10]
+    up=subprocess.run(["tmux","has-session","-t",k],capture_output=True).returncode==0
+    print(f"{code:<10}  {folder:<50}  {'UP' if up else 'down'}")
+PY
+  exit 0
+fi
+
+ARG="$1"
+if [[ "$ARG" =~ ^[0-9]{6}$ ]]; then
+  FOLDER="$(python3 -c "import json;print(json.load(open('$REG')).get('$ARG',''))")"
+  [ -z "$FOLDER" ] && { echo "unknown code: $ARG" >&2; exit 1; }
+else
+  FOLDER="$(cd "$ARG" 2>/dev/null && pwd)" || { echo "no such folder: $ARG" >&2; exit 1; }
+fi
+K="$(key "$FOLDER")"
+if ! tmux has-session -t "$K" 2>/dev/null; then
+  echo "No live TUI for $FOLDER (session $K). Send it a message first to spawn it." >&2
+  exit 1
+fi
+echo "Attaching to $FOLDER  (session $K). Detach with Ctrl-b then d." >&2
+exec tmux attach -t "$K"

@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+RELAY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+# Per-folder persistent, resumable Claude relay: one dedicated Claude session per
+# project folder. Reopens (resumes) the SAME conversation even after the tmux
+# session or the whole machine dies, via Claude Code's per-folder `--continue`.
+#
+# Usage: claude-relay-group <WORKDIR> "<prompt>"
+#   WORKDIR  - the project folder this group/session is bound to
+#
+# The folder IS the durable key: same folder -> same Claude conversation, forever.
+set -uo pipefail
+DIR="$RELAY_DIR"
+RAW="${1:?usage: claude-relay-group <WORKDIR> \"<prompt>\"}"; shift
+WORKDIR="$(cd "$RAW" 2>/dev/null && pwd)" || { echo "claude-relay-group: no such folder: $RAW" >&2; exit 1; }
+PERM="${CLAUDE_RELAY_PERM:-acceptEdits}"
+KEY="cr-$(printf '%s' "$WORKDIR" | md5 | cut -c1-10)"   # stable per-folder tmux name
+
+# "Alive" = the claude TUI is running in ANY usable state: idle input box, busy
+# turn, OR an open selection menu. Crucially we must NOT treat an open menu as
+# dead, or the session (and the menu) gets killed right before a button pick.
+ready(){ tmux capture-pane -t "$KEY" -p 2>/dev/null | grep -qE "for agents|for shortcuts|esc to interrupt|Esc to cancel|to navigate|❯ +[0-9]+\."; }
+
+if ! ( tmux has-session -t "$KEY" 2>/dev/null && ready ); then
+  tmux kill-session -t "$KEY" 2>/dev/null || true
+  # resume the folder's existing conversation if one exists, else start fresh
+  ENC="$(printf '%s' "$WORKDIR" | sed 's#[/.]#-#g')"
+  CONT=""
+  ls "$HOME/.claude/projects/$ENC"/*.jsonl >/dev/null 2>&1 && CONT="--continue"
+  tmux new-session -d -s "$KEY" -x 200 -y 50
+  # Per-folder session that still keeps global memory + skills. --settings pins
+  # auto-memory to a global dir so it loads regardless of the folder's own git
+  # root; skills load by default. Isolation is just the separate folder/session.
+  SETTINGS="$RELAY_DIR/relay-claude-settings.json"
+  tmux send-keys -t "$KEY" "cd $WORKDIR && claude $CONT --settings $SETTINGS --permission-mode $PERM" Enter
+  for i in $(seq 1 90); do
+    sleep 1
+    pane="$(tmux capture-pane -t "$KEY" -p 2>/dev/null || true)"
+    if printf '%s' "$pane" | grep -q "trust this folder"; then
+      tmux send-keys -t "$KEY" Enter; sleep 2
+    fi
+    if printf '%s' "$pane" | grep -qE "for agents|for shortcuts"; then break; fi
+  done
+fi
+
+export CLAUDE_RELAY_SESSION="$KEY"
+exec python3 "$DIR/claude-relay-send.py" "$@"
