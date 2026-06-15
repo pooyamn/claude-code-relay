@@ -112,25 +112,23 @@ export default definePluginEntry({
 
     // Interrupt the current turn -- handled PRE-AGENT so it isn't queued behind
     // the very turn it's cancelling. Sends Esc to the session's tmux.
-    const cancelHandler = async (ctx) => {
-      logCtx(api, ctx, "cancel");
-      const peer = derivePeer(ctx);
-      if (!peer) return { text: "Could not determine this chat's id (see gateway log: cc-relay)." };
-      return { text: await runScript("relay-cancel.py", [`--peer=${peer}`], api.logger) };
-    };
+    //
+    // NOTE: do NOT alias this to /stop, /esc, /abort, /wait, /interrupt, etc.
+    // Those are OpenClaw built-in ABORT_TRIGGERS (abort-primitives.ts) that get
+    // intercepted before plugin command routing -- they abort the relay backend
+    // run itself ("⚙️ Agent was aborted.") instead of Esc-ing Claude's turn.
+    // `cancel` is safe because it is not a reserved abort word.
     api.registerCommand({
       name: "cancel",
       description: "Interrupt Claude's current turn (like pressing Esc).",
       acceptsArgs: false,
       channels: ["telegram"],
-      handler: cancelHandler,
-    });
-    api.registerCommand({
-      name: "stop",
-      description: "Interrupt Claude's current turn (alias of /cancel).",
-      acceptsArgs: false,
-      channels: ["telegram"],
-      handler: cancelHandler,
+      handler: async (ctx) => {
+        logCtx(api, ctx, "cancel");
+        const peer = derivePeer(ctx);
+        if (!peer) return { text: "Could not determine this chat's id (see gateway log: cc-relay)." };
+        return { text: await runScript("relay-cancel.py", [`--peer=${peer}`], api.logger) };
+      },
     });
   },
 });

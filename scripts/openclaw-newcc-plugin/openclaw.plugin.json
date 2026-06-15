@@ -1,7 +1,7 @@
 {
   "id": "cc-relay-commands",
   "name": "Claude Code Relay Commands",
-  "description": "Pre-agent /newcc, /unbind, /ccstatus, /cancel, /stop slash commands for the Claude Code Telegram relay.",
+  "description": "Pre-agent /newcc, /unbind, /ccstatus, /cancel slash commands for the Claude Code Telegram relay.",
   "activation": {
     "onStartup": true
   },
@@ -10,8 +10,7 @@
     { "name": "newcc", "kind": "runtime-slash" },
     { "name": "unbind", "kind": "runtime-slash" },
     { "name": "ccstatus", "kind": "runtime-slash" },
-    { "name": "cancel", "kind": "runtime-slash" },
-    { "name": "stop", "kind": "runtime-slash" }
+    { "name": "cancel", "kind": "runtime-slash" }
   ],
   "configSchema": {
     "type": "object",
