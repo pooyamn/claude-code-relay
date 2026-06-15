@@ -111,6 +111,18 @@ The `cc-relay-commands` plugin registers `/newcc`, `/unbind`, `/ccstatus` as **p
 | `scripts/openclaw-newcc-plugin/` | OpenClaw plugin: pre-agent `/newcc` `/unbind` `/ccstatus` |
 | `install.sh` | one-shot installer (copy scripts, install plugin, enable buttons) |
 
+## Tests
+
+Pure unit/routing tests, no tmux/Telegram/network required:
+
+```bash
+bash scripts/tests/run_tests.sh
+```
+
+- `test_extract.py` — message extraction across real OpenClaw prompt shapes (context block, `Current message:` + reply, first-message, legacy envelopes).
+- `test_backend.sh` — backend routing: `/cc` → `/model` forwarding, numeric chat id + topic thread split, message extraction. Uses a stub for the TUI hop (`RELAY_GROUP_CMD`).
+- `test_send_helpers.py` — `progress_snapshot` (the live streamed view), menu parsing, thread addressing.
+
 ## License
 
 MIT

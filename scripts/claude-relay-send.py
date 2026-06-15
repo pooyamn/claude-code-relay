@@ -17,6 +17,7 @@ STREAM = os.environ.get("RELAY_STREAM", "1") != "0"  # live-edit progress; 0 dis
 TG_LIMIT = 4096                                    # telegram message hard cap
 STATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "relay-work")
 STATE = os.path.join(STATE_DIR, f"menu-{SESSION}.json")
+STREAM_LOG = os.path.join(STATE_DIR, f"stream-{SESSION}.log")
 
 def _thread_args():
     return ["--thread-id", THREAD_ID] if THREAD_ID else []
@@ -90,26 +91,52 @@ def progress_snapshot(p, started):
     out = f"{head}\n\n{tail}".strip()
     return (out[: TG_LIMIT - 1] or "✶ thinking…")
 
+def _slog(tag, mid, text, raw=None):
+    """Append exactly what we push to Telegram (plus the raw TUI pane), so the
+    rendered frames can be reviewed later and progress_snapshot() tuned against
+    what the user actually saw. Best-effort; never breaks the relay."""
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        with open(STREAM_LOG, "a") as f:
+            f.write(f"\n===== {time.strftime('%H:%M:%S')} {tag} mid={mid} len={len(text)} =====\n{text}\n")
+            if raw is not None:
+                f.write(f"----- raw pane -----\n{raw}\n----- end raw -----\n")
+    except Exception:
+        pass
+
 class _Stream:
     """One Telegram message, edited in place ~every 2s while the turn runs."""
     def __init__(self):
         self.started = time.time()
         self.last = 0.0
         self.id = None
+        self.sent = None
         try:
             self.id = tg_send("✶ thinking…")
         except Exception:
             self.id = None
+        _slog("OPEN", self.id, "✶ thinking…")
 
     def update(self, p):
         if not self.id:
             return
         now = time.time()
-        if now - self.last < 2.0:
+        # Adaptive cadence: ~2.5s early, backing off as the turn runs long.
+        # Telegram flood-limits sustained editMessage calls, which froze the
+        # stream on long turns ("pauses after a while"). Backing off keeps total
+        # edits well under the limit while staying responsive at the start.
+        elapsed = now - self.started
+        interval = min(12.0, 2.5 + elapsed / 20.0)
+        if now - self.last < interval:
+            return
+        snap = progress_snapshot(p, self.started)
+        if snap == self.sent:   # unchanged -> skip (Telegram rejects "not modified")
             return
         self.last = now
+        self.sent = snap
+        _slog("EDIT", self.id, snap, raw=p)
         try:
-            tg_edit(self.id, progress_snapshot(p, self.started))
+            tg_edit(self.id, snap)
         except Exception:
             pass
 
@@ -352,8 +379,10 @@ def send(prompt):
     if stream and stream.id:
         final = reply or "(done)"
         if len(final) <= TG_LIMIT:
+            _slog("FINAL", stream.id, final)
             tg_edit(stream.id, final)
             return ""        # delivered out-of-band; suppress OpenClaw's bubble
+        _slog("FINAL-LONG", stream.id, final)
         tg_edit(stream.id, "✓ done — full reply below")
     return reply
 

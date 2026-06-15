@@ -2,7 +2,7 @@
 # OpenClaw cliBackend command for a per-folder Claude TUI relay.
 # Config bakes the folder into args[0]; OpenClaw appends the user message as the last arg.
 set -uo pipefail
-SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"   # self-locate the relay scripts dir
+SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"   # self-locate
 FOLDER="${1:?folder arg required}"
 BOUND_PEER=""
 [ "$#" -ge 3 ] && BOUND_PEER="$2"
@@ -28,7 +28,15 @@ export RELAY_THREAD_ID="$TOPIC_ID"
 
 # Extract only the actual current user message from OpenClaw's composed prompt.
 # Falls back to the original text if the expected markers aren't present.
+RAW_PROMPT="$PROMPT"
 PROMPT="$(printf '%s' "$PROMPT" | python3 $SCRIPTS/relay-extract-message.py)"
+# Debug (opt-in): when relay-work/DEBUG exists, capture the composed prompt +
+# what extraction yielded, so new prompt shapes can be diagnosed. Off by default.
+if [ -f "$SCRIPTS/relay-work/DEBUG" ]; then
+  { printf '\n===== %s len=%s =====\n--- RAW composed ---\n%s\n--- EXTRACTED ---\n%s\n' \
+      "$(date '+%H:%M:%S')" "${#RAW_PROMPT}" "$RAW_PROMPT" "$PROMPT"; } \
+      >> "$SCRIPTS/relay-work/backend-debug.log" 2>/dev/null || true
+fi
 
 # --- Admin-command interception (handled at the relay layer, NOT in the TUI) ---
 # A bound chat routes EVERY message through this backend, so the bind/unbind/status
@@ -68,4 +76,6 @@ case "$PROMPT" in
   "cc "*)  PROMPT="/${PROMPT#cc }" ;;
 esac
 
-exec bash $SCRIPTS/claude-relay-group "$FOLDER" "$PROMPT"
+# Final hop into the per-folder TUI session. Overridable for tests (a stub that
+# echoes "$FOLDER" + "$PROMPT" lets us assert routing without launching a TUI).
+exec bash "${RELAY_GROUP_CMD:-$SCRIPTS/claude-relay-group}" "$FOLDER" "$PROMPT"
