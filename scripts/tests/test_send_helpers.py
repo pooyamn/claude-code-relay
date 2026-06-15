@@ -34,6 +34,18 @@ check("snapshot drops input-box chrome", ("│ >" not in snap) and ("╭" not in
 check("snapshot drops 'for shortcuts' footer", "for shortcuts" not in snap)
 check("snapshot starts with a status header", snap.startswith("⏳"))
 
+# --- progress_snapshot: trims the echoed user prompt (and anything above it) --
+PROMPT = "Msges should not contain text before my last prompt , its redundant"
+echoed = ("⏺ stale prior-turn line\n"
+          + PROMPT + "\n"
+          "⏺ Let me check the extractor\n"
+          "✻ Crunched (4s · esc to interrupt)\n"
+          "fresh streaming output")
+snap2 = m.progress_snapshot(echoed, time.time() - 4, PROMPT)
+check("snapshot trims the echoed prompt line", "should not contain text" not in snap2)
+check("snapshot trims prior-turn text above the prompt", "stale prior-turn line" not in snap2)
+check("snapshot keeps output after the prompt", "fresh streaming output" in snap2)
+
 # --- parse_menu: numbered selection with a cursor ----------------------------
 menu_pane = "Select a model:\n  1. Default\n❯ 2. Sonnet\n  3. Opus\n  Esc to cancel"
 menu = m.parse_menu(menu_pane)

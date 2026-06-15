@@ -66,11 +66,24 @@ def tg_edit(msg_id, text):
                     "--message", text[:TG_LIMIT]],
                    capture_output=True, text=True)
 
-def progress_snapshot(p, started):
+def progress_snapshot(p, started, prompt=""):
     """Build a live 'thought process' view from the TUI pane while a turn runs:
     the spinner/status line plus the tail of the streaming output, chrome
-    stripped, capped to Telegram's limit."""
+    stripped, capped to Telegram's limit.
+
+    `prompt` is the user's current message: when it's still visible in the pane
+    (short turns) we trim everything up to and including its echoed line, so the
+    stream never replays the user's own prompt or prior-turn text back at them.
+    No-op once the prompt has scrolled off the top (long turns)."""
     lines = p.splitlines()
+    needle = (prompt.strip().splitlines() or [""])[0][:60]
+    if needle:
+        cut = -1
+        for i, l in enumerate(lines):
+            if needle in l and not l.lstrip().startswith("⏺"):
+                cut = i
+        if cut >= 0:
+            lines = lines[cut + 1:]
     status = ""
     for l in lines:
         if BUSY.search(l) or re.search(r"tokens|esc to interrupt", l, re.I):
@@ -106,11 +119,12 @@ def _slog(tag, mid, text, raw=None):
 
 class _Stream:
     """One Telegram message, edited in place ~every 2s while the turn runs."""
-    def __init__(self):
+    def __init__(self, prompt=""):
         self.started = time.time()
         self.last = 0.0
         self.id = None
         self.sent = None
+        self.prompt = prompt
         try:
             self.id = tg_send("✶ thinking…")
         except Exception:
@@ -129,7 +143,7 @@ class _Stream:
         interval = min(12.0, 2.5 + elapsed / 20.0)
         if now - self.last < interval:
             return
-        snap = progress_snapshot(p, self.started)
+        snap = progress_snapshot(p, self.started, self.prompt)
         if snap == self.sent:   # unchanged -> skip (Telegram rejects "not modified")
             return
         self.last = now
@@ -367,7 +381,7 @@ def send(prompt):
     # Live-stream the turn into ONE Telegram message, edited in place ~every 2s.
     # Any streaming failure leaves stream.id None and we fall back to the normal
     # return path, so replies are never lost.
-    stream = _Stream() if (STREAM and CHAT_ID) else None
+    stream = _Stream(prompt) if (STREAM and CHAT_ID) else None
     state, p = wait_settled(on_progress=(stream.update if stream else None))
     if state == "menu":
         if stream and stream.id:
