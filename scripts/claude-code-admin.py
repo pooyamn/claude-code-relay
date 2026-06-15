@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-import os as _os
-BASE = _os.environ.get("RELAY_DIR") or _os.path.dirname(_os.path.abspath(__file__))
 """Manage Claude-code relay bindings: status + unbind.
 
 Companion to bind-claude-code.py. Same safety model: backup, schema-validate,
@@ -12,7 +10,8 @@ auto-rollback, restart only when valid.
 import json, os, sys, argparse, shutil, time, subprocess
 
 CFG = os.environ.get("RELAY_CFG", os.path.expanduser("~/.openclaw/openclaw.json"))
-REG = "" + BASE + "/relay-codes.json"
+BASE = os.environ.get("RELAY_DIR") or os.path.dirname(os.path.abspath(__file__))
+REG = BASE + "/relay-codes.json"
 
 def load_cfg(): return json.load(open(CFG))
 

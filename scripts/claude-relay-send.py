@@ -47,17 +47,31 @@ def tg_remove_buttons(msg_id, note):
                     "--message", note],
                    capture_output=True, text=True)
 
-def tg_send(text):
-    """Send a plain text message to the bound chat/topic. Returns the message id."""
-    r = subprocess.run(["openclaw", "message", "send", "--channel", "telegram",
-                        "--target", CHAT_ID, *_thread_args(),
-                        "--message", text[:TG_LIMIT], "--json"],
-                       capture_output=True, text=True)
+def tg_send(text, silent=False):
+    """Send a plain text message to the bound chat/topic. Returns the message id.
+
+    `silent=True` (Telegram --silent) delivers without a push notification --
+    used for the live progress message so the user is pinged only once, by the
+    final answer."""
+    cmd = ["openclaw", "message", "send", "--channel", "telegram",
+           "--target", CHAT_ID, *_thread_args(),
+           "--message", text[:TG_LIMIT], "--json"]
+    if silent:
+        cmd.append("--silent")
+    r = subprocess.run(cmd, capture_output=True, text=True)
     try:
         return str(json.loads(r.stdout).get("payload", {}).get("messageId", ""))
     except Exception:
         m = re.search(r"Message ID:\s*(\d+)", r.stdout or "")
         return m.group(1) if m else ""
+
+def tg_delete(msg_id):
+    """Best-effort delete of a message (the live progress bubble)."""
+    if not (msg_id and CHAT_ID):
+        return
+    subprocess.run(["openclaw", "message", "delete", "--channel", "telegram",
+                    "--target", CHAT_ID, "--message-id", str(msg_id)],
+                   capture_output=True, text=True)
 
 def tg_edit(msg_id, text):
     if not (msg_id and CHAT_ID):
@@ -122,7 +136,7 @@ def _slog(tag, mid, text, raw=None):
         pass
 
 class _Stream:
-    """One Telegram message, edited in place ~every 2s while the turn runs."""
+    """One Telegram message, edited in place ~every 1.5s while the turn runs."""
     def __init__(self, prompt=""):
         self.started = time.time()
         self.last = 0.0
@@ -130,7 +144,9 @@ class _Stream:
         self.sent = None
         self.prompt = prompt
         try:
-            self.id = tg_send("✶ thinking…")
+            # Silent: the progress bubble must NOT ping. Only the final answer
+            # (a fresh, non-silent message) notifies the user.
+            self.id = tg_send("✶ thinking…", silent=True)
         except Exception:
             self.id = None
         _slog("OPEN", self.id, "✶ thinking…")
@@ -139,12 +155,13 @@ class _Stream:
         if not self.id:
             return
         now = time.time()
-        # Adaptive cadence: ~2.5s early, backing off as the turn runs long.
+        # Adaptive cadence: ~1.5s early (Telegram tolerates ~1s edits; OpenClaw's
+        # own streaming throttles at 1s), backing off as the turn runs long.
         # Telegram flood-limits sustained editMessage calls, which froze the
         # stream on long turns ("pauses after a while"). Backing off keeps total
         # edits well under the limit while staying responsive at the start.
         elapsed = now - self.started
-        interval = min(12.0, 2.5 + elapsed / 20.0)
+        interval = min(12.0, 1.5 + elapsed / 20.0)
         if now - self.last < interval:
             return
         snap = progress_snapshot(p, self.started, self.prompt)
@@ -388,20 +405,25 @@ def send(prompt):
     stream = _Stream(prompt) if (STREAM and CHAT_ID) else None
     state, p = wait_settled(on_progress=(stream.update if stream else None))
     if state == "menu":
+        # Drop the silent progress bubble; the buttons message (which DOES
+        # notify) becomes the user's ping that Claude needs an answer.
         if stream and stream.id:
-            try: tg_edit(stream.id, "🔀 Claude needs a choice ↓")
-            except Exception: pass
+            tg_delete(stream.id)
         return present_menu(parse_menu(p))
     clear_menu()
     reply = extract_reply(prompt)
     if stream and stream.id:
         final = reply or "(done)"
+        # The progress bubble was silent (no ping). Delete it and deliver the
+        # answer as a FRESH message so the user gets exactly one notification,
+        # telling them the turn is done.
+        tg_delete(stream.id)
         if len(final) <= TG_LIMIT:
             _slog("FINAL", stream.id, final)
-            tg_edit(stream.id, final)
-            return ""        # delivered out-of-band; suppress OpenClaw's bubble
+            tg_send(final)          # non-silent: this is the ping
+            return ""               # delivered out-of-band; suppress OpenClaw's bubble
         _slog("FINAL-LONG", stream.id, final)
-        tg_edit(stream.id, "✓ done — full reply below")
+        # Too long for one message: let OpenClaw chunk it (also notifies).
     return reply
 
 def present_menu(menu):

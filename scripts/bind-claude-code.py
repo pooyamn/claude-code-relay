@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-import os as _os
-BASE = _os.environ.get("RELAY_DIR") or _os.path.dirname(_os.path.abspath(__file__))
 """Bind a Telegram group/topic to a per-folder Claude TUI relay agent.
 
-Called when the user types `/new-claude-code <code>` IN the target chat: the
-caller (Jamshid) supplies the peer id from the inbound message metadata, so no
-manual chat-id wrangling. Patches ~/.openclaw/openclaw.json additively (backup
-first, JSON validated). A gateway restart is required after (printed, not auto).
+Called when the user types `/newcc <code>` IN the target chat: the caller (the
+cc-relay-commands plugin) supplies the peer id from the inbound message
+metadata, so no manual chat-id wrangling. Patches ~/.openclaw/openclaw.json
+additively (backup first, JSON validated). A gateway restart is required after
+(scheduled with --restart, else printed).
 
 Usage: bind-claude-code.py --peer "<chatId|chatId:topic:N>" --code <6digits>
 """
 import json, os, sys, argparse, shutil, time, subprocess
 
 CFG = os.environ.get("RELAY_CFG", os.path.expanduser("~/.openclaw/openclaw.json"))
-REG = "" + BASE + "/relay-codes.json"
-WRAPPER = "" + BASE + "/claude-tui-backend-multi"
+BASE = os.environ.get("RELAY_DIR") or os.path.dirname(os.path.abspath(__file__))
+REG = BASE + "/relay-codes.json"
+WRAPPER = BASE + "/claude-tui-backend-multi"
 
 def main():
     ap = argparse.ArgumentParser()

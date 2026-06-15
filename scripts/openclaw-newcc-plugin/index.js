@@ -78,7 +78,7 @@ export default definePluginEntry({
       handler: async (ctx) => {
         logCtx(api, ctx, "newcc");
         const code = (ctx.args ?? "").trim().split(/\s+/)[0] ?? "";
-        if (!/^\d{4,8}$/.test(code)) return { text: "Usage: /newcc <code>" };
+        if (!/^\d{6}$/.test(code)) return { text: "Usage: /newcc <6-digit-code>" };
         const peer = derivePeer(ctx);
         if (!peer) return { text: "Could not determine this chat's id (see gateway log: cc-relay)." };
         return { text: await runScript("bind-claude-code.py", [`--peer=${peer}`, `--code=${code}`, "--restart"], api.logger) };
