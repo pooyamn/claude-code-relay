@@ -18,6 +18,7 @@ TG_LIMIT = 4096                                    # telegram message hard cap
 STATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "relay-work")
 STATE = os.path.join(STATE_DIR, f"menu-{SESSION}.json")
 STREAM_LOG = os.path.join(STATE_DIR, f"stream-{SESSION}.log")
+DEBUG = os.path.exists(os.path.join(STATE_DIR, "DEBUG"))  # opt-in frame logging (off by default)
 
 def _thread_args():
     return ["--thread-id", THREAD_ID] if THREAD_ID else []
@@ -107,7 +108,10 @@ def progress_snapshot(p, started, prompt=""):
 def _slog(tag, mid, text, raw=None):
     """Append exactly what we push to Telegram (plus the raw TUI pane), so the
     rendered frames can be reviewed later and progress_snapshot() tuned against
-    what the user actually saw. Best-effort; never breaks the relay."""
+    what the user actually saw. Off unless relay-work/DEBUG exists. Best-effort;
+    never breaks the relay."""
+    if not DEBUG:
+        return
     try:
         os.makedirs(STATE_DIR, exist_ok=True)
         with open(STREAM_LOG, "a") as f:
