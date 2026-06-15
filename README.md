@@ -14,6 +14,7 @@ So this skill drives the *interactive* TUI in a `tmux` session and relays it to 
 
 - **Per-folder sessions.** Each Telegram group binds to one project folder. Messages pipe to that folder's persistent Claude Code session; replies come back clean.
 - **Durable + resumable.** The session survives restarts and reboots; it resumes the same conversation via `claude --continue`.
+- **Live-streamed replies.** A turn streams into one Telegram message, edited in place ~every 2s with Claude's progress, then finalized with the clean answer (set `RELAY_STREAM=0` to disable). Replies over Telegram's 4096-char cap fall back to a normal chunked send.
 - **Self-serve binding, LLM-free.** `/newcc <code>` binds a group *or a single forum topic*; `/unbind` and `/ccstatus` manage it. These run as **pre-agent** OpenClaw commands (the `cc-relay-commands` plugin), so they never spend a Claude turn and work even on a topic that isn't bound yet.
 - **Slash commands.** `cc model sonnet`, `cc clear`, `cc compact` — forward any Claude Code slash command into the session.
 - **Native button menus.** When Claude asks a multiple-choice question (or you open `/model`), the bot posts real tappable Telegram buttons; your tap is delivered as the answer, and the buttons collapse to `✓ <pick>`.

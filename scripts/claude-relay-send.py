@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-import os as _os
-BASE = _os.environ.get("RELAY_DIR") or _os.path.dirname(_os.path.abspath(__file__))
 """Drive a persistent interactive `claude` TUI in tmux: send a prompt, wait for
 the turn, return Claude's reply as clean text. Subscription-billed (the TUI runs
 on the Max plan; we just drive it).
@@ -13,16 +11,23 @@ message (a number) is sent back as an arrow+Enter selection into the TUI.
 import subprocess, sys, time, hashlib, re, os, json
 
 SESSION = os.environ.get("CLAUDE_RELAY_SESSION", "clauderelay")
-CHAT_ID = os.environ.get("RELAY_CHAT_ID", "")   # telegram chat id, for native buttons
-STATE_DIR = "" + BASE + "/relay-work"
+CHAT_ID = os.environ.get("RELAY_CHAT_ID", "")     # telegram chat id (numeric)
+THREAD_ID = os.environ.get("RELAY_THREAD_ID", "")  # forum topic id, if any
+STREAM = os.environ.get("RELAY_STREAM", "1") != "0"  # live-edit progress; 0 disables
+TG_LIMIT = 4096                                    # telegram message hard cap
+STATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "relay-work")
 STATE = os.path.join(STATE_DIR, f"menu-{SESSION}.json")
+
+def _thread_args():
+    return ["--thread-id", THREAD_ID] if THREAD_ID else []
 
 def tg_buttons(question, options):
     """Send native Telegram inline buttons for a menu. Returns the message id."""
     pres = {"blocks": [{"type": "buttons", "buttons":
             [{"label": f"{i+1}. {o}"[:60], "value": f"ccsel:{i+1}"} for i, o in enumerate(options)]}]}
     r = subprocess.run(["openclaw", "message", "send", "--channel", "telegram",
-                        "--target", CHAT_ID, "--message", question or "Choose an option:",
+                        "--target", CHAT_ID, *_thread_args(),
+                        "--message", question or "Choose an option:",
                         "--presentation", json.dumps(pres), "--json"],
                        capture_output=True, text=True)
     try:
@@ -36,9 +41,77 @@ def tg_remove_buttons(msg_id, note):
     if not (msg_id and CHAT_ID):
         return
     subprocess.run(["openclaw", "message", "edit", "--channel", "telegram",
-                    "--target", CHAT_ID, "--message-id", str(msg_id),
+                    "--target", CHAT_ID, *_thread_args(), "--message-id", str(msg_id),
                     "--message", note],
                    capture_output=True, text=True)
+
+def tg_send(text):
+    """Send a plain text message to the bound chat/topic. Returns the message id."""
+    r = subprocess.run(["openclaw", "message", "send", "--channel", "telegram",
+                        "--target", CHAT_ID, *_thread_args(),
+                        "--message", text[:TG_LIMIT], "--json"],
+                       capture_output=True, text=True)
+    try:
+        return str(json.loads(r.stdout).get("payload", {}).get("messageId", ""))
+    except Exception:
+        m = re.search(r"Message ID:\s*(\d+)", r.stdout or "")
+        return m.group(1) if m else ""
+
+def tg_edit(msg_id, text):
+    if not (msg_id and CHAT_ID):
+        return
+    subprocess.run(["openclaw", "message", "edit", "--channel", "telegram",
+                    "--target", CHAT_ID, *_thread_args(), "--message-id", str(msg_id),
+                    "--message", text[:TG_LIMIT]],
+                   capture_output=True, text=True)
+
+def progress_snapshot(p, started):
+    """Build a live 'thought process' view from the TUI pane while a turn runs:
+    the spinner/status line plus the tail of the streaming output, chrome
+    stripped, capped to Telegram's limit."""
+    lines = p.splitlines()
+    status = ""
+    for l in lines:
+        if BUSY.search(l) or re.search(r"tokens|esc to interrupt", l, re.I):
+            status = l.strip()
+    body = []
+    for l in lines:
+        s = l.strip()
+        if not s or BUSY.search(s) or READY.search(s) or s == status:
+            continue
+        if re.search(r"tokens|esc to interrupt", s, re.I):
+            continue
+        if re.match(r"^[─▔━_╭╮╰╯│>·✻✶✢*\s]+$", s):
+            continue
+        body.append(s)
+    elapsed = int(time.time() - started)
+    head = f"⏳ {status}" if status else f"⏳ working… ({elapsed}s)"
+    tail = "\n".join(body[-30:])
+    out = f"{head}\n\n{tail}".strip()
+    return (out[: TG_LIMIT - 1] or "✶ thinking…")
+
+class _Stream:
+    """One Telegram message, edited in place ~every 2s while the turn runs."""
+    def __init__(self):
+        self.started = time.time()
+        self.last = 0.0
+        self.id = None
+        try:
+            self.id = tg_send("✶ thinking…")
+        except Exception:
+            self.id = None
+
+    def update(self, p):
+        if not self.id:
+            return
+        now = time.time()
+        if now - self.last < 2.0:
+            return
+        self.last = now
+        try:
+            tg_edit(self.id, progress_snapshot(p, self.started))
+        except Exception:
+            pass
 
 def tmux(*args, capture=False):
     cmd = ["tmux", *args]
@@ -135,7 +208,7 @@ def dismiss_interrupts():
         tmux("send-keys", "-t", SESSION, "0")
         time.sleep(0.6)
 
-def wait_settled(timeout=180, stable_needed=2, poll=0.6):
+def wait_settled(timeout=180, stable_needed=2, poll=0.6, on_progress=None):
     """Wait until the TUI settles. Returns ('menu', pane) | ('idle', pane).
 
     A menu is returned the INSTANT it's detected (with one quick re-check to skip
@@ -152,6 +225,11 @@ def wait_settled(timeout=180, stable_needed=2, poll=0.6):
         p = pane()
         if BUSY.search(p):
             last, stable = None, 0
+            if on_progress:
+                try:
+                    on_progress(p)
+                except Exception:
+                    pass
             continue
         if parse_menu(p):
             time.sleep(0.3)
@@ -259,11 +337,25 @@ def send(prompt):
         time.sleep(0.5)
         if BUSY.search(pane()):
             break
-    state, p = wait_settled()
+    # Live-stream the turn into ONE Telegram message, edited in place ~every 2s.
+    # Any streaming failure leaves stream.id None and we fall back to the normal
+    # return path, so replies are never lost.
+    stream = _Stream() if (STREAM and CHAT_ID) else None
+    state, p = wait_settled(on_progress=(stream.update if stream else None))
     if state == "menu":
+        if stream and stream.id:
+            try: tg_edit(stream.id, "🔀 Claude needs a choice ↓")
+            except Exception: pass
         return present_menu(parse_menu(p))
     clear_menu()
-    return extract_reply(prompt)
+    reply = extract_reply(prompt)
+    if stream and stream.id:
+        final = reply or "(done)"
+        if len(final) <= TG_LIMIT:
+            tg_edit(stream.id, final)
+            return ""        # delivered out-of-band; suppress OpenClaw's bubble
+        tg_edit(stream.id, "✓ done — full reply below")
+    return reply
 
 def present_menu(menu):
     """Show a menu to the user: native Telegram buttons if we know the chat id,

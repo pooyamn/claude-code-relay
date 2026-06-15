@@ -1,39 +1,61 @@
 #!/usr/bin/env bash
-RELAY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # OpenClaw cliBackend command for a per-folder Claude TUI relay.
 # Config bakes the folder into args[0]; OpenClaw appends the user message as the last arg.
 set -uo pipefail
+SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"   # self-locate the relay scripts dir
 FOLDER="${1:?folder arg required}"
-RAW="${@: -1}"
+BOUND_PEER=""
+[ "$#" -ge 3 ] && BOUND_PEER="$2"
+PROMPT="${@: -1}"
 
 # Pull the Telegram chat id out of the RAW composed prompt (metadata JSON or the
 # "[Telegram ... id:-123]" envelope) so the relay can send native buttons there.
-CID="$(printf '%s' "$RAW" | grep -oE 'telegram:-?[0-9]{5,}' | head -1 | sed 's/telegram://')"
-[ -z "$CID" ] && CID="$(printf '%s' "$RAW" | grep -oE 'id:-?[0-9]{5,}' | head -1 | sed 's/id://')"
-export RELAY_CHAT_ID="$CID"
+CID="$(printf '%s' "$PROMPT" | grep -oE 'telegram:-?[0-9]{5,}' | head -1 | sed 's/telegram://')"
+[ -z "$CID" ] && CID="$(printf '%s' "$PROMPT" | grep -oE 'id:-?[0-9]{5,}' | head -1 | sed 's/id://')"
 
-# Full peer for admin commands: chatId, plus :topic:N for a single bound forum
-# topic. This is what bind/unbind patch into openclaw.json's binding match.
-PEER="$(printf '%s' "$RAW" | grep -oE 'telegram:-?[0-9]{5,}(:topic:[0-9]+)?' | head -1 | sed 's/telegram://')"
+# OpenClaw's prompt metadata stores the bare chat_id and topic_id separately.
+# Reconstruct the canonical routing peer used by Telegram bindings.
+TOPIC_ID="$(printf '%s' "$PROMPT" | grep -oE '"topic_id"[[:space:]]*:[[:space:]]*"?[0-9]+' | head -1 | grep -oE '[0-9]+$')"
+[ -z "$TOPIC_ID" ] && TOPIC_ID="$(printf '%s' "$PROMPT" | grep -oE 'topic:[0-9]+' | head -1 | cut -d: -f2)"
+PEER="${BOUND_PEER:-$CID}"
+[ -z "$BOUND_PEER" ] && [ -n "$PEER" ] && [ -n "$TOPIC_ID" ] && PEER="${PEER}:topic:${TOPIC_ID}"
+# PEER (with :topic:N) is the binding key for admin commands. Native message
+# sends, however, need a NUMERIC chat id plus a SEPARATE thread id -- a
+# "<id>:topic:N" target is rejected ("recipient must be a numeric chat ID").
+NUM="$(printf '%s' "$PEER" | grep -oE '^-?[0-9]+' | head -1)"
+export RELAY_CHAT_ID="${NUM:-$CID}"
+export RELAY_THREAD_ID="$TOPIC_ID"
 
 # Extract only the actual current user message from OpenClaw's composed prompt.
 # Falls back to the original text if the expected markers aren't present.
-PROMPT="$(printf '%s' "$RAW" | python3 $RELAY_DIR/relay-extract-message.py)"
+PROMPT="$(printf '%s' "$PROMPT" | python3 $SCRIPTS/relay-extract-message.py)"
 
-# Admin commands change the binding via a SCRIPT, never the LLM, so config edits
-# are deterministic (no "do you want to proceed?", no agent improvising). The
-# chat is already bound (that's why it routes here), so we know its peer. The
-# scripts patch openclaw.json and restart the gateway detached, so this reply is
-# delivered before the relay reloads.
-MSG="$(printf '%s' "$PROMPT" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-case "$MSG" in
-  "/newcc "*|"newcc "*)
-    CODE="$(printf '%s' "$MSG" | awk '{print $2}')"
-    exec python3 "$RELAY_DIR/bind-claude-code.py" --peer="$PEER" --code="$CODE" --restart ;;
-  "/unbind"|"unbind"|"/unbind "*|"unbind "*)
-    exec python3 "$RELAY_DIR/claude-code-admin.py" unbind --peer="$PEER" --restart ;;
-  "/ccstatus"|"ccstatus")
-    exec python3 "$RELAY_DIR/claude-code-admin.py" status ;;
+# --- Admin-command interception (handled at the relay layer, NOT in the TUI) ---
+# A bound chat routes EVERY message through this backend, so the bind/unbind/status
+# admin commands must be caught HERE. If they fall through to the raw Claude Code
+# session, that session hits a permission prompt, the gateway restart it triggers
+# aborts it mid-turn, and on resume it re-runs the stale command -> restart loop.
+# We run the scripts WITHOUT --restart and fire a detached, deferred restart so this
+# reply flushes to the user before the gateway bounces. One-shot script = no re-run.
+SCRIPTS="$SCRIPTS"
+ADMIN="$(printf '%s' "$PROMPT" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr 'A-Z' 'a-z')"
+defer_restart() { ( sleep 2; openclaw gateway restart ) >/dev/null 2>&1 & }
+case "$ADMIN" in
+  newcc\ *|new-cc\ *|"new cc "*|/newcc\ *|/new-cc\ *|/new-claude-code\ *)
+    [ -z "$PEER" ] && { echo "Bind failed: couldn't determine this chat's id."; exit 0; }
+    CODE="$(printf '%s' "$PROMPT" | grep -oE '[0-9]{6}' | head -1)"
+    [ -z "$CODE" ] && { echo "Bind failed: need a 6-digit code, e.g. \`newcc 461156\`."; exit 0; }
+    OUT="$(python3 "$SCRIPTS/bind-claude-code.py" --peer="$PEER" --code="$CODE" 2>&1)" && defer_restart
+    printf '%s\n' "$OUT"
+    exit 0 ;;
+  /unbind|unbind|/unbind-claude-code)
+    [ -z "$PEER" ] && { echo "Unbind failed: couldn't determine this chat's id."; exit 0; }
+    OUT="$(python3 "$SCRIPTS/claude-code-admin.py" unbind --peer="$PEER" 2>&1)" && defer_restart
+    printf '%s\n' "$OUT"
+    exit 0 ;;
+  /claude-code-status|claude-code-status|/cc-status)
+    python3 "$SCRIPTS/claude-code-admin.py" status 2>&1
+    exit 0 ;;
 esac
 
 # Slash-command passthrough: OpenClaw strips/handles real slash commands (/model,
@@ -46,4 +68,4 @@ case "$PROMPT" in
   "cc "*)  PROMPT="/${PROMPT#cc }" ;;
 esac
 
-exec bash $RELAY_DIR/claude-relay-group "$FOLDER" "$PROMPT"
+exec bash $SCRIPTS/claude-relay-group "$FOLDER" "$PROMPT"
