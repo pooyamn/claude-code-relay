@@ -1,0 +1,14 @@
+{
+  "name": "cc-relay-commands",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Pre-agent slash commands for the Claude Code Telegram relay",
+  "openclaw": {
+    "extensions": ["./index.js"],
+    "runtimeExtensions": ["./index.js"]
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.6.5"
+  }
+}

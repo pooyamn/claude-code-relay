@@ -61,8 +61,11 @@ def unbind(peer, restart):
             print(r.stdout or r.stderr, file=sys.stderr); sys.exit(3)
     print(f"OK unbound peer={peer} (removed {len(removed)} binding(s)). backup={bak}")
     if restart and only_live:
-        subprocess.run(["openclaw", "gateway", "restart"], capture_output=True, text=True)
-        print("restart: scheduled")
+        # Detached + delayed (see bind-claude-code.py): survive being run from
+        # inside the relay backend so the reply is delivered before reload.
+        subprocess.Popen(["sh", "-c", "sleep 2; openclaw gateway restart >/dev/null 2>&1"],
+                         start_new_session=True)
+        print("restart: scheduled (gateway reloading in ~2s)")
     else:
         print("RESTART REQUIRED: openclaw gateway restart")
 

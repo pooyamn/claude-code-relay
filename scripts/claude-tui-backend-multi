@@ -4,17 +4,37 @@ RELAY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # Config bakes the folder into args[0]; OpenClaw appends the user message as the last arg.
 set -uo pipefail
 FOLDER="${1:?folder arg required}"
-PROMPT="${@: -1}"
+RAW="${@: -1}"
 
 # Pull the Telegram chat id out of the RAW composed prompt (metadata JSON or the
 # "[Telegram ... id:-123]" envelope) so the relay can send native buttons there.
-CID="$(printf '%s' "$PROMPT" | grep -oE 'telegram:-?[0-9]{5,}' | head -1 | sed 's/telegram://')"
-[ -z "$CID" ] && CID="$(printf '%s' "$PROMPT" | grep -oE 'id:-?[0-9]{5,}' | head -1 | sed 's/id://')"
+CID="$(printf '%s' "$RAW" | grep -oE 'telegram:-?[0-9]{5,}' | head -1 | sed 's/telegram://')"
+[ -z "$CID" ] && CID="$(printf '%s' "$RAW" | grep -oE 'id:-?[0-9]{5,}' | head -1 | sed 's/id://')"
 export RELAY_CHAT_ID="$CID"
+
+# Full peer for admin commands: chatId, plus :topic:N for a single bound forum
+# topic. This is what bind/unbind patch into openclaw.json's binding match.
+PEER="$(printf '%s' "$RAW" | grep -oE 'telegram:-?[0-9]{5,}(:topic:[0-9]+)?' | head -1 | sed 's/telegram://')"
 
 # Extract only the actual current user message from OpenClaw's composed prompt.
 # Falls back to the original text if the expected markers aren't present.
-PROMPT="$(printf '%s' "$PROMPT" | python3 $RELAY_DIR/relay-extract-message.py)"
+PROMPT="$(printf '%s' "$RAW" | python3 $RELAY_DIR/relay-extract-message.py)"
+
+# Admin commands change the binding via a SCRIPT, never the LLM, so config edits
+# are deterministic (no "do you want to proceed?", no agent improvising). The
+# chat is already bound (that's why it routes here), so we know its peer. The
+# scripts patch openclaw.json and restart the gateway detached, so this reply is
+# delivered before the relay reloads.
+MSG="$(printf '%s' "$PROMPT" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+case "$MSG" in
+  "/newcc "*|"newcc "*)
+    CODE="$(printf '%s' "$MSG" | awk '{print $2}')"
+    exec python3 "$RELAY_DIR/bind-claude-code.py" --peer="$PEER" --code="$CODE" --restart ;;
+  "/unbind"|"unbind"|"/unbind "*|"unbind "*)
+    exec python3 "$RELAY_DIR/claude-code-admin.py" unbind --peer="$PEER" --restart ;;
+  "/ccstatus"|"ccstatus")
+    exec python3 "$RELAY_DIR/claude-code-admin.py" status ;;
+esac
 
 # Slash-command passthrough: OpenClaw strips/handles real slash commands (/model,
 # /clear, ...) before they reach here. Prefix with "cc" to forward one to Claude

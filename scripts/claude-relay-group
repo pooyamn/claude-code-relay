@@ -12,7 +12,9 @@ set -uo pipefail
 DIR="$RELAY_DIR"
 RAW="${1:?usage: claude-relay-group <WORKDIR> \"<prompt>\"}"; shift
 WORKDIR="$(cd "$RAW" 2>/dev/null && pwd)" || { echo "claude-relay-group: no such folder: $RAW" >&2; exit 1; }
-PERM="${CLAUDE_RELAY_PERM:-acceptEdits}"
+# Unattended relay: bypass per-tool permission prompts ("Do you want to
+# proceed?") entirely, since there's no human at the TUI to approve each turn.
+# Override with CLAUDE_RELAY_PERM=acceptEdits for a stricter, edits-only session.
 KEY="cr-$(printf '%s' "$WORKDIR" | md5 | cut -c1-10)"   # stable per-folder tmux name
 
 # "Alive" = the claude TUI is running in ANY usable state: idle input box, busy
@@ -31,7 +33,7 @@ if ! ( tmux has-session -t "$KEY" 2>/dev/null && ready ); then
   # auto-memory to a global dir so it loads regardless of the folder's own git
   # root; skills load by default. Isolation is just the separate folder/session.
   SETTINGS="$RELAY_DIR/relay-claude-settings.json"
-  tmux send-keys -t "$KEY" "cd $WORKDIR && claude $CONT --settings $SETTINGS --permission-mode $PERM" Enter
+  tmux send-keys -t "$KEY" "cd $WORKDIR && claude $CONT --settings $SETTINGS --dangerously-skip-permissions" Enter
   for i in $(seq 1 90); do
     sleep 1
     pane="$(tmux capture-pane -t "$KEY" -p 2>/dev/null || true)"

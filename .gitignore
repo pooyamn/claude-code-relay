@@ -1,2 +1,14 @@
 scripts/relay-work/
 *.bak-*
+
+# Plugin SDK symlink (created by install.sh)
+scripts/openclaw-newcc-plugin/node_modules/
+
+# OpenClaw instance persona/state (not part of the distributable skill)
+/AGENTS.md
+/SOUL.md
+/IDENTITY.md
+/TOOLS.md
+/USER.md
+/HEARTBEAT.md
+/.openclaw/

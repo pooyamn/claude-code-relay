@@ -81,9 +81,13 @@ def main():
     print(f"OK bound peer={a.peer} -> agent={agent_id} folder={folder}")
     print(f"backup={bak}")
     if a.restart and only_live:
-        rr = subprocess.run(["openclaw", "gateway", "restart"],
-                            capture_output=True, text=True)
-        print("restart:", (rr.stdout or rr.stderr).strip().splitlines()[-1] if (rr.stdout or rr.stderr).strip() else "(done)")
+        # Detached + delayed: when this runs from inside the relay backend, a
+        # synchronous restart would kill us (and signal our process group)
+        # before the reply is delivered. start_new_session detaches; the sleep
+        # lets OpenClaw flush this output to the chat first.
+        subprocess.Popen(["sh", "-c", "sleep 2; openclaw gateway restart >/dev/null 2>&1"],
+                         start_new_session=True)
+        print("restart: scheduled (gateway reloading in ~2s)")
     else:
         print("RESTART REQUIRED: openclaw gateway restart")
 

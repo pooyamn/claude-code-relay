@@ -1,0 +1,18 @@
+{
+  "id": "cc-relay-commands",
+  "name": "Claude Code Relay Commands",
+  "description": "Pre-agent /newcc, /unbind, /ccstatus slash commands for the Claude Code Telegram relay.",
+  "activation": {
+    "onStartup": true
+  },
+  "enabledByDefault": true,
+  "commandAliases": [
+    { "name": "newcc", "kind": "runtime-slash" },
+    { "name": "unbind", "kind": "runtime-slash" },
+    { "name": "ccstatus", "kind": "runtime-slash" }
+  ],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false
+  }
+}

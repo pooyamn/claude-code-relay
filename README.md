@@ -14,7 +14,7 @@ So this skill drives the *interactive* TUI in a `tmux` session and relays it to 
 
 - **Per-folder sessions.** Each Telegram group binds to one project folder. Messages pipe to that folder's persistent Claude Code session; replies come back clean.
 - **Durable + resumable.** The session survives restarts and reboots; it resumes the same conversation via `claude --continue`.
-- **Self-serve binding.** `/new-claude-code <code>` in a group binds it (no chat-id wrangling).
+- **Self-serve binding, LLM-free.** `/newcc <code>` binds a group *or a single forum topic*; `/unbind` and `/ccstatus` manage it. These run as **pre-agent** OpenClaw commands (the `cc-relay-commands` plugin), so they never spend a Claude turn and work even on a topic that isn't bound yet.
 - **Slash commands.** `cc model sonnet`, `cc clear`, `cc compact` — forward any Claude Code slash command into the session.
 - **Native button menus.** When Claude asks a multiple-choice question (or you open `/model`), the bot posts real tappable Telegram buttons; your tap is delivered as the answer, and the buttons collapse to `✓ <pick>`.
 - **Remote control.** `claude-attach <code>` drops you into the live TUI for anything interactive.
@@ -23,40 +23,58 @@ So this skill drives the *interactive* TUI in a `tmux` session and relays it to 
 ## How it works
 
 ```
-Telegram group ──▶ OpenClaw ──▶ cliBackend (claude-tui-backend-multi)
-                                   │  extracts your message, handles `cc`, finds chat id
-                                   ▼
-                          claude-relay-group   ── per-folder tmux session (claude --continue)
-                                   ▼
-                          claude-relay-send.py ── types prompt, scrapes the reply,
-                                                   turns menus into Telegram buttons
+Telegram msg ─▶ OpenClaw
+                  │
+                  ├─▶ cc-relay-commands plugin  (PRE-AGENT, no LLM)
+                  │     matches /newcc /unbind /ccstatus, runs the admin
+                  │     script, replies, and short-circuits the agent.
+                  │     Works on bound OR unbound chats/topics.
+                  │
+                  └─▶ cliBackend (claude-tui-backend-multi)   [bound chats only]
+                        │  extracts your message, handles `cc`, finds chat id
+                        ▼
+                 claude-relay-group   ── per-folder tmux session (claude --continue)
+                        ▼
+                 claude-relay-send.py ── types prompt, scrapes the reply,
+                                          turns menus into Telegram buttons
 ```
+
+The admin commands (`/newcc`, `/unbind`, `/ccstatus`) are intercepted by the plugin **before any agent runs**, so the very first bind on a fresh topic is deterministic and LLM-free. Everything else (your actual prompts) flows to the bound folder's session.
 
 Output is read from the terminal pane (there is no API for the interactive client), so the parser is built to be robust: it joins wrapped lines, anchors on Claude's reply marker, rejoins soft-wrapped prose, and strips TUI chrome.
 
 ## Install
 
-1. **Copy `scripts/`** somewhere stable, e.g. `~/.openclaw/workspace/scripts`. They self-locate, so the scripts, `relay-codes.json`, and `relay-claude-settings.json` must sit together. `chmod +x` the executables.
-2. **Put `claude-attach` on PATH:** `ln -sf <dir>/claude-attach ~/.local/bin/claude-attach`.
-3. **Enable native buttons** in `~/.openclaw/openclaw.json`: set `channels.telegram.capabilities.inlineButtons` to `"all"`, then restart the gateway.
+Quick path — run the installer from the repo root:
+
+```bash
+./install.sh
+```
+
+It copies `scripts/` to `~/.openclaw/workspace/scripts` (override with `CC_RELAY_DIR`), `chmod +x`'s the executables, puts `claude-attach` on PATH, installs + enables the `cc-relay-commands` plugin (the pre-agent command hook), enables native Telegram buttons, and prints the remaining manual steps. Re-running is safe (idempotent).
+
+Then finish the manual bits the installer can't do for you:
+
+1. **Bot privacy off:** BotFather → `/setprivacy` → Disable, so the bot sees every group message (not just commands).
+2. **Restart the gateway:** `openclaw gateway restart` (loads the plugin and applies the button capability).
+3. **Issue codes:** add `"123456": "/abs/path/to/folder"` entries to `scripts/relay-codes.json`.
 4. **(Optional) Global memory:** set `autoMemoryDirectory` in `relay-claude-settings.json` to your Claude memory dir, or delete that line to skip.
-5. **Bot privacy off:** BotFather → `/setprivacy` → Disable, so the bot sees every group message (not just commands).
-6. **Add the handlers** (below) to your OpenClaw agent's `AGENTS.md` so any session can bind.
-7. **Issue codes:** add `"123456": "/abs/path/to/folder"` entries to `relay-codes.json`.
 
-### AGENTS.md handlers
+Then in any Telegram group or forum topic, type `/newcc <code>` to bind it.
+
+### How binding is wired
+
+The `cc-relay-commands` plugin registers `/newcc`, `/unbind`, `/ccstatus` as **pre-agent** OpenClaw commands. Each shells out to the deterministic admin scripts — no LLM in the loop, so binding works even before a topic is bound:
 
 ```
-/new-claude-code <6-digit-code>   (in the target group)
-  → peer id = part after "telegram:" in the inbound chat_id
-  → python3 <dir>/bind-claude-code.py --peer="<peerId>" --code=<code> --restart
-
-/claude-code-status               → python3 <dir>/claude-code-admin.py status
-/unbind-claude-code  (in a bound group)
-  → python3 <dir>/claude-code-admin.py unbind --peer="<peerId>" --restart
+/newcc <code>   → bind-claude-code.py --peer="<peer>" --code=<code> --restart
+/unbind         → claude-code-admin.py unbind --peer="<peer>" --restart
+/ccstatus       → claude-code-admin.py status
 ```
 
-The binder patches `openclaw.json` additively: backup → schema-validate → auto-rollback → restart only if valid. It can't strand your gateway.
+`<peer>` is derived from the inbound message (`<chatId>` for a whole group, `<chatId>:topic:<N>` for a single forum topic). The binder patches `openclaw.json` additively: backup → schema-validate → auto-rollback → restart only if valid. It can't strand your gateway.
+
+> No-plugin fallback: if you can't run a plugin, the same three commands can be wired as `AGENTS.md` handlers instead, but then the *first* bind on an unbound topic passes through the agent once.
 
 ## Usage
 
@@ -72,7 +90,7 @@ The binder patches `openclaw.json` additively: backup → schema-validate → au
 
 - **Terms of service.** Automating the interactive client with no human watching each turn is the same signal Anthropic uses to move usage to the metered pool. It may be detected or blocked. Use deliberately and at your own risk.
 - **It's screen-scraping, not an API.** Robust for normal replies, lists, code, prose, and selection menus — but not bulletproof. `claude-attach` is the reliable fallback for fiddly interactive sequences.
-- **Per-group only.** Telegram route bindings have no topic dimension: one folder per group.
+- **Per-group or per-topic.** Bind a whole group (`/newcc` posts the group peer) or a single forum topic (the peer carries `:topic:<N>`). A group-level binding catches every topic in that group, so for a multi-project forum bind each topic explicitly.
 - **Model switching:** use `cc model sonnet` (direct). Tapping a `/model` button answers in text and does **not** switch the model.
 - **Privacy:** a bound session carries your global Claude memory and can read the host filesystem via its tools. Only add other people to a bound group if you're comfortable with that.
 
@@ -89,6 +107,8 @@ The binder patches `openclaw.json` additively: backup → schema-validate → au
 | `scripts/claude-attach` | attach to the live TUI |
 | `scripts/relay-codes.json` | `{ "code": "/abs/folder" }` registry |
 | `scripts/relay-claude-settings.json` | Claude `--settings` (auto-memory dir) |
+| `scripts/openclaw-newcc-plugin/` | OpenClaw plugin: pre-agent `/newcc` `/unbind` `/ccstatus` |
+| `install.sh` | one-shot installer (copy scripts, install plugin, enable buttons) |
 
 ## License
 
