@@ -51,9 +51,46 @@ menu_pane = "Select a model:\n  1. Default\n❯ 2. Sonnet\n  3. Opus\n  Esc to c
 menu = m.parse_menu(menu_pane)
 check("parse_menu extracts options", menu is not None and menu["options"] == ["Default", "Sonnet", "Opus"])
 check("parse_menu None on prose", m.parse_menu("just a normal reply\nwith two lines") is None)
+# REGRESSION: a prose numbered list (in an answer) must NOT become buttons, even
+# when a real menu is also on screen -- buttons only for the actual cursor menu.
+check("parse_menu None on a prose numbered list (no cursor)",
+      m.parse_menu("Steps to enable:\n1. config change\n2. touch sentinel\n3. restart") is None)
+prose_plus_menu = ("Here are the steps:\n1. config change\n2. touch sentinel\n3. restart\n\n"
+                   "Select a model:\n  1. Default\n❯ 2. Sonnet\n  3. Opus\nEsc to cancel")
+pm = m.parse_menu(prose_plus_menu)
+check("parse_menu ignores the prose list, keeps the real menu",
+      pm is not None and pm["options"] == ["Default", "Sonnet", "Opus"])
 
 # --- addressing --------------------------------------------------------------
 check("thread args from env", m._thread_args() == ["--thread-id", "5"])
+
+# --- persistent watcher model: target + last-prompt persistence --------------
+m.save_target("-100200300", "42")
+m.CHAT_ID, m.THREAD_ID = "", ""        # clear, then reload from the file
+m.refresh_target()
+check("target round-trips chat", m.CHAT_ID == "-100200300")
+check("target round-trips thread", m.THREAD_ID == "42")
+m.write_last_prompt("do the thing")
+check("last prompt round-trips", m.read_last_prompt() == "do the thing")
+
+# --- deliver(): chunks over the 4096 cap, never exceeds it -------------------
+sent = []
+m.tg_send = lambda text, silent=False: sent.append(text) or "id"
+m.deliver("x" * (m.TG_LIMIT + 50))
+check("deliver chunks a >cap reply", len(sent) == 2)
+check("deliver chunks stay within cap", all(len(s) <= m.TG_LIMIT for s in sent))
+sent.clear()
+m.deliver("short")
+check("deliver sends a short reply once", sent == ["short"])
+
+# --- inject(): types + returns '' (watcher delivers), no menu open -----------
+typed = []
+m.tmux = lambda *a, **k: typed.append(a) or ""
+m.clear_menu()                          # ensure no stray menu state
+out = m.inject("hello there")
+check("inject returns '' (out-of-band delivery)", out == "")
+check("inject recorded the typed prompt", m.read_last_prompt() == "hello there")
+check("inject submitted via tmux send-keys", any("send-keys" in a for a in typed))
 
 print(f"\nsend-helpers: {'all passed' if not fails else str(fails) + ' failed'}")
 sys.exit(1 if fails else 0)

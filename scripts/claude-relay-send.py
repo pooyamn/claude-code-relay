@@ -19,17 +19,42 @@ STATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "relay-work
 STATE = os.path.join(STATE_DIR, f"menu-{SESSION}.json")
 STREAM_LOG = os.path.join(STATE_DIR, f"stream-{SESSION}.log")
 DEBUG = os.path.exists(os.path.join(STATE_DIR, "DEBUG"))  # opt-in frame logging (off by default)
+TARGET = os.path.join(STATE_DIR, f"target-{SESSION}.json")    # persisted chat/thread for the watcher
+LASTPROMPT = os.path.join(STATE_DIR, f"prompt-{SESSION}.txt")  # last typed prompt (reply anchoring)
+# Persistent-watcher delivery model: a single long-lived watcher per session
+# tails the pane and delivers EVERY turn (incl. long/slow ones and out-of-band
+# output), while per-message calls only inject. Opt-in via env or a sentinel
+# file so the default synchronous path is untouched until you flip it on.
+WATCH = (os.environ.get("RELAY_WATCH") == "1"
+         or os.path.exists(os.path.join(STATE_DIR, "WATCH")))
+# Native-streaming model: emit Claude `stream-json` JSONL on stdout and let
+# OpenClaw stream it to the channel with its OWN fast in-process edit loop (the
+# backend must be configured output:"jsonl" + jsonlDialect:"claude-stream-json").
+# No tg_* calls -- OpenClaw owns delivery. Opt-in via env or a sentinel file.
+JSONL = (os.environ.get("RELAY_JSONL") == "1"
+         or os.path.exists(os.path.join(STATE_DIR, "JSONL")))
 
 def _thread_args():
     return ["--thread-id", THREAD_ID] if THREAD_ID else []
 
 def tg_buttons(question, options):
-    """Send native Telegram inline buttons for a menu. Returns the message id."""
-    pres = {"blocks": [{"type": "buttons", "buttons":
-            [{"label": f"{i+1}. {o}"[:60], "value": f"ccsel:{i+1}"} for i, o in enumerate(options)]}]}
+    """Send native Telegram inline buttons for a menu. Returns the message id.
+
+    The full option text ALSO goes in the message body: Telegram truncates long
+    button labels to a single narrow line ("Persiste…"), so the body is what
+    keeps every option fully readable. The buttons are just the tap targets."""
+    body = "\n".join([question or "Choose an option:", ""]
+                     + [f"{i}. {o}" for i, o in enumerate(options, 1)])
+    # ONE button per row: OpenClaw groups buttons within a single "buttons" block
+    # into rows of 3 (TELEGRAM_INTERACTIVE_ROW_SIZE). Emitting a separate block
+    # per button forces a full-width, one-per-line layout, so longer labels fit
+    # before Telegram truncates them.
+    pres = {"blocks": [
+        {"type": "buttons", "buttons": [{"label": f"{i+1}. {o}"[:60], "value": f"ccsel:{i+1}"}]}
+        for i, o in enumerate(options)]}
     r = subprocess.run(["openclaw", "message", "send", "--channel", "telegram",
                         "--target", CHAT_ID, *_thread_args(),
-                        "--message", question or "Choose an option:",
+                        "--message", body[:TG_LIMIT],
                         "--presentation", json.dumps(pres), "--json"],
                        capture_output=True, text=True)
     try:
@@ -198,31 +223,35 @@ MENU_CURSOR = re.compile(r'^\s*❯\s*\d+\.\s')
 MENU_FOOTER = re.compile(r"Esc to cancel|Enter to |to adjust|↑/↓|to select|use this session", re.I)
 
 def parse_menu(text):
-    """Return {'question','options':[...],'cursor':idx} if the pane shows a
-    selection menu (a ❯ cursor sitting on a numbered option), else None."""
+    """Return {'question','options':[...],'cursor':idx} ONLY for a REAL selection
+    menu: a ❯ cursor sitting inside a CONTIGUOUS, cleanly-numbered (1..n) block of
+    options. We anchor on the cursor line and take just the unbroken run of option
+    lines around it, so a prose numbered list elsewhere in the pane (e.g. "1. do
+    X / 2. do Y" in an answer) is NEVER turned into buttons. Buttons appear only
+    when Claude is actually asking you to pick."""
     lines = text.splitlines()
-    if not any(MENU_CURSOR.match(l) for l in lines):
+    cur = next((i for i, l in enumerate(lines) if MENU_CURSOR.match(l)), None)
+    if cur is None:
         return None
-    opts, cursor, first_idx = [], 0, None
-    for i, l in enumerate(lines):
+    top = bot = cur
+    while top - 1 >= 0 and OPT.match(lines[top - 1]):
+        top -= 1
+    while bot + 1 < len(lines) and OPT.match(lines[bot + 1]):
+        bot += 1
+    opts, cursor = [], 0
+    for l in lines[top:bot + 1]:
         m = OPT.match(l)
-        if not m:
-            continue
-        num = int(m.group(2))
-        if not opts and num != 1:
-            continue
-        if opts and num != len(opts) + 1:
-            continue
+        if int(m.group(2)) != len(opts) + 1:    # must be cleanly numbered 1..n
+            return None                          # broken sequence -> not a menu
         label = re.split(r'\s{2,}|·', m.group(3).strip())[0].strip()
         opts.append(label)
         if m.group(1):
             cursor = len(opts) - 1
-        if first_idx is None:
-            first_idx = i
     if len(opts) < 2:
         return None
-    # question = the non-empty lines just above the first option
-    q, j = [], (first_idx or 0) - 1
+    first_idx = top
+    # question = the non-empty lines just above the option block
+    q, j = [], first_idx - 1
     while j >= 0 and len(q) < 3:
         s = lines[j].strip()
         if not s:
@@ -471,8 +500,224 @@ def parse_selection(prompt):
     s = prompt.strip().rstrip(".)")
     return int(s) if s.isdigit() else None
 
+# --- persistent watcher model (RELAY_WATCH / relay-work/WATCH) ----------------
+# Instead of watching the TUI only during the message that triggered a turn, one
+# long-lived watcher per session tails the pane and delivers EVERY new assistant
+# turn -- including turns that finish after a long wait and any output that shows
+# up outside the request/response window. The per-message call then only INJECTS
+# (types the prompt / resolves a menu tap) and returns "" so OpenClaw sends
+# nothing; the watcher owns all delivery. This removes the old gap where a slow
+# "I'll report back" reply was missed because nothing was watching anymore.
+
+def save_target(chat, thread):
+    """Persist where the watcher should deliver (it has no inbound message)."""
+    if not chat:
+        return
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        json.dump({"chat": chat, "thread": thread}, open(TARGET, "w"))
+    except Exception:
+        pass
+
+def refresh_target():
+    """Point CHAT_ID/THREAD_ID at the persisted per-session target."""
+    global CHAT_ID, THREAD_ID
+    try:
+        t = json.load(open(TARGET))
+        CHAT_ID = str(t.get("chat") or "")
+        THREAD_ID = str(t.get("thread") or "")
+    except Exception:
+        pass
+
+def write_last_prompt(p):
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        open(LASTPROMPT, "w").write(p or "")
+    except Exception:
+        pass
+
+def read_last_prompt():
+    try:
+        return open(LASTPROMPT).read()
+    except Exception:
+        return ""
+
+def session_alive():
+    return SESSION in tmux("list-sessions", "-F", "#{session_name}", capture=True)
+
+def type_prompt(prompt):
+    """Type a prompt into the TUI and submit it. No watching, no delivery."""
+    tmux("set-option", "-t", SESSION, "history-limit", "100000")
+    tmux("send-keys", "-t", SESSION, "C-u"); time.sleep(0.2)
+    tmux("send-keys", "-t", SESSION, "-l", prompt); time.sleep(0.4)
+    tmux("send-keys", "-t", SESSION, "Enter")
+
+def deliver(text):
+    """Send a finished reply (the notifying message), chunked over the TG cap."""
+    if not text:
+        return
+    for i in range(0, len(text), TG_LIMIT):
+        tg_send(text[i:i + TG_LIMIT])
+
+def inject(prompt):
+    """Per-message path under the watcher model: type the prompt (or resolve a
+    menu tap) into the TUI and return '' immediately. The watcher delivers the
+    result, so this never blocks on the turn."""
+    save_target(CHAT_ID, THREAD_ID)
+    if menu_open():
+        n = parse_selection(prompt)
+        if n is not None:
+            saved = load_menu()
+            opts = saved.get("options", [])
+            if opts and 1 <= n <= len(opts):
+                label = opts[n - 1]
+                if parse_menu(pane()):
+                    tmux("send-keys", "-t", SESSION, "Escape"); time.sleep(0.5)
+                clear_menu()
+                tg_remove_buttons(saved.get("btn_msg_id", ""), f"✓ {label}")
+                write_last_prompt(label)
+                type_prompt(label)
+                return ""
+            clear_menu()
+            return "⚠️ Couldn't read that menu — send your request again."
+        # not a selection while a menu is open -> cancel it, treat as a new msg
+        tmux("send-keys", "-t", SESSION, "Escape"); time.sleep(0.5)
+        clear_menu()
+    write_last_prompt(prompt)
+    type_prompt(prompt)
+    return ""
+
+def watch():
+    """Long-lived: tail the pane, stream the active turn into a silent bubble,
+    and deliver each settled turn's reply exactly once (hash-dedup). Survives
+    long/slow turns and out-of-band output; exits when the session dies."""
+    refresh_target()
+    # Seed 'delivered' with what's already on screen so we never resend a reply
+    # that predates the watcher starting.
+    delivered = None
+    if not BUSY.search(pane()):
+        r0 = extract_reply(read_last_prompt())
+        delivered = hashlib.md5(r0.encode()).hexdigest() if r0 else None
+    stream, menu_sig, was_busy, idle_stable = None, None, False, 0
+    while True:
+        time.sleep(1.0)
+        if not session_alive():
+            return
+        refresh_target()
+        if not CHAT_ID:
+            continue
+        dismiss_interrupts()
+        p = pane()
+        if BUSY.search(p):
+            was_busy, idle_stable, menu_sig = True, 0, None
+            if stream is None and STREAM:
+                stream = _Stream(read_last_prompt())
+            if stream:
+                stream.update(p)
+            continue
+        menu = parse_menu(p)
+        if menu:
+            sig = "|".join(menu["options"])
+            if sig != menu_sig:
+                if stream and stream.id:
+                    tg_delete(stream.id)
+                stream, menu_sig = None, sig
+                present_menu(menu)      # buttons (notify) + save menu state
+            was_busy, idle_stable = False, 0
+            continue
+        menu_sig = None
+        # Idle: wait for a couple of stable frames before declaring done, so we
+        # don't deliver a half-rendered frame the instant a spinner clears.
+        idle_stable += 1
+        if stream:
+            stream.update(p)
+        if idle_stable < 2:
+            continue
+        reply = extract_reply(read_last_prompt())
+        h = hashlib.md5(reply.encode()).hexdigest() if reply else None
+        if h and h != delivered:
+            if stream and stream.id:
+                tg_delete(stream.id)    # drop the silent bubble; deliver fresh
+            deliver(reply)
+            delivered = h
+        elif was_busy and stream and stream.id:
+            tg_delete(stream.id)        # turn ended with nothing new (interrupt)
+        stream, was_busy = None, False
+
+# --- native-streaming model (RELAY_JSONL / relay-work/JSONL) ------------------
+# Emit Claude `stream-json` JSONL on stdout instead of sending to Telegram
+# ourselves. OpenClaw parses the deltas and renders the live edits with its own
+# fast (~1s, in-process) draft-stream loop, and uses our final `result` line as
+# the authoritative reply. This retires the slow 2.8s-per-edit CLI path for the
+# live stream. Requires the cliBackend configured output:jsonl + jsonlDialect.
+
+def emit(obj):
+    """Write one JSONL record to stdout and flush so OpenClaw streams it live."""
+    sys.stdout.write(json.dumps(obj) + "\n")
+    sys.stdout.flush()
+
+def emit_delta(text):
+    if text:
+        emit({"type": "stream_event", "event": {"type": "content_block_delta",
+              "delta": {"type": "text_delta", "text": text}}})
+
+def emit_result(text):
+    emit({"type": "result", "result": text})
+
+def send_jsonl(prompt):
+    """Type the prompt, stream the growing reply as text_delta records, then emit
+    the final result. OpenClaw does all the Telegram editing natively."""
+    dismiss_interrupts()
+    state, _ = wait_settled(timeout=30)
+    if state == "menu":
+        tmux("send-keys", "-t", SESSION, "Escape"); time.sleep(0.4); clear_menu()
+    type_prompt(prompt)
+    for _ in range(6):
+        time.sleep(0.5)
+        if BUSY.search(pane()):
+            break
+    sent = {"last": ""}
+    def on_prog(_p):
+        # Deltas are append-only; emit only a clean forward extension. Reflow/
+        # rewrites are skipped live and corrected by the authoritative result.
+        reply = extract_reply(prompt)
+        if reply.startswith(sent["last"]) and len(reply) > len(sent["last"]):
+            emit_delta(reply[len(sent["last"]):]); sent["last"] = reply
+    state, p = wait_settled(on_progress=on_prog)
+    if state == "menu":
+        menu = parse_menu(p); save_menu(menu)
+        emit_result(format_menu(menu))      # text menu (native buttons TBD)
+        return
+    clear_menu()
+    emit_result(extract_reply(prompt) or "(done)")
+
+def jsonl_main(prompt):
+    if menu_open():
+        n = parse_selection(prompt)
+        if n is not None:
+            saved = load_menu(); opts = saved.get("options", [])
+            if opts and 1 <= n <= len(opts):
+                label = opts[n - 1]
+                if parse_menu(pane()):
+                    tmux("send-keys", "-t", SESSION, "Escape"); time.sleep(0.5)
+                clear_menu()
+                send_jsonl(label); return
+            clear_menu()
+            emit_result("⚠️ Couldn't read that menu — send your request again.")
+            return
+        tmux("send-keys", "-t", SESSION, "Escape"); time.sleep(0.5); clear_menu()
+    send_jsonl(prompt)
+
 def main():
-    prompt = " ".join(sys.argv[1:])
+    args = [a for a in sys.argv[1:] if a != "--watch"]
+    if "--watch" in sys.argv[1:]:
+        watch(); return
+    prompt = " ".join(args)
+    if JSONL:
+        jsonl_main(prompt); return
+    if WATCH:
+        print(inject(prompt)); return
+    # Legacy synchronous path (default until the watcher is enabled).
     if menu_open():
         n = parse_selection(prompt)
         if n is not None:

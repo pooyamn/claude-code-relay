@@ -45,4 +45,17 @@ if ! ( tmux has-session -t "$KEY" 2>/dev/null && ready ); then
 fi
 
 export CLAUDE_RELAY_SESSION="$KEY"
+
+# Persistent-watcher model (opt-in via env or a relay-work/WATCH sentinel): keep
+# ONE long-lived watcher per session in its own tmux session, so every turn --
+# including long ones that finish after the inbound message is long gone -- gets
+# delivered. The per-message call below then only injects.
+if [ "${RELAY_WATCH:-0}" = "1" ] || [ -f "$DIR/relay-work/WATCH" ]; then
+  WKEY="crw-${KEY#cr-}"
+  if ! tmux has-session -t "$WKEY" 2>/dev/null; then
+    tmux new-session -d -s "$WKEY" \
+      "CLAUDE_RELAY_SESSION='$KEY' RELAY_STREAM='${RELAY_STREAM:-1}' exec python3 '$DIR/claude-relay-send.py' --watch"
+  fi
+fi
+
 exec python3 "$DIR/claude-relay-send.py" "$@"
