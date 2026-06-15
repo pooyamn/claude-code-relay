@@ -37,6 +37,29 @@ JSONL = (os.environ.get("RELAY_JSONL") == "1"
 def _thread_args():
     return ["--thread-id", THREAD_ID] if THREAD_ID else []
 
+MSG_OPS = os.path.join(STATE_DIR, "msg-ops.log")
+
+def _oplog(op, mid, text, r=None):
+    """Audit trail of EVERY outbound Telegram op (send/edit/delete/buttons) with
+    its actual CLI result, so we can see exactly what the relay did and whether
+    Telegram accepted it. Always on."""
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        res = ""
+        if r is not None:
+            out = (r.stdout or "").strip().replace("\n", " ")
+            res = f" rc={r.returncode} out={out[:240]}"
+            errs = (r.stderr or "").strip().replace("\n", " ")
+            if errs:
+                res += f" ERR={errs[:160]}"
+        preview = (text or "").replace("\n", "\\n")[:70]
+        with open(MSG_OPS, "a") as f:
+            f.write(f"{time.strftime('%H:%M:%S')} {op:11} mid={mid or '-':<6} "
+                    f"chat={CHAT_ID} thr={THREAD_ID or '-'} len={len(text or '')} "
+                    f"text='{preview}'{res}\n")
+    except Exception:
+        pass
+
 def tg_buttons(question, options):
     """Send native Telegram inline buttons for a menu. Returns the message id.
 
@@ -58,19 +81,22 @@ def tg_buttons(question, options):
                         "--presentation", json.dumps(pres), "--json"],
                        capture_output=True, text=True)
     try:
-        return str(json.loads(r.stdout).get("payload", {}).get("messageId", ""))
+        mid = str(json.loads(r.stdout).get("payload", {}).get("messageId", ""))
     except Exception:
-        return ""
+        mid = ""
+    _oplog("SEND-BTNS", mid, body, r)
+    return mid
 
 def tg_remove_buttons(msg_id, note):
     """Edit the button message text; a text-only edit drops the inline keyboard
     (Telegram removes reply_markup when it isn't re-specified)."""
     if not (msg_id and CHAT_ID):
         return
-    subprocess.run(["openclaw", "message", "edit", "--channel", "telegram",
-                    "--target", CHAT_ID, *_thread_args(), "--message-id", str(msg_id),
-                    "--message", note],
-                   capture_output=True, text=True)
+    r = subprocess.run(["openclaw", "message", "edit", "--channel", "telegram",
+                        "--target", CHAT_ID, *_thread_args(), "--message-id", str(msg_id),
+                        "--message", note],
+                       capture_output=True, text=True)
+    _oplog("EDIT-BTNS", msg_id, note, r)
 
 def tg_send(text, silent=False):
     """Send a plain text message to the bound chat/topic. Returns the message id.
@@ -85,26 +111,116 @@ def tg_send(text, silent=False):
         cmd.append("--silent")
     r = subprocess.run(cmd, capture_output=True, text=True)
     try:
-        return str(json.loads(r.stdout).get("payload", {}).get("messageId", ""))
+        mid = str(json.loads(r.stdout).get("payload", {}).get("messageId", ""))
     except Exception:
         m = re.search(r"Message ID:\s*(\d+)", r.stdout or "")
-        return m.group(1) if m else ""
+        mid = m.group(1) if m else ""
+    _oplog("SEND" + ("-SILENT" if silent else ""), mid, text, r)
+    return mid
 
 def tg_delete(msg_id):
     """Best-effort delete of a message (the live progress bubble)."""
     if not (msg_id and CHAT_ID):
         return
-    subprocess.run(["openclaw", "message", "delete", "--channel", "telegram",
-                    "--target", CHAT_ID, "--message-id", str(msg_id)],
-                   capture_output=True, text=True)
+    r = subprocess.run(["openclaw", "message", "delete", "--channel", "telegram",
+                        "--target", CHAT_ID, "--message-id", str(msg_id)],
+                       capture_output=True, text=True)
+    _oplog("DELETE", msg_id, "", r)
 
 def tg_edit(msg_id, text):
     if not (msg_id and CHAT_ID):
         return
-    subprocess.run(["openclaw", "message", "edit", "--channel", "telegram",
-                    "--target", CHAT_ID, *_thread_args(), "--message-id", str(msg_id),
-                    "--message", text[:TG_LIMIT]],
-                   capture_output=True, text=True)
+    r = subprocess.run(["openclaw", "message", "edit", "--channel", "telegram",
+                        "--target", CHAT_ID, *_thread_args(), "--message-id", str(msg_id),
+                        "--message", text[:TG_LIMIT]],
+                       capture_output=True, text=True)
+    _oplog("EDIT", msg_id, text, r)
+
+EDIT_SERVER = os.path.join(os.path.dirname(STATE_DIR), "relay-ws-edit-server.mjs")
+
+class _WS:
+    """Fast Telegram transport over the gateway websocket (one persistent Node
+    helper, ~0.5s edits vs the ~2.8s CLI cold-start), so the live progress
+    message can hold a real ~1s cadence. Falls back gracefully: if it can't
+    connect, .ok is False and the caller uses the normal return path."""
+    def __init__(self, target, thread):
+        self.ok = False
+        self._n = 0
+        try:
+            self.proc = subprocess.Popen(
+                ["node", EDIT_SERVER, str(target), str(thread or "")],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
+        except Exception:
+            self.proc = None
+            return
+        self.ok = self._ready()
+
+    def _ready(self, timeout=5):
+        end = time.time() + timeout
+        while time.time() < end:
+            line = self.proc.stdout.readline()
+            if not line:
+                return False
+            try:
+                m = json.loads(line)
+            except Exception:
+                continue
+            if m.get("ready"):
+                return True
+            if m.get("error"):
+                return False
+        return False
+
+    def send(self, text, silent=False):
+        if not self.ok:
+            return ""
+        self._n += 1; rid = f"s{self._n}"
+        try:
+            self.proc.stdin.write(json.dumps({"op": "send", "text": text[:TG_LIMIT],
+                                              "silent": silent, "reqid": rid}) + "\n")
+            self.proc.stdin.flush()
+            end = time.time() + 8
+            while time.time() < end:
+                line = self.proc.stdout.readline()
+                if not line:
+                    break
+                try:
+                    m = json.loads(line)
+                except Exception:
+                    continue
+                if m.get("reqid") == rid:
+                    return m.get("messageId") or ""
+        except Exception:
+            pass
+        return ""
+
+    def edit(self, mid, text):
+        if not (self.ok and mid):
+            return
+        try:
+            self.proc.stdin.write(json.dumps({"op": "edit", "mid": str(mid),
+                                              "text": text[:TG_LIMIT]}) + "\n")
+            self.proc.stdin.flush()
+        except Exception:
+            pass
+
+    def delete(self, mid):
+        if not (self.ok and mid):
+            return
+        try:
+            self.proc.stdin.write(json.dumps({"op": "delete", "mid": str(mid)}) + "\n")
+            self.proc.stdin.flush()
+        except Exception:
+            pass
+
+    def close(self):
+        try:
+            self.proc.stdin.write(json.dumps({"op": "quit"}) + "\n")
+            self.proc.stdin.flush()
+            self.proc.wait(timeout=2)
+        except Exception:
+            try: self.proc.kill()
+            except Exception: pass
 
 def progress_snapshot(p, started, prompt=""):
     """Build a live 'thought process' view from the TUI pane while a turn runs:
@@ -144,6 +260,19 @@ def progress_snapshot(p, started, prompt=""):
     out = f"{head}\n\n{tail}".strip()
     return (out[: TG_LIMIT - 1] or "✶ thinking…")
 
+def raw_view(p, started):
+    """Live progress = the REAL terminal: the last ~4000 chars of the actual TUI
+    pane (chrome and all, 'the way it shows up in the terminal'), backticks
+    neutralised, wrapped in a code block so it fits in one Telegram message."""
+    s = p.rstrip().replace("`", "'")
+    if not s.strip():
+        return f"⏳ working… ({int(time.time()-started)}s)"
+    s = s[-4000:]
+    nl = s.find("\n")          # start on a clean line (drop a partial first line)
+    if 0 <= nl < 200:
+        s = s[nl + 1:]
+    return "```\n" + s + "\n```"
+
 def _slog(tag, mid, text, raw=None):
     """Append exactly what we push to Telegram (plus the raw TUI pane), so the
     rendered frames can be reviewed later and progress_snapshot() tuned against
@@ -161,42 +290,35 @@ def _slog(tag, mid, text, raw=None):
         pass
 
 class _Stream:
-    """One Telegram message, edited in place ~every 1.5s while the turn runs."""
-    def __init__(self, prompt=""):
+    """The live PROGRESS message: one silent Telegram message edited ~every 1s
+    over the fast WS transport, showing the real terminal while the turn runs."""
+    def __init__(self, prompt="", ws=None):
         self.started = time.time()
         self.last = 0.0
         self.id = None
         self.sent = None
         self.prompt = prompt
+        self.ws = ws
         try:
-            # Silent: the progress bubble must NOT ping. Only the final answer
-            # (a fresh, non-silent message) notifies the user.
-            self.id = tg_send("✶ thinking…", silent=True)
+            self.id = ws.send("✶ thinking…", silent=True) if ws else None
         except Exception:
             self.id = None
-        _slog("OPEN", self.id, "✶ thinking…")
 
     def update(self, p):
-        if not self.id:
+        if not (self.id and self.ws):
             return
         now = time.time()
-        # Adaptive cadence: ~1.5s early (Telegram tolerates ~1s edits; OpenClaw's
-        # own streaming throttles at 1s), backing off as the turn runs long.
-        # Telegram flood-limits sustained editMessage calls, which froze the
-        # stream on long turns ("pauses after a while"). Backing off keeps total
-        # edits well under the limit while staying responsive at the start.
-        elapsed = now - self.started
-        interval = min(12.0, 1.5 + elapsed / 20.0)
-        if now - self.last < interval:
+        # Flat 5s cadence: well under Telegram's per-message edit flood limit, so
+        # the progress stream never goes stale (sustained 1s editing trips it).
+        if now - self.last < 5.0:
             return
-        snap = progress_snapshot(p, self.started, self.prompt)
-        if snap == self.sent:   # unchanged -> skip (Telegram rejects "not modified")
+        snap = raw_view(p, self.started)   # the real terminal, last ~4000 chars
+        if snap == self.sent:
             return
         self.last = now
         self.sent = snap
-        _slog("EDIT", self.id, snap, raw=p)
         try:
-            tg_edit(self.id, snap)
+            self.ws.edit(self.id, snap)
         except Exception:
             pass
 
@@ -350,7 +472,7 @@ CHROME = re.compile(
     r"|tmux detected|scroll with PgUp|set -g (mouse|focus)|focus-events"  # tmux hints
     r"|\? for shortcuts|Try \"|esc to interrupt|Worked for")
 
-def extract_reply(prompt):
+def _reply_lines(prompt):
     full = pane(scroll=4000).splitlines()
     box = len(full)
     for i in range(len(full) - 1, -1, -1):
@@ -386,7 +508,17 @@ def extract_reply(prompt):
         s = s.replace("⏺", "").strip()
         if s:
             out.append(s)
-    return reflow(out).strip()
+    return out
+
+def extract_reply(prompt):
+    return reflow(_reply_lines(prompt)).strip()
+
+def extract_stream(prompt):
+    # Non-reflowed: capture-pane -J already gives logical (unwrapped) lines, so
+    # the joined text grows append-monotonically as Claude types -- only the last
+    # line is volatile. That makes clean forward deltas reliable. Reflow is saved
+    # for the authoritative final result.
+    return "\n".join(_reply_lines(prompt)).strip()
 
 def reflow(lines):
     try:
@@ -428,31 +560,32 @@ def send(prompt):
         time.sleep(0.5)
         if BUSY.search(pane()):
             break
-    # Live-stream the turn into ONE Telegram message, edited in place ~every 2s.
-    # Any streaming failure leaves stream.id None and we fall back to the normal
-    # return path, so replies are never lost.
-    stream = _Stream(prompt) if (STREAM and CHAT_ID) else None
+    # TWO messages, kept separate, over the fast WS transport (~1s):
+    #  - a live PROGRESS message mirroring the real terminal (last ~4000 chars);
+    #  - a separate FINAL message with the clean answer, sent once at the end.
+    ws = None
+    if STREAM and CHAT_ID:
+        w = _WS(CHAT_ID, THREAD_ID)
+        if w.ok:
+            ws = w
+        else:
+            w.close()
+    stream = _Stream(prompt, ws) if ws else None
     state, p = wait_settled(on_progress=(stream.update if stream else None))
     if state == "menu":
-        # Drop the silent progress bubble; the buttons message (which DOES
-        # notify) becomes the user's ping that Claude needs an answer.
-        if stream and stream.id:
-            tg_delete(stream.id)
-        return present_menu(parse_menu(p))
+        if ws: ws.close()
+        return present_menu(parse_menu(p))   # native buttons for a real menu
     clear_menu()
-    reply = extract_reply(prompt)
     if stream and stream.id:
-        final = reply or "(done)"
-        # The progress bubble was silent (no ping). Delete it and deliver the
-        # answer as a FRESH message so the user gets exactly one notification,
-        # telling them the turn is done.
-        tg_delete(stream.id)
-        if len(final) <= TG_LIMIT:
-            _slog("FINAL", stream.id, final)
-            tg_send(final)          # non-silent: this is the ping
-            return ""               # delivered out-of-band; suppress OpenClaw's bubble
-        _slog("FINAL-LONG", stream.id, final)
-        # Too long for one message: let OpenClaw chunk it (also notifies).
+        try: ws.edit(stream.id, raw_view(p, stream.started))   # final terminal frame
+        except Exception: pass
+    reply = extract_reply(prompt) or "(done)"
+    if ws:
+        if stream and stream.id and len(reply) <= TG_LIMIT:
+            ws.send(reply)      # the answer, as its OWN message (this one notifies)
+            ws.close()
+            return ""
+        ws.close()              # too long -> fall through to OpenClaw's send
     return reply
 
 def present_menu(menu):
@@ -664,9 +797,22 @@ def emit_delta(text):
 def emit_result(text):
     emit({"type": "result", "result": text})
 
+def _jlog(msg):
+    """Opt-in (relay-work/DEBUG) trace of what the JSONL stream emitted, so the
+    delta cadence can be inspected against what the user actually saw."""
+    if not DEBUG:
+        return
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        with open(os.path.join(STATE_DIR, f"jsonl-{SESSION}.log"), "a") as f:
+            f.write(f"{time.strftime('%H:%M:%S')} {msg}\n")
+    except Exception:
+        pass
+
 def send_jsonl(prompt):
-    """Type the prompt, stream the growing reply as text_delta records, then emit
-    the final result. OpenClaw does all the Telegram editing natively."""
+    """Type the prompt, show one working indicator, then emit the final reply as
+    a stream-json `result`. OpenClaw delivers it natively (no 2.8s CLI edit). We
+    don't token-stream: a redrawing TUI can't map onto append-only deltas."""
     dismiss_interrupts()
     state, _ = wait_settled(timeout=30)
     if state == "menu":
@@ -676,20 +822,23 @@ def send_jsonl(prompt):
         time.sleep(0.5)
         if BUSY.search(pane()):
             break
-    sent = {"last": ""}
-    def on_prog(_p):
-        # Deltas are append-only; emit only a clean forward extension. Reflow/
-        # rewrites are skipped live and corrected by the authoritative result.
-        reply = extract_reply(prompt)
-        if reply.startswith(sent["last"]) and len(reply) > len(sent["last"]):
-            emit_delta(reply[len(sent["last"]):]); sent["last"] = reply
-    state, p = wait_settled(on_progress=on_prog)
+    # We do NOT live-stream the reply text: Claude Code's TUI redraws
+    # non-monotonically (tool/thinking blocks appear and collapse), but
+    # stream-json deltas are append-only -- so scraped snapshots either repeat
+    # (lenient) or never advance (strict). Instead we show one lightweight
+    # working indicator and let OpenClaw render the authoritative `result` the
+    # instant the turn settles: fast and clean, just not token-by-token.
+    emit_delta("✶ working…")
+    state, p = wait_settled()
     if state == "menu":
         menu = parse_menu(p); save_menu(menu)
         emit_result(format_menu(menu))      # text menu (native buttons TBD)
+        _jlog("result=MENU")
         return
     clear_menu()
-    emit_result(extract_reply(prompt) or "(done)")
+    final = extract_reply(prompt) or "(done)"
+    emit_result(final)
+    _jlog(f"result len={len(final)}")
 
 def jsonl_main(prompt):
     if menu_open():
