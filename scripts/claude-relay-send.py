@@ -744,7 +744,10 @@ def watch():
         if BUSY.search(p):
             was_busy, idle_stable, menu_sig = True, 0, None
             if stream is None and STREAM:
-                stream = _Stream(read_last_prompt())
+                # Build the fast WS transport so the live bubble actually draws
+                # (without a ws, _Stream.update is a no-op). Mirrors the sync path.
+                w = _WS(CHAT_ID, THREAD_ID)
+                stream = _Stream(read_last_prompt(), w if w.ok else None)
             if stream:
                 stream.update(p)
             continue
@@ -754,6 +757,8 @@ def watch():
             if sig != menu_sig:
                 if stream and stream.id:
                     tg_delete(stream.id)
+                if stream and stream.ws:
+                    stream.ws.close()
                 stream, menu_sig = None, sig
                 present_menu(menu)      # buttons (notify) + save menu state
             was_busy, idle_stable = False, 0
@@ -775,6 +780,8 @@ def watch():
             delivered = h
         elif was_busy and stream and stream.id:
             tg_delete(stream.id)        # turn ended with nothing new (interrupt)
+        if stream and stream.ws:
+            stream.ws.close()
         stream, was_busy = None, False
 
 # --- native-streaming model (RELAY_JSONL / relay-work/JSONL) ------------------

@@ -53,7 +53,11 @@ export CLAUDE_RELAY_SESSION="$KEY"
 if [ "${RELAY_WATCH:-0}" = "1" ] || [ -f "$DIR/relay-work/WATCH" ]; then
   WKEY="crw-${KEY#cr-}"
   if ! tmux has-session -t "$WKEY" 2>/dev/null; then
-    tmux new-session -d -s "$WKEY" \
+    # -c "$DIR": pin the watcher's cwd to the scripts dir so its child WS
+    # edit-server (node relay-ws-edit-server.mjs) resolves the global openclaw
+    # module. Launched from another cwd, node fails ERR_MODULE_NOT_FOUND and the
+    # live progress bubble silently never draws.
+    tmux new-session -d -s "$WKEY" -c "$DIR" \
       "CLAUDE_RELAY_SESSION='$KEY' RELAY_STREAM='${RELAY_STREAM:-1}' exec python3 '$DIR/claude-relay-send.py' --watch"
   fi
 fi
