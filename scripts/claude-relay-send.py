@@ -803,8 +803,8 @@ def watch():
         if menu:
             sig = "|".join(menu["options"])
             if sig != menu_sig:
-                if stream and stream.id:
-                    tg_delete(stream.id)
+                # Freeze the progress bubble in place (don't delete it) and just
+                # stop updating it; the question/menu posts as a new message below.
                 if stream and stream.ws:
                     stream.ws.close()
                 stream, menu_sig = None, sig
@@ -822,13 +822,12 @@ def watch():
         reply = extract_reply(read_last_prompt())
         h = dedup_key(reply) if reply else None
         if h and h != delivered:
-            if stream and stream.id:
-                tg_delete(stream.id)    # drop the silent bubble; deliver fresh
+            # Leave the progress bubble in the chat as a frozen record of the
+            # turn; deliver the clean answer as a separate, new message below it.
+            # The next turn opens a fresh bubble.
             deliver(reply)
             delivered = h
             save_delivered(h)
-        elif was_busy and stream and stream.id:
-            tg_delete(stream.id)        # turn ended with nothing new (interrupt)
         if stream and stream.ws:
             stream.ws.close()
         stream, was_busy = None, False
