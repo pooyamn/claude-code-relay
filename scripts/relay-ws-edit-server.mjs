@@ -1,8 +1,25 @@
 // Persistent WS "edit transport" with response logging + retry-after pause.
-import { o as signDevicePayload, a as pubRaw } from "file:///opt/homebrew/lib/node_modules/openclaw/dist/device-identity-D3vNL0Bn.js";
 import { createRequire } from "node:module";
 import fs from "node:fs"; import os from "node:os"; import path from "node:path"; import readline from "node:readline";
 const require = createRequire(import.meta.url);
+// Resolve OpenClaw's device-identity module dynamically. Its filename hash AND
+// the minified export aliases both change on every OpenClaw update, so we glob
+// the dist dir for the build that exports the two signing helpers we need and
+// capture whatever single-letter aliases it assigned them.
+const DIST = "/opt/homebrew/lib/node_modules/openclaw/dist";
+let signDevicePayload, pubRaw;
+{
+  let hit = null;
+  for (const f of fs.readdirSync(DIST).filter(f => /^device-identity-.*\.js$/.test(f))) {
+    const src = fs.readFileSync(path.join(DIST, f), "utf8");
+    const sig = src.match(/signDevicePayload as (\w+)/);
+    const pub = src.match(/publicKeyRawBase64UrlFromPem as (\w+)/);
+    if (sig && pub) { hit = { f, sig: sig[1], pub: pub[1] }; break; }
+  }
+  if (!hit) throw new Error("device-identity signing module not found in " + DIST);
+  const m = await import("file://" + path.join(DIST, hit.f));
+  signDevicePayload = m[hit.sig]; pubRaw = m[hit.pub];
+}
 const WebSocket = require("/opt/homebrew/lib/node_modules/openclaw/node_modules/ws/index.js");
 const dev = JSON.parse(fs.readFileSync(path.join(os.homedir(),".openclaw/identity/device.json")));
 const auth = JSON.parse(fs.readFileSync(path.join(os.homedir(),".openclaw/identity/device-auth.json")));
