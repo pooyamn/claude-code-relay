@@ -346,34 +346,59 @@ MENU_FOOTER = re.compile(r"Esc to cancel|Enter to |to adjust|↑/↓|to select|u
 
 def parse_menu(text):
     """Return {'question','options':[...],'cursor':idx} ONLY for a REAL selection
-    menu: a ❯ cursor sitting inside a CONTIGUOUS, cleanly-numbered (1..n) block of
-    options. We anchor on the cursor line and take just the unbroken run of option
-    lines around it, so a prose numbered list elsewhere in the pane (e.g. "1. do
-    X / 2. do Y" in an answer) is NEVER turned into buttons. Buttons appear only
-    when Claude is actually asking you to pick."""
+    menu: a ❯ cursor in a cleanly-numbered (1..n) block of options, FOLLOWED by an
+    interactive menu footer ("Enter to select / ↑↓ to navigate / Esc to cancel").
+
+    The footer is what distinguishes a real picker from a prose numbered list, so
+    requiring it lets us tolerate the description/separator/blank lines that
+    AskUserQuestion interleaves BETWEEN options (a simple permission menu has none;
+    AskUserQuestion puts a help line under every option). A prose "1. do X / 2. do
+    Y" in an answer has no ❯ cursor AND no footer, so it is NEVER turned into
+    buttons."""
     lines = text.splitlines()
     cur = next((i for i, l in enumerate(lines) if MENU_CURSOR.match(l)), None)
     if cur is None:
         return None
-    top = bot = cur
-    while top - 1 >= 0 and OPT.match(lines[top - 1]):
-        top -= 1
-    while bot + 1 < len(lines) and OPT.match(lines[bot + 1]):
-        bot += 1
+    # An interactive footer must appear at/below the cursor -> this is a picker.
+    foot = next((i for i in range(cur, len(lines)) if MENU_FOOTER.search(lines[i])), None)
+    if foot is None:
+        return None
+    # Walk up from the cursor (over interleaved description lines) to the "1." that
+    # starts this option block; stop at a separator/prose boundary.
+    top = None
+    for i in range(cur, -1, -1):
+        m = OPT.match(lines[i])
+        if m and int(m.group(2)) == 1:
+            top = i; break
+        if re.match(r'^[─▔━_]{4,}\s*$', lines[i].strip()) or lines[i].strip().startswith('⏺'):
+            break
+    if top is None:
+        return None
+    # Collect the sequential 1..n numbered options between `top` and the footer,
+    # skipping the non-option (description/separator/blank) lines between them.
     opts, cursor = [], 0
-    for l in lines[top:bot + 1]:
+    for l in lines[top:foot]:
         m = OPT.match(l)
-        if int(m.group(2)) != len(opts) + 1:    # must be cleanly numbered 1..n
-            return None                          # broken sequence -> not a menu
+        if not m:
+            continue
+        if int(m.group(2)) != len(opts) + 1:    # numbering jumped -> end of menu
+            break
         label = re.split(r'\s{2,}|·', m.group(3).strip())[0].strip()
         opts.append(label)
         if m.group(1):
             cursor = len(opts) - 1
+    # Drop AskUserQuestion's trailing meta-affordances ("Type something…",
+    # "Chat about this") -- they make no sense as tap targets. Keep them only if
+    # removing them would leave fewer than 2 real choices.
+    META = re.compile(r'^(type something|chat about this)', re.I)
+    real = [o for o in opts if not META.match(o)]
+    if len(real) >= 2:
+        opts = real
+        cursor = min(cursor, len(opts) - 1)
     if len(opts) < 2:
         return None
-    first_idx = top
     # question = the non-empty lines just above the option block
-    q, j = [], first_idx - 1
+    q, j = [], top - 1
     while j >= 0 and len(q) < 3:
         s = lines[j].strip()
         if not s:
