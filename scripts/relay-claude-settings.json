@@ -1,3 +1,8 @@
 {
-  "autoMemoryDirectory": "REPLACE_WITH_YOUR_GLOBAL_MEMORY_DIR_OR_DELETE_THIS_LINE"
+  "autoMemoryDirectory": "REPLACE_WITH_YOUR_GLOBAL_MEMORY_DIR_OR_DELETE_THIS_LINE",
+  "hooks": {
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "python3 $HOME/.openclaw/workspace/scripts/relay-turn-done" } ] }
+    ]
+  }
 }

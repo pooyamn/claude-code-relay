@@ -1,0 +1,37 @@
+#!/usr/bin/env python3
+"""Claude Code `Stop` hook for the relay: write a per-session "turn done" marker
+holding the EXACT final assistant message, so the watcher delivers the reply on a
+deterministic event instead of guessing from idle terminal frames.
+
+Claude runs this when a turn finishes (post-response, pre-input-wait) and pipes a
+JSON object on stdin: {session_id, transcript_path, cwd, last_assistant_message,
+hook_event_name, ...}. We key the marker by the session's working directory the
+same way claude-relay-group derives its tmux session name (cr-<md5(cwd)[:10]>),
+so the matching watcher picks it up. Atomic write so the watcher never reads a
+half-written file. Never fail the hook (exit 0 regardless)."""
+import sys, os, json, hashlib, tempfile
+
+def main():
+    try:
+        data = json.load(sys.stdin)
+    except Exception:
+        data = {}
+    cwd = data.get("cwd") or os.getcwd()
+    key = "cr-" + hashlib.md5(cwd.encode()).hexdigest()[:10]
+    base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "relay-work")
+    try:
+        os.makedirs(base, exist_ok=True)
+        payload = {
+            "message": data.get("last_assistant_message", "") or "",
+            "transcript": data.get("transcript_path", "") or "",
+            "session_id": data.get("session_id", "") or "",
+        }
+        fd, tmp = tempfile.mkstemp(dir=base)
+        with os.fdopen(fd, "w") as f:
+            json.dump(payload, f)
+        os.replace(tmp, os.path.join(base, f"turndone-{key}.json"))
+    except Exception:
+        pass
+
+if __name__ == "__main__":
+    main()

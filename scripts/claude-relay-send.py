@@ -22,6 +22,7 @@ DEBUG = os.path.exists(os.path.join(STATE_DIR, "DEBUG"))  # opt-in frame logging
 TARGET = os.path.join(STATE_DIR, f"target-{SESSION}.json")    # persisted chat/thread for the watcher
 LASTPROMPT = os.path.join(STATE_DIR, f"prompt-{SESSION}.txt")  # last typed prompt (reply anchoring)
 DELIVERED = os.path.join(STATE_DIR, f"delivered-{SESSION}.txt")  # last delivered reply hash (dup guard across restarts)
+TURNDONE = os.path.join(STATE_DIR, f"turndone-{SESSION}.json")  # Stop-hook 'turn finished' marker (deterministic delivery)
 # Persistent-watcher delivery model: a single long-lived watcher per session
 # tails the pane and delivers EVERY turn (incl. long/slow ones and out-of-band
 # output), while per-message calls only inject. Opt-in via env or a sentinel
@@ -684,6 +685,17 @@ def dedup_key(text):
     reply and get sent again."""
     return hashlib.md5(re.sub(r"\s+", " ", text or "").strip().encode()).hexdigest()
 
+def read_turndone():
+    """(mtime, final_message) from the Stop-hook marker, or (None, None). The
+    marker is written by relay-turn-done when Claude finishes a turn, giving the
+    watcher a deterministic 'done' event + the exact reply text -- no pane scrape."""
+    try:
+        mt = os.path.getmtime(TURNDONE)
+        msg = (json.load(open(TURNDONE)) or {}).get("message", "")
+        return mt, msg
+    except Exception:
+        return None, None
+
 def load_delivered():
     """Last reply hash we delivered, persisted so a RESTARTED watcher (gateway
     bounce, crash, manual relaunch) doesn't re-emit the reply already on screen."""
@@ -779,6 +791,13 @@ def watch():
     if delivered is None and not BUSY.search(pane()):
         r0 = extract_reply(read_last_prompt())
         delivered = dedup_key(r0) if r0 else None
+    # Seed the Stop-hook marker mtime so a stale marker isn't re-delivered on
+    # start. hook_active flips on once we've ever seen one (the session's Claude
+    # has the Stop hook); after that the pane-scrape path is only a slow safety
+    # net for the rare 'silent tool stop' the Stop hook misses.
+    last_done_mt, _seed = read_turndone()
+    hook_active = last_done_mt is not None
+    last_done_mt = last_done_mt or 0
     stream, menu_sig, was_busy, idle_stable = None, None, False, 0
     while True:
         time.sleep(1.0)
@@ -788,6 +807,22 @@ def watch():
         if not CHAT_ID:
             continue
         dismiss_interrupts()
+        # Deterministic delivery: the Stop hook wrote a fresh marker -> the turn
+        # is genuinely done and the marker holds the exact final message. Deliver
+        # it (dedup-guarded) and freeze the bubble. Beats the idle heuristic and
+        # carries clean text with no pane-scrape artifacts.
+        mt, msg = read_turndone()
+        if mt and mt != last_done_mt:
+            last_done_mt, hook_active = mt, True
+            h = dedup_key(msg) if msg else None
+            if h and h != delivered:
+                if stream and stream.ws:
+                    stream.ws.close()
+                deliver(msg)
+                delivered = h
+                save_delivered(h)
+            stream, was_busy, idle_stable = None, False, 0
+            continue
         p = pane()
         if BUSY.search(p):
             was_busy, idle_stable, menu_sig = True, 0, None
@@ -822,7 +857,11 @@ def watch():
         idle_stable += 1
         if stream:
             stream.update(p)
-        if not was_busy or idle_stable < 4:
+        # When the Stop hook is active it delivers above; here we only act as a
+        # slow safety net (long idle) for the rare silent-stop it misses, so we
+        # never race the marker. Without the hook, the normal short threshold.
+        thresh = 12 if hook_active else 4
+        if not (was_busy and idle_stable >= thresh):
             continue
         reply = extract_reply(read_last_prompt())
         h = dedup_key(reply) if reply else None
