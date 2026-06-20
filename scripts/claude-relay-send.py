@@ -21,6 +21,7 @@ STREAM_LOG = os.path.join(STATE_DIR, f"stream-{SESSION}.log")
 DEBUG = os.path.exists(os.path.join(STATE_DIR, "DEBUG"))  # opt-in frame logging (off by default)
 TARGET = os.path.join(STATE_DIR, f"target-{SESSION}.json")    # persisted chat/thread for the watcher
 LASTPROMPT = os.path.join(STATE_DIR, f"prompt-{SESSION}.txt")  # last typed prompt (reply anchoring)
+DELIVERED = os.path.join(STATE_DIR, f"delivered-{SESSION}.txt")  # last delivered reply hash (dup guard across restarts)
 # Persistent-watcher delivery model: a single long-lived watcher per session
 # tails the pane and delivers EVERY turn (incl. long/slow ones and out-of-band
 # output), while per-message calls only inject. Opt-in via env or a sentinel
@@ -677,6 +678,27 @@ def save_target(chat, thread):
     except Exception:
         pass
 
+def dedup_key(text):
+    """Hash a reply for delivery dedup, normalizing whitespace first so a trivial
+    pane re-render (different wrapping / trailing spaces) doesn't read as a new
+    reply and get sent again."""
+    return hashlib.md5(re.sub(r"\s+", " ", text or "").strip().encode()).hexdigest()
+
+def load_delivered():
+    """Last reply hash we delivered, persisted so a RESTARTED watcher (gateway
+    bounce, crash, manual relaunch) doesn't re-emit the reply already on screen."""
+    try:
+        return (open(DELIVERED).read().strip() or None)
+    except Exception:
+        return None
+
+def save_delivered(h):
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        open(DELIVERED, "w").write(h or "")
+    except Exception:
+        pass
+
 def refresh_target():
     """Point CHAT_ID/THREAD_ID at the persisted per-session target."""
     global CHAT_ID, THREAD_ID
@@ -750,12 +772,13 @@ def watch():
     and deliver each settled turn's reply exactly once (hash-dedup). Survives
     long/slow turns and out-of-band output; exits when the session dies."""
     refresh_target()
-    # Seed 'delivered' with what's already on screen so we never resend a reply
-    # that predates the watcher starting.
-    delivered = None
-    if not BUSY.search(pane()):
+    # Seed 'delivered' from the persisted hash first (survives watcher restarts),
+    # falling back to whatever reply is already on screen, so we never resend a
+    # reply that predates the watcher starting.
+    delivered = load_delivered()
+    if delivered is None and not BUSY.search(pane()):
         r0 = extract_reply(read_last_prompt())
-        delivered = hashlib.md5(r0.encode()).hexdigest() if r0 else None
+        delivered = dedup_key(r0) if r0 else None
     stream, menu_sig, was_busy, idle_stable = None, None, False, 0
     while True:
         time.sleep(1.0)
@@ -797,12 +820,13 @@ def watch():
         if idle_stable < 2:
             continue
         reply = extract_reply(read_last_prompt())
-        h = hashlib.md5(reply.encode()).hexdigest() if reply else None
+        h = dedup_key(reply) if reply else None
         if h and h != delivered:
             if stream and stream.id:
                 tg_delete(stream.id)    # drop the silent bubble; deliver fresh
             deliver(reply)
             delivered = h
+            save_delivered(h)
         elif was_busy and stream and stream.id:
             tg_delete(stream.id)        # turn ended with nothing new (interrupt)
         if stream and stream.ws:
