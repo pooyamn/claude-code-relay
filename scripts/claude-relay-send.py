@@ -812,12 +812,17 @@ def watch():
             was_busy, idle_stable = False, 0
             continue
         menu_sig = None
-        # Idle: wait for a couple of stable frames before declaring done, so we
-        # don't deliver a half-rendered frame the instant a spinner clears.
+        # Idle: only deliver once the turn has ACTUALLY run (was_busy) and the
+        # pane has stayed idle for several polls. Without the was_busy gate the
+        # watcher delivers in the dead windows where no reply is being produced --
+        # right after a prompt is injected but before Claude responds (it grabs
+        # the echoed envelope, or re-grabs the PREVIOUS reply) -- and a too-short
+        # idle count delivers a brief between-tool-steps frame as if it were the
+        # final answer. Both were seen as spurious extra messages.
         idle_stable += 1
         if stream:
             stream.update(p)
-        if idle_stable < 2:
+        if not was_busy or idle_stable < 4:
             continue
         reply = extract_reply(read_last_prompt())
         h = dedup_key(reply) if reply else None
