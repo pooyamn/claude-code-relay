@@ -242,24 +242,36 @@ def progress_snapshot(p, started, prompt=""):
                 cut = i
         if cut >= 0:
             lines = lines[cut + 1:]
-    status = ""
+    # The footer chrome ("⏵⏵ bypass permissions… esc to interrupt", "? for
+    # shortcuts") also matches the busy markers, so exclude it explicitly and
+    # take the real spinner/token line ("✻ Cooked for 1m3s · ↓ 4.2k tokens").
+    NOISE = re.compile(r"bypass permissions|shift\+tab|to cycle|for shortcuts|for agents", re.I)
+    BORDER = re.compile(r"^[─▔━_│╭╮╰╯├┤┬┴┼┌┐└┘═╞╪╡╔╗╚╝║▕▏▎>·✻✶✢✽✳✺*\s]+$")
+    raw_status = ""
     for l in lines:
-        if BUSY.search(l) or re.search(r"tokens|esc to interrupt", l, re.I):
-            status = l.strip()
+        if NOISE.search(l):
+            continue
+        if re.search(r"tokens|esc to interrupt|esc to cancel", l, re.I):
+            raw_status = l.strip()
+    # tidy the status: drop leading spinner glyph and the trailing "· esc to …"
+    status = re.sub(r"^[✻✶✢✽✳✺·\s]+", "", raw_status)
+    status = re.sub(r"\s*·?\s*esc to (interrupt|cancel).*$", "", status, flags=re.I).strip()
     body = []
     for l in lines:
         s = l.strip()
-        if not s or BUSY.search(s) or READY.search(s) or s == status:
+        if not s or BUSY.search(s) or READY.search(s) or NOISE.search(s) or s == raw_status:
             continue
         if re.search(r"tokens|esc to interrupt", s, re.I):
             continue
-        if re.match(r"^[─▔━_╭╮╰╯│>·✻✶✢*\s]+$", s):
+        if BORDER.match(s):                  # pure box-drawing / separator rows
             continue
         body.append(s)
     elapsed = int(time.time() - started)
     head = f"⏳ {status}" if status else f"⏳ working… ({elapsed}s)"
     tail = "\n".join(body[-30:])
-    out = f"{head}\n\n{tail}".strip()
+    # Neutralise backticks: without the code-block wrapper an unbalanced one
+    # (mid-render code) would swallow the rest into an inline code span.
+    out = f"{head}\n\n{tail}".strip().replace("`", "'")
     return (out[: TG_LIMIT - 1] or "✶ thinking…")
 
 def raw_view(p, started):
@@ -314,7 +326,7 @@ class _Stream:
         # the progress stream never goes stale (sustained 1s editing trips it).
         if now - self.last < 5.0:
             return
-        snap = raw_view(p, self.started)   # the real terminal, last ~4000 chars
+        snap = progress_snapshot(p, self.started, self.prompt)  # chrome-stripped, reflows on phone
         if snap == self.sent:
             return
         self.last = now
