@@ -247,6 +247,10 @@ def progress_snapshot(p, started, prompt=""):
     # take the real spinner/token line ("✻ Cooked for 1m3s · ↓ 4.2k tokens").
     NOISE = re.compile(r"bypass permissions|shift\+tab|to cycle|for shortcuts|for agents", re.I)
     BORDER = re.compile(r"^[─▔━_│╭╮╰╯├┤┬┴┼┌┐└┘═╞╪╡╔╗╚╝║▕▏▎>·✻✶✢✽✳✺*\s]+$")
+    # Claude's file/diff display rows are prefixed with a line number ("219 +  code",
+    # "232  // ctx", bare "231"). In a progress bubble these are a wall of reflowed
+    # code — collapse any run of them into a single ⋯ marker.
+    LINENO = re.compile(r"^\d+(\s|$)")
     raw_status = ""
     for l in lines:
         if NOISE.search(l):
@@ -264,6 +268,11 @@ def progress_snapshot(p, started, prompt=""):
         if re.search(r"tokens|esc to interrupt", s, re.I):
             continue
         if BORDER.match(s):                  # pure box-drawing / separator rows
+            continue
+        if LINENO.match(s):                  # code/diff dump row → collapse the run
+            if body and body[-1] == "⋯":
+                continue
+            body.append("⋯")
             continue
         body.append(s)
     elapsed = int(time.time() - started)
@@ -326,7 +335,7 @@ class _Stream:
         # the progress stream never goes stale (sustained 1s editing trips it).
         if now - self.last < 5.0:
             return
-        snap = progress_snapshot(p, self.started, self.prompt)  # chrome-stripped, reflows on phone
+        snap = raw_view(p, self.started)  # real terminal, code-block, whole ~4000 chars
         if snap == self.sent:
             return
         self.last = now
