@@ -8,7 +8,7 @@ approval, any numbered question), we DON'T scrape it as a reply. We return the
 options formatted for Telegram and remember a menu is open; the user's next
 message (a number) is sent back as an arrow+Enter selection into the TUI.
 """
-import subprocess, sys, time, hashlib, re, os, json
+import subprocess, sys, time, hashlib, re, os, json, shutil
 
 SESSION = os.environ.get("CLAUDE_RELAY_SESSION", "clauderelay")
 CHAT_ID = os.environ.get("RELAY_CHAT_ID", "")     # telegram chat id (numeric)
@@ -805,22 +805,42 @@ def deliver(text):
     for i in range(0, len(text), TG_LIMIT):
         tg_send(text[i:i + TG_LIMIT])
 
+# Resolve freeze to an ABSOLUTE path: the per-message relay process is spawned by
+# the gateway with a minimal PATH that often lacks /opt/homebrew/bin, so a bare
+# "freeze" subprocess call fails (FileNotFoundError) and screenshots silently fall
+# back to text. shutil.which honours PATH when it works; the explicit paths cover
+# the gateway case; bare "freeze" is the last-resort default for other installs.
+FREEZE = (shutil.which("freeze")
+          or next((p for p in ("/opt/homebrew/bin/freeze", "/usr/local/bin/freeze",
+                               os.path.expanduser("~/bin/freeze")) if os.path.exists(p)),
+                  "freeze"))
+
 def screenshot_png():
     """Render the current TUI pane (ANSI colors and all) to a PNG via `freeze`.
     Returns the output path, or None if capture/render failed. This is how the
     relay surfaces what text can't -- full-screen overlays, colors, layout."""
     ansi = os.path.join(STATE_DIR, f"shot-{SESSION}.ansi")
     png = os.path.join(STATE_DIR, f"shot-{SESSION}.png")
+    why = ""
     try:
         os.makedirs(STATE_DIR, exist_ok=True)
         raw = tmux("capture-pane", "-ep", "-t", SESSION, capture=True)
         if not raw.strip():
-            return None
-        with open(ansi, "w") as f:
-            f.write(raw)
-        r = subprocess.run(["freeze", ansi, "-o", png], capture_output=True, text=True)
-        if r.returncode == 0 and os.path.exists(png):
-            return png
+            why = "empty capture"
+        else:
+            with open(ansi, "w") as f:
+                f.write(raw)
+            r = subprocess.run([FREEZE, ansi, "-o", png], capture_output=True, text=True)
+            if r.returncode == 0 and os.path.exists(png):
+                return png
+            why = f"freeze rc={r.returncode} ({FREEZE}): {(r.stderr or '').strip()[:160]}"
+    except Exception as e:
+        why = f"{type(e).__name__}: {e}"
+    # Record WHY a screenshot fell back -- silent None reads as "no overlay" when it
+    # may be a broken renderer/PATH. Best-effort, never breaks the relay.
+    try:
+        with open(os.path.join(STATE_DIR, "shot-debug.log"), "a") as f:
+            f.write(f"{time.strftime('%H:%M:%S')} {SESSION} screenshot fail: {why}\n")
     except Exception:
         pass
     return None
