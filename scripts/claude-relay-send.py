@@ -788,11 +788,42 @@ def deliver(text):
     for i in range(0, len(text), TG_LIMIT):
         tg_send(text[i:i + TG_LIMIT])
 
+def workflow_status():
+    """The /workflows viewer is interactive full-screen and can't render over the
+    relay (it just auto-dismisses). Scrape the live per-workflow progress from the
+    pane instead -- Claude Code keeps that status line on the normal screen while a
+    background workflow runs -- and return it as a text snapshot."""
+    rows, seen = [], set()
+    for raw in pane().splitlines():
+        s = raw.strip()
+        if not s or s in seen:
+            continue
+        # Anchor each pattern to its leading TUI glyph so prose that merely
+        # mentions "N/M agents done" or "/workflows" (e.g. this very chat in the
+        # scrollback) can't be mistaken for a live status row.
+        if (re.match(r"^[◯◉●▸▹‣]\s+\S", s)                              # per-workflow row
+                or re.match(r"^[✻✶✢✽✳✺·]\s*Waiting for \d+\b.*workflow", s, re.I)  # waiting line
+                or re.match(r"^⎿\s+Running in background\b.*/workflows", s, re.I)):  # bg note
+            seen.add(s); rows.append(s)
+    if not rows:
+        return ("📋 No workflow is running right now.\n\n"
+                "(The /workflows viewer is a full-screen TUI, so it can't be shown "
+                "over the relay -- this is the live status instead. Re-send "
+                "/workflows to refresh.)")
+    return ("📋 Workflow status -- live scrape (the /workflows viewer can't render "
+            "over the relay; re-send to refresh):\n\n" + "\n".join(rows[-15:]))
+
 def inject(prompt):
     """Per-message path under the watcher model: type the prompt (or resolve a
     menu tap) into the TUI and return '' immediately. The watcher delivers the
     result, so this never blocks on the turn."""
     save_target(CHAT_ID, THREAD_ID)
+    # /workflows (and /workflow) can't open their full-screen viewer over the relay
+    # -> answer with a scraped text snapshot of live workflow progress instead of
+    # opening (and then auto-dismissing) the overlay.
+    if re.fullmatch(r"/workflows?", prompt.strip(), re.I):
+        deliver(workflow_status())
+        return ""
     if menu_open():
         n = parse_selection(prompt)
         if n is not None:
