@@ -819,7 +819,6 @@ def screenshot_png():
     """Render the current TUI pane (ANSI colors and all) to a PNG via `freeze`.
     Returns the output path, or None if capture/render failed. This is how the
     relay surfaces what text can't -- full-screen overlays, colors, layout."""
-    ansi = os.path.join(STATE_DIR, f"shot-{SESSION}.ansi")
     png = os.path.join(STATE_DIR, f"shot-{SESSION}.png")
     why = ""
     try:
@@ -828,12 +827,17 @@ def screenshot_png():
         if not raw.strip():
             why = "empty capture"
         else:
-            with open(ansi, "w") as f:
-                f.write(raw)
-            r = subprocess.run([FREEZE, ansi, "-o", png], capture_output=True, text=True)
+            # Pipe the ANSI via STDIN, NOT as a file argument: given a file, freeze
+            # tries to guess a source language and dies "Language Unknown" under the
+            # gateway's minimal env (no TERM); from stdin it renders the terminal
+            # colors directly and works regardless of environment. freeze writes its
+            # errors to STDOUT, not stderr -- capture both.
+            r = subprocess.run([FREEZE, "-o", png], input=raw,
+                               capture_output=True, text=True)
             if r.returncode == 0 and os.path.exists(png):
                 return png
-            why = f"freeze rc={r.returncode} ({FREEZE}): {(r.stderr or '').strip()[:160]}"
+            msg = ((r.stdout or "") + " " + (r.stderr or "")).split()
+            why = f"freeze rc={r.returncode} ({FREEZE}): {' '.join(msg)[:200]}"
     except Exception as e:
         why = f"{type(e).__name__}: {e}"
     # Record WHY a screenshot fell back -- silent None reads as "no overlay" when it
