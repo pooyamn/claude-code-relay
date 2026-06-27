@@ -833,6 +833,22 @@ def send_screenshot():
     else:
         deliver("⚠️ Couldn't render a screenshot (freeze/capture failed).")
 
+def overlay_screenshot(open_cmd):
+    """Open a full-screen TUI overlay (e.g. /workflows, /config), image it, then
+    Esc to close. Returns the PNG path (or None). Captures FAST: the watcher's
+    overlay-guard Escs a non-input-bar pane after ~3 polls (~3s), so we grab the
+    frame well inside that window and close it ourselves. Only opens the overlay
+    when the pane is at the input bar (not mid-turn / not already in a modal)."""
+    if not INPUTBAR.search(pane()):
+        return None
+    tmux("send-keys", "-t", SESSION, "C-u"); time.sleep(0.2)
+    tmux("send-keys", "-t", SESSION, "-l", open_cmd); time.sleep(0.3)
+    tmux("send-keys", "-t", SESSION, "Enter")
+    time.sleep(1.4)                       # let the panel render, inside the guard window
+    png = screenshot_png()
+    tmux("send-keys", "-t", SESSION, "Escape"); time.sleep(0.4)  # close the overlay
+    return png
+
 def workflow_status():
     """The /workflows viewer is interactive full-screen and can't render over the
     relay (it just auto-dismisses). Scrape the live per-workflow progress from the
@@ -867,7 +883,13 @@ def inject(prompt):
     # -> answer with a scraped text snapshot of live workflow progress instead of
     # opening (and then auto-dismissing) the overlay.
     if re.fullmatch(r"/workflows?", prompt.strip(), re.I):
-        deliver(workflow_status())
+        # Image the actual /workflows panel (faithful, full fidelity); fall back to
+        # the scraped text status if the pane is busy or the render fails.
+        png = overlay_screenshot("/workflows")
+        if png:
+            tg_send_media(png, "🖥 /workflows")
+        else:
+            deliver(workflow_status())
         return ""
     # /screenshot (/ss, /shot): image of the live TUI -- the faithful way to see
     # full-screen overlays, colors and layout that text scraping can't carry.
