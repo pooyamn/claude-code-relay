@@ -120,6 +120,23 @@ def tg_send(text, silent=False):
     _oplog("SEND" + ("-SILENT" if silent else ""), mid, text, r)
     return mid
 
+def tg_send_media(path, caption=""):
+    """Send a local image/file as media (used for TUI screenshots). --force-document
+    keeps full resolution so the small terminal text stays legible -- a compressed
+    Telegram photo blurs it. Returns the message id."""
+    cmd = ["openclaw", "message", "send", "--channel", "telegram",
+           "--target", CHAT_ID, *_thread_args(),
+           "--media", path, "--force-document", "--json"]
+    if caption:
+        cmd += ["--message", caption[:TG_LIMIT]]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        mid = str(json.loads(r.stdout).get("payload", {}).get("messageId", ""))
+    except Exception:
+        mid = ""
+    _oplog("SENDMEDIA", mid, path, r)
+    return mid
+
 def tg_delete(msg_id):
     """Best-effort delete of a message (the live progress bubble)."""
     if not (msg_id and CHAT_ID):
@@ -788,6 +805,34 @@ def deliver(text):
     for i in range(0, len(text), TG_LIMIT):
         tg_send(text[i:i + TG_LIMIT])
 
+def screenshot_png():
+    """Render the current TUI pane (ANSI colors and all) to a PNG via `freeze`.
+    Returns the output path, or None if capture/render failed. This is how the
+    relay surfaces what text can't -- full-screen overlays, colors, layout."""
+    ansi = os.path.join(STATE_DIR, f"shot-{SESSION}.ansi")
+    png = os.path.join(STATE_DIR, f"shot-{SESSION}.png")
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        raw = tmux("capture-pane", "-ep", "-t", SESSION, capture=True)
+        if not raw.strip():
+            return None
+        with open(ansi, "w") as f:
+            f.write(raw)
+        r = subprocess.run(["freeze", ansi, "-o", png], capture_output=True, text=True)
+        if r.returncode == 0 and os.path.exists(png):
+            return png
+    except Exception:
+        pass
+    return None
+
+def send_screenshot():
+    """Capture the live TUI as an image and send it as a photo/document."""
+    png = screenshot_png()
+    if png:
+        tg_send_media(png, "🖥 TUI screenshot")
+    else:
+        deliver("⚠️ Couldn't render a screenshot (freeze/capture failed).")
+
 def workflow_status():
     """The /workflows viewer is interactive full-screen and can't render over the
     relay (it just auto-dismisses). Scrape the live per-workflow progress from the
@@ -823,6 +868,11 @@ def inject(prompt):
     # opening (and then auto-dismissing) the overlay.
     if re.fullmatch(r"/workflows?", prompt.strip(), re.I):
         deliver(workflow_status())
+        return ""
+    # /screenshot (/ss, /shot): image of the live TUI -- the faithful way to see
+    # full-screen overlays, colors and layout that text scraping can't carry.
+    if re.fullmatch(r"/(screenshot|ss|shot)", prompt.strip(), re.I):
+        send_screenshot()
         return ""
     if menu_open():
         n = parse_selection(prompt)
