@@ -361,6 +361,12 @@ def pane(scroll=0):
 BUSY = re.compile(r"esc to interrupt", re.I)        # shown ONLY while a turn runs
 READY = re.compile(r"for agents|for shortcuts")     # input box footer = idle
 SURVEY = re.compile(r"How is Claude doing")         # periodic satisfaction popup
+# The permission/hint footer is present whenever the normal input prompt is up
+# (idle OR mid-turn). A full-screen overlay (/workflows, /config, a stray dialog)
+# REPLACES that footer -- so its absence, on a stable non-menu pane, means a modal
+# is blocking ALL keyboard input and a relay-bound topic is wedged behind it.
+INPUTBAR = re.compile(r"shift\+tab|bypass permissions|accept edits|plan mode|"
+                      r"for agents|for shortcuts|for commands", re.I)
 
 # --- menu detection ----------------------------------------------------------
 OPT = re.compile(r'^\s*(❯)?\s*(\d+)\.\s+(.*\S)\s*$')
@@ -759,7 +765,17 @@ def session_alive():
     return SESSION in tmux("list-sessions", "-F", "#{session_name}", capture=True)
 
 def type_prompt(prompt):
-    """Type a prompt into the TUI and submit it. No watching, no delivery."""
+    """Type a prompt into the TUI and submit it. No watching, no delivery.
+
+    First Esc-peel any full-screen overlay (/workflows, /config, a stray
+    dialog/menu): with no input bar on screen the typed text lands inside the
+    overlay and wedges the whole topic. Esc one layer per pass until the input
+    bar -- or a running turn -- is back, then type."""
+    for _ in range(4):
+        p = pane()
+        if INPUTBAR.search(p) or BUSY.search(p):
+            break
+        tmux("send-keys", "-t", SESSION, "Escape"); time.sleep(0.5)
     tmux("set-option", "-t", SESSION, "history-limit", "100000")
     tmux("send-keys", "-t", SESSION, "C-u"); time.sleep(0.2)
     tmux("send-keys", "-t", SESSION, "-l", prompt); time.sleep(0.4)
@@ -819,7 +835,7 @@ def watch():
     last_done_mt, _seed = read_turndone()
     hook_active = last_done_mt is not None
     last_done_mt = last_done_mt or 0
-    stream, menu_sig, was_busy, idle_stable = None, None, False, 0
+    stream, menu_sig, was_busy, idle_stable, overlay_stable = None, None, False, 0, 0
     while True:
         time.sleep(1.0)
         if not session_alive():
@@ -846,7 +862,7 @@ def watch():
             continue
         p = pane()
         if BUSY.search(p):
-            was_busy, idle_stable, menu_sig = True, 0, None
+            was_busy, idle_stable, menu_sig, overlay_stable = True, 0, None, 0
             if stream is None and STREAM:
                 # Build the fast WS transport so the live bubble actually draws
                 # (without a ws, _Stream.update is a no-op). Mirrors the sync path.
@@ -865,9 +881,22 @@ def watch():
                     stream.ws.close()
                 stream, menu_sig = None, sig
                 present_menu(menu)      # buttons (notify) + save menu state
-            was_busy, idle_stable = False, 0
+            was_busy, idle_stable, overlay_stable = False, 0, 0
             continue
         menu_sig = None
+        # Wedge guard: a stable pane that's neither busy, nor a parseable menu, nor
+        # showing the input bar = a full-screen overlay (/workflows, /config, a
+        # dialog we can't button) blocking ALL input. Esc to peel one layer; the
+        # next poll re-evaluates, so a menu hidden underneath then renders and gets
+        # buttoned, and stacked overlays peel one layer per cycle. A MENU_FOOTER
+        # means a picker is mid-render -> let parse_menu retry, don't Esc it away.
+        if not INPUTBAR.search(p) and not MENU_FOOTER.search(p):
+            overlay_stable += 1
+            if overlay_stable >= 3:
+                tmux("send-keys", "-t", SESSION, "Escape"); time.sleep(0.4)
+                overlay_stable = 0
+            continue
+        overlay_stable = 0
         # Idle: only deliver once the turn has ACTUALLY run (was_busy) and the
         # pane has stayed idle for several polls. Without the was_busy gate the
         # watcher delivers in the dead windows where no reply is being produced --
