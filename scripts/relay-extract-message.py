@@ -61,4 +61,59 @@ if not msg:
         "", text)
     msg = strip_prefixes(t)
 
-sys.stdout.write(msg if msg else raw.strip())
+import os
+
+INBOUND_DIR = os.path.expanduser("~/.openclaw/media/inbound")
+
+
+def _hsize(n):
+    n = float(n)
+    for u in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024 or u == "TB":
+            return f"{int(n)}{u}" if u == "B" else f"{n:.1f}{u}"
+        n /= 1024
+
+
+def _link(name):
+    """A compact on-disk pointer for an inbound file (already saved by OpenClaw),
+    so Claude opens it on demand instead of having content/descriptions inlined."""
+    p = os.path.join(INBOUND_DIR, os.path.basename(name))
+    try:
+        return f"\U0001F4CE {p} ({_hsize(os.path.getsize(p))})"
+    except OSError:
+        return f"\U0001F4CE {p}"
+
+
+def rewrite_media(t):
+    """Replace OpenClaw's bulky media payloads -- inlined document bodies and vision
+    'Description:' blocks -- with a one-line link to the file saved under
+    media/inbound. Keeps the prompt small (a 177KB hex no longer floods context)
+    and hands Claude a path it can Read. No-op on plain text messages."""
+    if "media://inbound/" not in t and "<file name=" not in t:
+        return t
+    t = re.sub(r'<file name="([^"]+)"[^>]*>.*?</file>',
+               lambda m: _link(m.group(1)), t, flags=re.S)
+    t = re.sub(r'\[media attached:\s*media://inbound/(\S+?)\s*\([^)]*\)\]',
+               lambda m: _link(m.group(1)), t)
+    # Drop the vision description block (link replaces it), the send-back
+    # boilerplate, bare media markers, and the transient /tmp image path.
+    t = re.sub(r'(?ms)^Description:[ \t]*\n.*?(?=\n*/tmp/openclaw/|\n*\[media attached|\Z)',
+               '', t)
+    t = re.sub(r'(?im)^To send an image back,.*$', '', t)
+    t = re.sub(r'(?im)^\[Image\][ \t]*$', '', t)
+    t = re.sub(r'(?im)^<media:(?:image|document)>[ \t]*$', '', t)
+    t = re.sub(r'(?im)^/tmp/openclaw/\S+[ \t]*$', '', t)
+    # Dedupe identical link lines: the [media attached:] header and the <file>
+    # block resolve to the same saved file.
+    seen, kept = set(), []
+    for ln in t.split("\n"):
+        if ln.startswith("\U0001F4CE"):
+            if ln in seen:
+                continue
+            seen.add(ln)
+        kept.append(ln)
+    t = re.sub(r'\n{3,}', '\n\n', "\n".join(kept))
+    return t.strip()
+
+
+sys.stdout.write(rewrite_media(msg if msg else raw.strip()))
