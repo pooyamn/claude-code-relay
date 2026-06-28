@@ -101,7 +101,7 @@ def rewrite_media(t):
                '', t)
     t = re.sub(r'(?im)^To send an image back,.*$', '', t)
     t = re.sub(r'(?im)^\[Image\][ \t]*$', '', t)
-    t = re.sub(r'(?im)^<media:(?:image|document)>[ \t]*$', '', t)
+    t = re.sub(r'[ \t]*<media:(?:image|document)>', '', t)  # bare marker, even inline
     t = re.sub(r'(?im)^/tmp/openclaw/\S+[ \t]*$', '', t)
     # Dedupe identical link lines: the [media attached:] header and the <file>
     # block resolve to the same saved file.
