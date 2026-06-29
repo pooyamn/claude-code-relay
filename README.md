@@ -123,6 +123,10 @@ bash scripts/tests/run_tests.sh
 - `test_backend.sh` — backend routing: `/cc` → `/model` forwarding, numeric chat id + topic thread split, message extraction. Uses a stub for the TUI hop (`RELAY_GROUP_CMD`).
 - `test_send_helpers.py` — `progress_snapshot` (the live streamed view), menu parsing, thread addressing.
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for the version history.
+
 ## License
 
 MIT
