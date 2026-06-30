@@ -3,6 +3,17 @@
 All notable changes to **claude-code-relay** are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions are date-tagged.
 
+## [0.4.0] — 2026-06-29
+
+### Added
+- **`send-file` skill** (`skills/send-file/`) — when you ask a bound session to send/share
+  a file, it delivers it to your Telegram chat via the OpenClaw gateway. It **always
+  zips first** because OpenClaw/Telegram block many raw extensions (`.hex`, `.exe`,
+  `.sh`, binaries); a `.zip` always gets through. The destination chat/topic is resolved
+  automatically from the relay's per-session target file — no chat id to pass. Outbound
+  zips are written under `~/.openclaw/media/outbound/` (the gateway only delivers media
+  from allowlisted dirs, not `/tmp`).
+
 ## [0.3.1] — 2026-06-28
 
 ### Changed
