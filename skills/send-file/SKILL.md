@@ -1,6 +1,6 @@
 ---
 name: send-file
-description: Send a file, files, or a folder from this Claude Code session to the user over Telegram via the OpenClaw gateway. ALWAYS zips first because OpenClaw/Telegram block many file types (.hex, .exe, .sh, binaries). Use whenever the user asks you to send, share, give, deliver, or "shoot me" a file, log, report, artifact, build output, dataset, or any on-disk file from the session.
+description: For a RELAY-BOUND Claude Code TUI session only — send a specific file (or files) from this session to the user over Telegram via the OpenClaw gateway, always zipped (OpenClaw/Telegram block many types: .hex, .exe, .sh, binaries). Use when the user asks you to send, share, give, deliver, or "shoot me" a named file/log/report/artifact. NOT for OpenClaw agent sessions — the script refuses there so it can't deliver to the wrong chat; an OpenClaw agent should use its own native media send instead.
 ---
 
 # send-file
@@ -32,7 +32,16 @@ The script handles everything else:
 Trigger on any phrasing that means "get this file to me": *send me*, *share*, *give me*, *deliver*, *shoot me*, *export*, *can I get*, the report / log / zip / artifact / output / screenshot / hex / pdf.
 
 ## Rules
-- **Always zip**, even a single already-compressed or plain file — that is the whole point (deliverability), and it is what the user asked for.
-- Only works inside a **relay-bound** session; the target is resolved from `tmux` session name → `~/.openclaw/workspace/scripts/relay-work/target-<session>.json`. If the script reports "no relay target", tell the user this session isn't bound; do not guess a chat id.
-- On any error (missing file, send failure), report it plainly and do not blindly retry.
-- For multiple files it makes one combined zip; for a folder it preserves the folder structure.
+- **Send exactly what the user named.** Pass the specific file(s) they asked for. Do
+  NOT pass a whole folder (or the file's parent directory) unless the user explicitly
+  asks to send a folder/directory — otherwise you'll zip and ship every file in it.
+- **Always zip**, even a single already-compressed or plain file — that is the whole
+  point (deliverability), and it is what the user asked for.
+- **Relay-bound sessions only.** The destination is resolved from the tmux session
+  name (`$TMUX` must be set) → `~/.openclaw/workspace/scripts/relay-work/target-<session>.json`.
+  Run from anywhere else (e.g. an OpenClaw agent session) the script **refuses**
+  (exit 3) rather than guess — that prevents delivering to the wrong bound chat. If you
+  hit that refusal as an OpenClaw agent, use your own native media send instead.
+- On any error (missing file, send failure, refusal), report it plainly and do not
+  blindly retry.
+- For multiple files it makes one combined zip; for a folder it preserves structure.

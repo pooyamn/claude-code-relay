@@ -3,6 +3,18 @@
 All notable changes to **claude-code-relay** are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions are date-tagged.
 
+## [0.4.1] — 2026-07-09
+
+### Fixed
+- **`send-file` misrouted to the wrong chat from non-relay contexts.** When an OpenClaw
+  agent session (no `$TMUX`) invoked the skill, `tmux display-message -p '#S'` returned
+  the *most-recent* tmux session — a `cr-*` relay session — so the file was zipped and
+  delivered to that session's bound chat instead of the caller's. The script now only
+  consults tmux when actually attached to a client (`$TMUX` set) and the session is a
+  real `cr-<hash>` with a target file; otherwise it **refuses** (exit 3) rather than
+  guess, so an OpenClaw agent falls back to its own native media send. SKILL.md also now
+  says to send only the files the user named (don't zip a whole folder unless asked).
+
 ## [0.4.0] — 2026-06-29
 
 ### Added

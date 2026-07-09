@@ -15,12 +15,30 @@ RELAY_WORK="$HOME/.openclaw/workspace/scripts/relay-work"
 
 [ "$#" -ge 1 ] || { echo "usage: send-file.sh <path> [path...]" >&2; exit 2; }
 
-# --- resolve this session's Telegram target (chat id + optional topic thread) ---
-KEY="${CLAUDE_RELAY_SESSION:-$(tmux display-message -p '#S' 2>/dev/null || true)}"
+# --- resolve THIS session's Telegram target; refuse unless we are clearly inside a
+# relay-bound CC session ---
+# CRITICAL: only ask tmux for the session name when actually attached to a tmux
+# client ($TMUX set). A bare `tmux display-message` from a NON-tmux context (e.g. an
+# OpenClaw agent session) returns the most-recent tmux session -- a cr-* relay
+# session -- which misroutes the file to that session's bound chat. That was the bug.
+KEY=""
+if [ -n "${TMUX:-}" ]; then
+  KEY="$(tmux display-message -p '#S' 2>/dev/null || true)"
+fi
+case "$KEY" in
+  cr-[0-9a-f]*) : ;;   # a real relay session name (cr-<md5[:10]>)
+  *)
+    echo "send-file: not inside a relay-bound Claude Code session (session='${KEY:-none}')." >&2
+    echo "send-file: refusing, so the file can't be delivered to the wrong chat." >&2
+    echo "send-file: if you are an OpenClaw agent, send with your OWN native media send" >&2
+    echo "           (the message tool's media/mediaUrl/path fields), not this relay skill." >&2
+    exit 3
+    ;;
+esac
 TARGET="$RELAY_WORK/target-$KEY.json"
 [ -f "$TARGET" ] || {
   echo "send-file: no relay target for session '$KEY' ($TARGET)." >&2
-  echo "send-file: are you running inside a relay-bound Claude Code session?" >&2
+  echo "send-file: this session isn't bound; refusing rather than guessing a chat." >&2
   exit 1
 }
 CHAT="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("chat",""))' "$TARGET")"
