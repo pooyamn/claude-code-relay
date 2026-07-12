@@ -3,6 +3,17 @@
 All notable changes to **claude-code-relay** are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions are date-tagged.
 
+## [0.5.1] — 2026-07-11
+
+### Fixed
+- **Relay agents now group under one `relay` provider in the model picker.** The picker
+  groups models by the key prefix before `/`, and each relay was minted as
+  `claude-tui-<folder>-<scope>/relay` — i.e. its own provider — so the list filled with
+  dozens of one-model providers. `bind-claude-code.py` now mints `relay/<slug>` keys, so
+  every relay session lands under a single **relay** provider alongside anthropic/openai.
+  (Existing bindings were regrouped in place; orphaned backends left by unbinds were
+  pruned.)
+
 ## [0.5.0] — 2026-07-11
 
 ### Added

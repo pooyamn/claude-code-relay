@@ -31,7 +31,10 @@ def main():
         print(f"ERROR: folder missing: {folder}", file=sys.stderr); sys.exit(2)
     slug = os.path.basename(folder.rstrip("/"))
     backend = f"claude-tui-{slug}"
-    model = f"{backend}/relay"
+    # Group ALL relay agents under a single "relay" provider in the model picker
+    # (the picker groups by the prefix before "/"). "{backend}/relay" would make
+    # every relay its own provider -> a long list of one-model providers.
+    model = f"relay/{slug}"
     agent_id = f"claude-{slug}"
 
     bak = f"{CFG}.bak-bind-{time.strftime('%Y%m%d-%H%M%S')}"
