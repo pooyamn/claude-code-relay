@@ -55,6 +55,18 @@ if [ -n "$(git -C "$FOLDER" status --porcelain)" ]; then
   git -C "$FOLDER" commit -q -m "wip: checkpoint before topic fork ($NAME)" || die "WIP commit failed"
 fi
 git -C "$FOLDER" switch "$BASE" 2>/dev/null || die "couldn't switch $FOLDER to $BASE"
+# Keep OpenClaw's workspace seeds intact across the branch switch: the WIP commit
+# (git add -A) sweeps untracked seeds (BOOTSTRAP.md/AGENTS.md) into the feature
+# branch, so switching to base DELETES them -> the gateway then hard-fails every
+# message for this workspace with WorkspaceVanishedError. Restore them untracked
+# and clear the attestation (filename = sha256 of the workspace path) so OpenClaw
+# re-attests cleanly.
+for f in BOOTSTRAP.md AGENTS.md; do
+  if [ ! -f "$FOLDER/$f" ] && git -C "$FOLDER" cat-file -e "$BRANCH:$f" 2>/dev/null; then
+    git -C "$FOLDER" show "$BRANCH:$f" > "$FOLDER/$f"
+  fi
+done
+rm -f "$HOME/.openclaw/workspace-attestations/$(printf '%s' "$FOLDER" | shasum -a 256 | cut -d' ' -f1).attested"
 grep -qxF '.worktrees/' "$FOLDER/.gitignore" 2>/dev/null || echo '.worktrees/' >> "$FOLDER/.gitignore"
 git -C "$FOLDER" add .gitignore >/dev/null 2>&1 && git -C "$FOLDER" commit -q -m "chore: ignore .worktrees" >/dev/null 2>&1 || true
 git -C "$FOLDER" worktree add "$WT" "$BRANCH" >&2 || die "worktree add failed"
