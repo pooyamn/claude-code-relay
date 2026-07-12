@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# cc-relay-dispatch — single registered cliBackend for ALL relay sessions.
+# STATUS: INERT SKELETON. Only active once the cc-relay-commands plugin registers it
+# via api.registerCliBackend({id:"cc-relay", modelProvider:"relay", ...}) — see
+# docs/provider-grouping-plan.md. Do not wire into openclaw.json cliBackends directly.
+#
+# Contract (verify empirically before activation):
+#   argv: [--relay-session <name>] ... <composed message as LAST arg>
+#   <name> = the model-key suffix (relay/<name>) chosen by the binder.
+# Maps <name> -> {folder, peer} via relay-map.json, then execs the existing
+# per-message wrapper unchanged.
+set -uo pipefail
+SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+MAP="$SCRIPTS/relay-map.json"
+DEBUG_LOG="$SCRIPTS/relay-work/dispatch-debug.log"
+
+# Optional debug: capture raw argv to pin down how the gateway passes the model.
+if [ -f "$SCRIPTS/relay-work/DEBUG" ]; then
+  { printf '%s argv:' "$(date '+%H:%M:%S')"; printf ' %q' "$@"; printf '\n'; } >> "$DEBUG_LOG" 2>/dev/null || true
+fi
+
+NAME=""
+while [ "$#" -gt 1 ]; do
+  case "$1" in
+    --relay-session|--model) NAME="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+PROMPT="${1:-}"
+[ -n "$NAME" ] || { echo "cc-relay-dispatch: no session name in argv (see $DEBUG_LOG)"; exit 1; }
+[ -f "$MAP" ] || { echo "cc-relay-dispatch: missing $MAP"; exit 1; }
+
+FP="$(python3 - "$MAP" "$NAME" <<'PY'
+import json,sys
+m=json.load(open(sys.argv[1])); e=m.get(sys.argv[2])
+if e: print(e["folder"]+"\t"+e.get("peer",""))
+PY
+)"
+[ -n "$FP" ] || { echo "cc-relay-dispatch: unknown session '$NAME' in $MAP"; exit 1; }
+FOLDER="${FP%%$'\t'*}"; PEER="${FP#*$'\t'}"
+exec bash "$SCRIPTS/claude-tui-backend-multi" "$FOLDER" "$PEER" "$PROMPT"
