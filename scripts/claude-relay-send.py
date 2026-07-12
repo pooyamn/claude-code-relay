@@ -920,6 +920,14 @@ def inject(prompt):
     if re.fullmatch(r"/(screenshot|ss|shot)", prompt.strip(), re.I):
         send_screenshot()
         return ""
+    # `cc cancel` (-> /cancel) means "interrupt the running turn". Claude Code has NO
+    # /cancel command, so typing it no-ops; interrupting is an Esc keystroke. Send Esc
+    # directly (same as the /cancel plugin's relay-cancel.py). Must be BEFORE the
+    # busy-warning below, else it'd be queued instead of interrupting.
+    if prompt.strip().lower() in ("/cancel", "/interrupt", "/esc"):
+        tmux("send-keys", "-t", SESSION, "Escape")
+        deliver("✋ Interrupted the current turn (sent Esc).")
+        return ""
     # Busy-aware feedback for forwarded slash commands (/clear, /compact, /model, ...).
     # Typed while a turn is running, a slash command does NOT execute -- Claude Code
     # just queues it -- so `cc clear` silently no-ops ("I sent /clear but context is

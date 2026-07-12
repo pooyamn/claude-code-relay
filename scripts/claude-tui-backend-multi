@@ -68,12 +68,14 @@ esac
 
 # Slash-command passthrough: OpenClaw strips/handles real slash commands (/model,
 # /clear, ...) before they reach here. Prefix with "cc" to forward one to Claude
-# Code instead: "/cc model sonnet" or "cc model sonnet" -> types "/model sonnet"
-# into the TUI. Best for commands that take an arg (no interactive picker); for
-# interactive pickers/menus use `claude-attach <code>`.
-case "$PROMPT" in
-  "/cc "*) PROMPT="/${PROMPT#/cc }" ;;
-  "cc "*)  PROMPT="/${PROMPT#cc }" ;;
+# Code instead: "cc model sonnet" / "/cc model sonnet" -> types "/model sonnet" into
+# the TUI. Matched CASE-INSENSITIVELY on the prefix, because phone keyboards
+# auto-capitalize the first word ("cc" -> "Cc"), which silently broke the command.
+# The rest of the line keeps its original case (arg values may be case-sensitive).
+CC_LOWER="$(printf '%s' "$PROMPT" | tr 'A-Z' 'a-z')"
+case "$CC_LOWER" in
+  "/cc "*) PROMPT="/$(printf '%s' "$PROMPT" | cut -c5-)" ;;   # drop leading "/cc "
+  "cc "*)  PROMPT="/$(printf '%s' "$PROMPT" | cut -c4-)" ;;   # drop leading "cc "
 esac
 
 # Final hop into the per-folder TUI session. Overridable for tests (a stub that

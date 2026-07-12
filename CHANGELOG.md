@@ -3,6 +3,19 @@
 All notable changes to **claude-code-relay** are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions are date-tagged.
 
+## [0.4.3] — 2026-07-11
+
+### Fixed
+- **`cc` prefix is now case-insensitive.** Phone keyboards auto-capitalize the first
+  word, so "cc model" became "Cc model", which the case-sensitive prefix match missed
+  — the command silently fell through to Claude as plain text. Now "Cc"/"CC"/"cc" (and
+  the "/cc" forms) all convert; the rest of the line keeps its original case.
+- **`cc cancel` now actually interrupts.** It used to convert to `/cancel` and *type*
+  it into the TUI, but Claude Code has no `/cancel` command, so it no-op'd.
+  `cc cancel` / `cc interrupt` now send an Esc keystroke to the session (like the
+  `/cancel` plugin command), and confirm with "✋ Interrupted the current turn". Handled
+  before the busy-warning so it interrupts instead of queuing.
+
 ## [0.4.2] — 2026-07-11
 
 ### Added
