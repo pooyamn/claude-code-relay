@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# openclaw-restore-stable — one-command revert to the blessed known-good config.
+# Use when a config experiment (e.g. provider grouping) breaks routing: restores
+# ~/.openclaw/backups/openclaw.json.STABLE (+ relay-codes), validates, restarts.
+# The broken config is preserved aside for the post-mortem, never lost.
+set -euo pipefail
+OC="$HOME/.openclaw"
+STABLE="$OC/backups/openclaw.json.STABLE"
+[ -f "$STABLE" ] || { echo "restore-stable: no $STABLE"; exit 1; }
+python3 -c "import json,sys; json.load(open('$STABLE'))" || { echo "restore-stable: STABLE is not valid JSON, refusing"; exit 1; }
+
+TS="$(date +%Y%m%d-%H%M%S)"
+cp "$OC/openclaw.json" "$OC/backups/openclaw.json.broken-$TS"
+cp "$STABLE" "$OC/openclaw.json"
+[ -f "$OC/backups/relay-codes.json.STABLE" ] && cp "$OC/backups/relay-codes.json.STABLE" "$OC/workspace/scripts/relay-codes.json"
+
+if openclaw config validate --json 2>/dev/null | grep -q '"valid":true'; then
+  echo "restore-stable: config restored + validated (broken saved as backups/openclaw.json.broken-$TS)"
+  openclaw gateway restart
+  echo "restore-stable: gateway restarting — bindings should be back in ~10s"
+  cat "$OC/backups/STABLE.txt" 2>/dev/null
+else
+  echo "restore-stable: WARNING restored file failed validate — inspect manually" >&2
+  exit 2
+fi

@@ -51,3 +51,15 @@ works because the anthropic extension calls `api.registerCliBackend` with
 ## Files
 - `scripts/cc-relay-dispatch` — skeleton, committed, INERT until the plugin registers it.
 - `scripts/relay-map.json` — created by the binder during migration.
+
+## Panic button
+A blessed known-good snapshot exists: `~/.openclaw/backups/openclaw.json.STABLE`
+(validated, all 5 bindings verified 2026-07-11) + `relay-codes.json.STABLE`.
+One-command revert at any point in the rollout:
+```
+~/.openclaw/workspace/scripts/openclaw-restore-stable
+```
+It preserves the broken config aside (`backups/openclaw.json.broken-<ts>`), restores
+the snapshot, validates, and restarts the gateway. Refresh the snapshot after any
+INTENTIONAL config change that proves itself (new binding, etc.):
+`cp ~/.openclaw/openclaw.json ~/.openclaw/backups/openclaw.json.STABLE`.
