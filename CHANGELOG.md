@@ -6,13 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions are dat
 ## [0.5.0] — 2026-07-11
 
 ### Added
-- **`move-to-topic` skill.** Say "move this to a new topic" and the session suggests
-  a few topic names (tappable buttons); pick one and it creates a new Telegram topic in
-  the same group and binds it to the CURRENT folder. Because a relay session is keyed by
-  folder (not topic), the new topic reaches the SAME session with full context (via
-  `--continue`) — nothing is copied or lost. The old topic stays bound as a fallback.
-  Uses the gateway `message.action` / `topic-create` RPC (`chatId` param) since Telegram
-  forum topics have no first-class CLI.
+- **`move-to-topic` skill — worktree fork.** Say "move/fork this to a new topic": the
+  session suggests names (buttons), then it creates a new Telegram topic and backs it
+  with a **git worktree** so the fork is an INDEPENDENT session (own folder = own
+  `cr-<hash>`) that `--continue`s the current conversation with full context, while the
+  current topic stays alive on the base branch. Flow: commit WIP on the feature branch,
+  switch the current folder to `main`, add `.worktrees/<branch>`, copy the transcript
+  into the fork's project dir, create+bind the new topic, defer a gateway restart.
+  Refuses cleanly if the folder isn't a git repo on a feature branch.
+
 
 ## [0.4.3] — 2026-07-11
 
