@@ -24,6 +24,10 @@ PEER="${BOUND_PEER:-$CID}"
 # "<id>:topic:N" target is rejected ("recipient must be a numeric chat ID").
 NUM="$(printf '%s' "$PEER" | grep -oE '^-?[0-9]+' | head -1)"
 export RELAY_CHAT_ID="${NUM:-$CID}"
+# Fall back to the BOUND peer's own topic when the composed prompt didn't carry one.
+# Without this, a bound topic whose prompt lacks an explicit topic id resolves to an
+# EMPTY thread -> replies land in the group's General topic instead of the topic.
+[ -z "$TOPIC_ID" ] && case "$BOUND_PEER" in *:topic:*) TOPIC_ID="${BOUND_PEER##*:topic:}";; esac
 export RELAY_THREAD_ID="$TOPIC_ID"
 
 # Extract only the actual current user message from OpenClaw's composed prompt.
