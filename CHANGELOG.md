@@ -3,6 +3,17 @@
 All notable changes to **claude-code-relay** are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions are date-tagged.
 
+## [0.5.0] — 2026-07-11
+
+### Added
+- **`move-to-topic` skill.** Say "move this to a new topic" and the session suggests
+  a few topic names (tappable buttons); pick one and it creates a new Telegram topic in
+  the same group and binds it to the CURRENT folder. Because a relay session is keyed by
+  folder (not topic), the new topic reaches the SAME session with full context (via
+  `--continue`) — nothing is copied or lost. The old topic stays bound as a fallback.
+  Uses the gateway `message.action` / `topic-create` RPC (`chatId` param) since Telegram
+  forum topics have no first-class CLI.
+
 ## [0.4.3] — 2026-07-11
 
 ### Fixed
