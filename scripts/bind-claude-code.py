@@ -31,10 +31,11 @@ def main():
         print(f"ERROR: folder missing: {folder}", file=sys.stderr); sys.exit(2)
     slug = os.path.basename(folder.rstrip("/"))
     backend = f"claude-tui-{slug}"
-    # Group ALL relay agents under a single "relay" provider in the model picker
-    # (the picker groups by the prefix before "/"). "{backend}/relay" would make
-    # every relay its own provider -> a long list of one-model providers.
-    model = f"relay/{slug}"
+    # The model-key PROVIDER prefix (part before "/") must equal a real cliBackend id
+    # -- the gateway resolves a relay's backend from that prefix (cli exec: provider=
+    # <backend> model=relay). Grouping under "relay/<slug>" broke routing (provider
+    # "relay" has no backend -> messages silently dropped). Keep "<backend>/relay".
+    model = f"{backend}/relay"
     agent_id = f"claude-{slug}"
 
     bak = f"{CFG}.bak-bind-{time.strftime('%Y%m%d-%H%M%S')}"

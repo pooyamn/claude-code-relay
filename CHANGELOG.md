@@ -6,13 +6,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions are dat
 ## [0.5.1] — 2026-07-11
 
 ### Fixed
-- **Relay agents now group under one `relay` provider in the model picker.** The picker
-  groups models by the key prefix before `/`, and each relay was minted as
-  `claude-tui-<folder>-<scope>/relay` — i.e. its own provider — so the list filled with
-  dozens of one-model providers. `bind-claude-code.py` now mints `relay/<slug>` keys, so
-  every relay session lands under a single **relay** provider alongside anthropic/openai.
-  (Existing bindings were regrouped in place; orphaned backends left by unbinds were
-  pruned.)
+- **Pruned orphaned relay backends** left behind by unbinds (each an agents-list entry
+  + model + cliBackend that no binding referenced) — they cluttered the model picker.
+
+### Reverted
+- **Single `relay/` provider grouping — DO NOT do this.** The model key's provider
+  prefix (before `/`) is not just a picker label: the gateway resolves a relay's
+  cliBackend from it. Renaming `claude-tui-<x>/relay` to `relay/<x>` pointed routing at
+  a nonexistent backend and **silently dropped messages** to bound topics. Reverted to
+  `<backend>/relay`; the constraint is now documented in `bind-claude-code.py`. Picker
+  tidiness needs a different mechanism (e.g. a display-label field, if OpenClaw grows one).
+
 
 ## [0.5.0] — 2026-07-11
 
