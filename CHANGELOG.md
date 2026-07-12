@@ -3,6 +3,17 @@
 All notable changes to **claude-code-relay** are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions are date-tagged.
 
+## [0.4.2] — 2026-07-11
+
+### Added
+- **Busy-aware feedback for `cc` slash commands.** A forwarded slash command
+  (`cc clear`, `cc compact`, `cc model …`) typed while a turn is running does NOT
+  execute — Claude Code just queues it — so `cc clear` looked broken ("I sent it but
+  context is still 99%"). The relay now detects a running turn, still queues the
+  command (so it runs when the turn finishes), and replies immediately: *"session is
+  busy, `/clear` is queued and will run when the turn finishes; send `cc cancel` to
+  run it now."* Menu selections (a number) and normal messages are unaffected.
+
 ## [0.4.1] — 2026-07-09
 
 ### Fixed

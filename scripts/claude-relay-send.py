@@ -920,6 +920,19 @@ def inject(prompt):
     if re.fullmatch(r"/(screenshot|ss|shot)", prompt.strip(), re.I):
         send_screenshot()
         return ""
+    # Busy-aware feedback for forwarded slash commands (/clear, /compact, /model, ...).
+    # Typed while a turn is running, a slash command does NOT execute -- Claude Code
+    # just queues it -- so `cc clear` silently no-ops ("I sent /clear but context is
+    # still 99%"). Queue it (so it runs when the turn ends) but tell the user, and how
+    # to run it now. A menu selection is a number, not a slash, so it's unaffected.
+    if prompt.strip().startswith("/") and BUSY.search(pane()):
+        cmd = prompt.strip()
+        write_last_prompt(cmd)
+        type_prompt(cmd)   # queues behind the running turn (runs when it finishes)
+        deliver(f"⏳ Session is busy — a turn is running, so `{cmd}` can't run yet; "
+                f"it's queued and will execute when the turn finishes.\n"
+                f"To run it now, send `cc cancel` to interrupt the turn first.")
+        return ""
     if menu_open():
         n = parse_selection(prompt)
         if n is not None:
