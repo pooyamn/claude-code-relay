@@ -805,6 +805,60 @@ def deliver(text):
     for i in range(0, len(text), TG_LIMIT):
         tg_send(text[i:i + TG_LIMIT])
 
+def folder_for_session():
+    """Reverse-lookup this session's bound folder from relay-codes.json
+    (session name is cr-<md5(folder)[:10]>)."""
+    codes_path = os.path.join(os.path.dirname(STATE_DIR), "relay-codes.json")
+    try:
+        codes = json.load(open(codes_path))
+    except Exception:
+        return None
+    for f in codes.values():
+        if "cr-" + hashlib.md5(f.encode()).hexdigest()[:10] == SESSION:
+            return f
+    return None
+
+def restart_with_model(model):
+    """Switch this session's model RELIABLY by relaunching `claude` with --model
+    (+ --continue to keep context). The live /model command is gated on big cached
+    conversations (a 're-read full history?' confirmation) so a one-shot `cc model X`
+    silently reports 'Kept' -- relaunching bypasses that gate entirely."""
+    folder = folder_for_session()
+    if not folder:
+        deliver(f"⚠️ Couldn't resolve this session's folder, so can't restart on {model}.")
+        return
+    settings = os.path.join(os.path.dirname(STATE_DIR), "relay-claude-settings.json")
+    cmd = (f"claude --model {model} --continue --settings {settings} "
+           f"--dangerously-skip-permissions")
+    tmux("kill-session", "-t", SESSION)
+    time.sleep(0.5)
+    tmux("new-session", "-d", "-s", SESSION, "-x", "200", "-y", "50", "-c", folder, cmd)
+    ready = False
+    for _ in range(45):
+        time.sleep(1)
+        p = pane()
+        if "trust this folder" in p:
+            tmux("send-keys", "-t", SESSION, "Enter"); time.sleep(2); continue
+        if "Resume from summary" in p:                       # big-session resume dialog
+            tmux("send-keys", "-t", SESSION, "Enter"); time.sleep(2); continue
+        if READY.search(p):
+            ready = True; break
+    if ready:
+        deliver(f"🔄 Restarted this session on `{model}` — context kept (--continue).")
+    else:
+        deliver(f"🔄 Relaunched on `{model}`, but the TUI didn't confirm ready in 45s; "
+                "give it a moment or check the session.")
+
+# Resolve freeze to an ABSOLUTE path: the per-message relay process is spawned by
+# the gateway with a minimal PATH that often lacks /opt/homebrew/bin, so a bare
+# "freeze" subprocess call fails (FileNotFoundError) and screenshots silently fall
+# back to text. shutil.which honours PATH when it works; the explicit paths cover
+# the gateway case; bare "freeze" is the last-resort default for other installs.
+FREEZE = (shutil.which("freeze")
+          or next((p for p in ("/opt/homebrew/bin/freeze", "/usr/local/bin/freeze",
+                               os.path.expanduser("~/bin/freeze")) if os.path.exists(p)),
+                  "freeze"))
+
 # Resolve freeze to an ABSOLUTE path: the per-message relay process is spawned by
 # the gateway with a minimal PATH that often lacks /opt/homebrew/bin, so a bare
 # "freeze" subprocess call fails (FileNotFoundError) and screenshots silently fall
@@ -919,6 +973,19 @@ def inject(prompt):
     # full-screen overlays, colors and layout that text scraping can't carry.
     if re.fullmatch(r"/(screenshot|ss|shot)", prompt.strip(), re.I):
         send_screenshot()
+        return ""
+    # `cc model <name>` -> switch model by RELAUNCHING with --model (live /model is
+    # gated on big cached sessions and silently "Kept"). Only a safe model token is
+    # accepted here; anything else falls through to type /model normally. Bare /model
+    # (no arg) also falls through -> opens the picker as before.
+    mm = re.fullmatch(r"/model\s+([A-Za-z0-9._\[\]-]+)", prompt.strip(), re.I)
+    if mm:
+        model = mm.group(1)
+        if BUSY.search(pane()):
+            deliver(f"⏳ Session is busy. `cc cancel` the turn (or wait), then resend "
+                    f"`cc model {model}` and I'll restart it on that model.")
+        else:
+            restart_with_model(model)
         return ""
     # `cc cancel` (-> /cancel) means "interrupt the running turn". Claude Code has NO
     # /cancel command, so typing it no-ops; interrupting is an Esc keystroke. Send Esc

@@ -3,6 +3,18 @@
 All notable changes to **claude-code-relay** are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions are date-tagged.
 
+## [0.6.0] — 2026-07-15
+
+### Added
+- **`cc model <name>` reliably switches the model by relaunching the session.** The
+  live `/model` command is gated on large cached conversations (a "re-read the full
+  history?" confirmation), so a one-shot `cc model X` silently reported "Kept model as
+  …" — the switch never took, in either direction. The relay now intercepts
+  `cc model <name>`: it relaunches `claude --model <name> --continue` (folder
+  auto-resolved from the session name; keeps full context, handles trust +
+  resume-from-summary dialogs) and confirms. Bare `cc model` still opens the picker;
+  only a safe model token triggers the restart; a busy session is asked to finish/cancel
+  first. Verified opus↔fable on a throwaway session.
 ## [0.5.1] — 2026-07-11
 
 ### Fixed
