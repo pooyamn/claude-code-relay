@@ -31,6 +31,8 @@ For a git repo currently on a **feature branch** (with or without WIP), it:
 Result: **new topic = the feature-branch work + this conversation, independent**; **current topic = the same folder, now on the base branch, still alive.**
 
 ## Rules
+- **Never test this on a live/bound folder.** A session is keyed by `cr-<md5(folder)>`, so a "throwaway" launched in a bound folder IS that session — this once destroyed a real 2,386-message context. Use a scratch dir nothing maps to.
+- **Verify before claiming.** Don't report success until you've checked the actual state (binding present, session ready, watcher up). The relay fails *silently*, so "no error" is not evidence it worked.
 - **Relay-bound session only** ($TMUX + a `cr-<hash>` tmux session). If the script can't resolve the folder/target, tell the user it isn't a bound session; don't guess.
 - **Git repo on a feature branch required.** The script refuses if the folder isn't a git repo, is detached, or is already on `main`/`master` (nothing to fork). Report that plainly.
 - It **commits the user's WIP** and **switches the current folder to base** — that is intentional (Option B) and the user has opted into it by asking to fork. Don't second-guess it, but if the script errors mid-way, report exactly which step failed.

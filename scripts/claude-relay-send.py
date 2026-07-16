@@ -375,7 +375,14 @@ def pane(scroll=0):
         args += ["-S", f"-{scroll}"]
     return tmux(*args, capture=True)
 
-BUSY = re.compile(r"esc to interrupt", re.I)        # shown ONLY while a turn runs
+# "Working" states. "esc to interrupt" covers a normal turn, but a session that has
+# fanned out sub-agents/workflows sits at "Waiting for N background agents to finish"
+# with NO "esc to interrupt" and the normal input bar showing. Treating that as IDLE
+# was a real silent-failure source: the watcher never set was_busy, so its idle-delivery
+# path never fired and replies went undelivered (the session answered into the void),
+# and slash commands got no busy feedback. Both states mean "a turn is in flight".
+BUSY = re.compile(r"esc to interrupt"
+                  r"|waiting for \d+ [a-z ]*(?:agents?|workflows?) to finish", re.I)
 READY = re.compile(r"for agents|for shortcuts")     # input box footer = idle
 SURVEY = re.compile(r"How is Claude doing")         # periodic satisfaction popup
 # The permission/hint footer is present whenever the normal input prompt is up

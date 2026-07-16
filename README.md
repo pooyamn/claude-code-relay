@@ -123,6 +123,13 @@ bash scripts/tests/run_tests.sh
 - `test_backend.sh` — backend routing: `/cc` → `/model` forwarding, numeric chat id + topic thread split, message extraction. Uses a stub for the TUI hop (`RELAY_GROUP_CMD`).
 - `test_send_helpers.py` — `progress_snapshot` (the live streamed view), menu parsing, thread addressing.
 
+## Gotchas
+
+Before changing the relay, read [docs/GOTCHAS.md](docs/GOTCHAS.md) — the mechanisms
+that cost an outage to learn (busy states, model switching, model-key routing, session
+transplants) plus the working discipline. The relay fails *silently*, so assumptions are
+expensive here.
+
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for the version history.

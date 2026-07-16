@@ -32,6 +32,7 @@ The script handles everything else:
 Trigger on any phrasing that means "get this file to me": *send me*, *share*, *give me*, *deliver*, *shoot me*, *export*, *can I get*, the report / log / zip / artifact / output / screenshot / hex / pdf.
 
 ## Rules
+- **Verify before claiming.** The relay fails silently — a send with no error is not proof it landed. Check the script's actual result (it prints the gateway JSON + a `send-file: sent …` line) before telling the user it's done.
 - **Send exactly what the user named.** Pass the specific file(s) they asked for. Do
   NOT pass a whole folder (or the file's parent directory) unless the user explicitly
   asks to send a folder/directory — otherwise you'll zip and ship every file in it.
