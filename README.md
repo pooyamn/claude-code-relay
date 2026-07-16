@@ -14,7 +14,7 @@ So this skill drives the *interactive* TUI in a `tmux` session and relays it to 
 
 - **Per-folder sessions.** Each Telegram group binds to one project folder. Messages pipe to that folder's persistent Claude Code session; replies come back clean.
 - **Durable + resumable.** The session survives restarts and reboots; it resumes the same conversation via `claude --continue`.
-- **Live-streamed replies, one ping.** While a turn runs, progress streams into a **silent** Telegram message (edited in place, starting ~every 1.5s and backing off on long turns to stay under Telegram's edit-rate limit) — no notification spam. When the turn finishes, that progress bubble is deleted and the clean answer is sent as a **fresh, notifying** message, so you're pinged exactly once: when the reply is ready. (Set `RELAY_STREAM=0` to disable streaming; replies over Telegram's 4096-char cap fall back to a normal chunked send.)
+- **Live-streamed replies, one ping.** While a turn runs, progress streams into a **silent** Telegram message (edited in place, starting ~every 1.5s and backing off on long turns to stay under Telegram's edit-rate limit) — no notification spam. When the turn finishes, that progress bubble is **frozen in place** as a record and the clean answer is sent as a **fresh, notifying** message, so you're pinged exactly once: when the reply is ready. (Set `RELAY_STREAM=0` to disable streaming; replies over Telegram's 4096-char cap fall back to a normal chunked send.)
 - **Self-serve binding, LLM-free.** `/newcc <code>` binds a group *or a single forum topic*; `/unbind` and `/ccstatus` manage it. These run as **pre-agent** OpenClaw commands (the `cc-relay-commands` plugin), so they never spend a Claude turn and work even on a topic that isn't bound yet.
 - **Slash commands.** `cc model sonnet`, `cc clear`, `cc compact` — forward any Claude Code slash command into the session.
 - **Native button menus.** When Claude asks a multiple-choice question (or you open `/model`), the bot posts real tappable Telegram buttons; your tap is delivered as the answer, and the buttons collapse to `✓ <pick>`.
@@ -92,7 +92,7 @@ The `cc-relay-commands` plugin registers `/newcc`, `/unbind`, `/ccstatus` as **p
 - **Terms of service.** Automating the interactive client with no human watching each turn is the same signal Anthropic uses to move usage to the metered pool. It may be detected or blocked. Use deliberately and at your own risk.
 - **It's screen-scraping, not an API.** Robust for normal replies, lists, code, prose, and selection menus — but not bulletproof. `claude-attach` is the reliable fallback for fiddly interactive sequences.
 - **Per-group or per-topic.** Bind a whole group (`/newcc` posts the group peer) or a single forum topic (the peer carries `:topic:<N>`). A group-level binding catches every topic in that group, so for a multi-project forum bind each topic explicitly.
-- **Model switching:** use `cc model sonnet` (direct). Tapping a `/model` button answers in text and does **not** switch the model.
+- **Model switching:** use `cc model <name>`. It **relaunches the session** with `--model <name> --continue` (context kept) and reads the model back to confirm — a live `/model` is gated on large cached conversations and silently reports "Kept model as …". Tapping a `/model` picker button does **not** switch the model.
 - **Privacy:** a bound session carries your global Claude memory and can read the host filesystem via its tools. Only add other people to a bound group if you're comfortable with that.
 
 ## Files
