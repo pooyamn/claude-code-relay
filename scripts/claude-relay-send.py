@@ -843,11 +843,40 @@ def restart_with_model(model):
             tmux("send-keys", "-t", SESSION, "Enter"); time.sleep(2); continue
         if READY.search(p):
             ready = True; break
-    if ready:
-        deliver(f"🔄 Restarted this session on `{model}` — context kept (--continue).")
-    else:
+    if not ready:
         deliver(f"🔄 Relaunched on `{model}`, but the TUI didn't confirm ready in 45s; "
                 "give it a moment or check the session.")
+        return
+    # Verify: read the actually-active model from the picker (open, read the ✔ line,
+    # Esc without changing), so a silent mismatch (--model rejected) is surfaced.
+    actual = current_model()
+    req = model.lower()
+    if actual and (req in actual.lower() or actual.lower().split()[0].startswith(req)
+                   or req.startswith(actual.lower().split()[0])):
+        deliver(f"🔄 Restarted — confirmed now on **{actual}** (context kept).")
+    elif actual:
+        deliver(f"⚠️ Restarted, but the active model reads **{actual}**, not `{model}` "
+                "as requested. It may have been rejected — check the session.")
+    else:
+        deliver(f"🔄 Restarted on `{model}` (context kept), but couldn't read back the "
+                "active model to confirm.")
+
+
+def current_model():
+    """Read the currently-selected model from the /model picker: open it, capture the
+    ✔ line, Esc WITHOUT changing anything. Returns a short label ('Opus 4.8', 'Fable
+    5') or '' if it couldn't be read."""
+    tmux("send-keys", "-t", SESSION, "-l", "/model"); time.sleep(0.8)
+    tmux("send-keys", "-t", SESSION, "Enter"); time.sleep(1.5)
+    label = ""
+    for line in pane().splitlines():
+        if "✔" in line:
+            after = line.split("✔", 1)[1].strip()          # "Opus 4.8 with 1M context · …"
+            m = re.match(r"([A-Za-z]+ [\d.]+)", after)
+            label = m.group(1) if m else after.split("·")[0].strip()[:24]
+            break
+    tmux("send-keys", "-t", SESSION, "Escape"); time.sleep(0.4)
+    return label
 
 # Resolve freeze to an ABSOLUTE path: the per-message relay process is spawned by
 # the gateway with a minimal PATH that often lacks /opt/homebrew/bin, so a bare

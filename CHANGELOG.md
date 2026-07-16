@@ -14,7 +14,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); versions are dat
   auto-resolved from the session name; keeps full context, handles trust +
   resume-from-summary dialogs) and confirms. Bare `cc model` still opens the picker;
   only a safe model token triggers the restart; a busy session is asked to finish/cancel
-  first. Verified opus↔fable on a throwaway session.
+  first, and it **reads back the active model after restart** and confirms it (warns
+  on mismatch). Verified opus↔fable on a throwaway session.
 ## [0.5.1] — 2026-07-11
 
 ### Fixed
