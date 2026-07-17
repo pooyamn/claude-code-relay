@@ -1,6 +1,6 @@
 {
   "autoMemoryDirectory": "REPLACE_WITH_YOUR_GLOBAL_MEMORY_DIR_OR_DELETE_THIS_LINE",
-  "model": "kimi-for-coding",
+  "model": "k3",
   "env": {
     "ANTHROPIC_BASE_URL": "https://api.kimi.com/coding",
     "ANTHROPIC_AUTH_TOKEN": "REPLACE_WITH_YOUR_KIMI_CODE_KEY"

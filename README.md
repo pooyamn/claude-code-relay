@@ -93,6 +93,28 @@ The `cc-relay-commands` plugin registers `/newcc`, `/unbind`, `/ccstatus` as **p
 - **It's screen-scraping, not an API.** Robust for normal replies, lists, code, prose, and selection menus — but not bulletproof. `claude-attach` is the reliable fallback for fiddly interactive sequences.
 - **Per-group or per-topic.** Bind a whole group (`/newcc` posts the group peer) or a single forum topic (the peer carries `:topic:<N>`). A group-level binding catches every topic in that group, so for a multi-project forum bind each topic explicitly.
 - **Model switching:** use `cc model <name>`. It **relaunches the session** with `--model <name> --continue` (context kept) and reads the model back to confirm — a live `/model` is gated on large cached conversations and silently reports "Kept model as …". Tapping a `/model` picker button does **not** switch the model.
+### ALT models (Kimi / K3)
+
+`cc model <name>` looks for `scripts/relay-claude-settings-<name>.json`. If it exists, that
+model is launched with those settings; **every other model keeps the default settings and
+your subscription auth, untouched.** Adding an ALT model is just adding a file.
+
+Shipped templates route to Kimi Code's **natively Anthropic-compatible** gateway
+(`https://api.kimi.com/coding`) — no proxy needed:
+
+| file | `cc model …` | model |
+|---|---|---|
+| `relay-claude-settings-kimi.json` | `cc model kimi` | `kimi-for-coding` (K2.7, 262k ctx) |
+| `relay-claude-settings-k3.json` | `cc model k3` | `k3` (K3, 262k ctx) |
+
+Fill in `ANTHROPIC_AUTH_TOKEN` with a **Kimi Code** key (`sk-kimi-…`). Note this is *not* a
+Moonshot platform key — `api.moonshot.ai` rejects it with a misleading
+`401 Invalid Authentication`. They are different products.
+
+Two caveats: an ALT model bills that provider, **not** your Max subscription; and setting
+`ANTHROPIC_BASE_URL` **disables Remote Control and voice dictation** (both need a claude.ai
+identity). Keep the key out of git — `relay-claude-settings-*.json` should be gitignored.
+
 - **Privacy:** a bound session carries your global Claude memory and can read the host filesystem via its tools. Only add other people to a bound group if you're comfortable with that.
 
 ## Files
@@ -108,6 +130,7 @@ The `cc-relay-commands` plugin registers `/newcc`, `/unbind`, `/ccstatus` as **p
 | `scripts/claude-attach` | attach to the live TUI |
 | `scripts/relay-codes.json` | `{ "code": "/abs/folder" }` registry |
 | `scripts/relay-claude-settings.json` | Claude `--settings` (auto-memory dir) |
+| `scripts/relay-claude-settings-<name>.json` | optional ALT-model settings (e.g. `kimi`, `k3`) — routes that model to another gateway |
 | `scripts/openclaw-newcc-plugin/` | OpenClaw plugin: pre-agent `/newcc` `/unbind` `/ccstatus` |
 | `install.sh` | one-shot installer (copy scripts, install plugin, enable buttons) |
 
