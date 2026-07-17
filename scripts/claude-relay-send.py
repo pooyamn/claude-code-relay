@@ -825,6 +825,29 @@ def folder_for_session():
             return f
     return None
 
+def settings_for_model(model):
+    """Pick the --settings file for a model, and the real model id to pass.
+
+    Convention: an ALT model routed to a non-Anthropic gateway gets its own
+    `relay-claude-settings-<name>.json` next to the default one, carrying an `env`
+    block (ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN) -- a settings-file `env`
+    overrides shell env and, unlike a shell export, reliably reaches relay-spawned
+    sessions. If that file exists we use it and take the real provider model id from
+    its "model" key (e.g. `cc model kimi` -> kimi-k2-...); otherwise EVERY other model
+    (opus/fable/sonnet/...) uses the default settings + subscription auth, untouched.
+    Drop in a new `relay-claude-settings-<x>.json` and `cc model <x>` just works.
+
+    Returns (settings_path, model_id_to_pass)."""
+    base = os.path.dirname(STATE_DIR)
+    alt = os.path.join(base, f"relay-claude-settings-{model.lower()}.json")
+    if os.path.exists(alt):
+        try:
+            mid = json.load(open(alt)).get("model") or model
+        except Exception:
+            mid = model
+        return alt, mid
+    return os.path.join(base, "relay-claude-settings.json"), model
+
 def restart_with_model(model):
     """Switch this session's model RELIABLY by relaunching `claude` with --model
     (+ --continue to keep context). The live /model command is gated on big cached
@@ -834,8 +857,8 @@ def restart_with_model(model):
     if not folder:
         deliver(f"⚠️ Couldn't resolve this session's folder, so can't restart on {model}.")
         return
-    settings = os.path.join(os.path.dirname(STATE_DIR), "relay-claude-settings.json")
-    cmd = (f"claude --model {model} --continue --settings {settings} "
+    settings, alt_model = settings_for_model(model)
+    cmd = (f"claude --model {alt_model} --continue --settings {settings} "
            f"--dangerously-skip-permissions")
     tmux("kill-session", "-t", SESSION)
     time.sleep(0.5)

@@ -3,6 +3,29 @@
 All notable changes to **claude-code-relay** are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions are date-tagged.
 
+## [0.7.0] — 2026-07-16
+
+### Added
+- **Per-model settings routing — `cc model kimi` runs on Kimi, everything else stays on
+  the subscription.** `settings_for_model()` looks for `relay-claude-settings-<name>.json`
+  next to the default; if present the restart uses that file and takes the real provider
+  model id from its `model` key, otherwise every other model uses the default settings
+  untouched. Drop in a new `relay-claude-settings-<x>.json` and `cc model <x>` works with
+  no code change.
+- **Kimi needs no proxy.** Probed empirically: `https://api.moonshot.ai/anthropic/v1/messages`
+  returns an Anthropic-shaped `invalid_authentication_error` (401) — it speaks the Messages
+  API natively; `/v1/messages` 404s. So routing is just an `env` block
+  (`ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN`) in the kimi settings file — a settings
+  `env` overrides shell env and reliably reaches relay-spawned sessions.
+
+### Notes
+- `ANTHROPIC_BASE_URL`/`AUTH_TOKEN` **disable Remote Control + voice dictation** (they need
+  a claude.ai identity) and take precedence over the saved Max login while set — which is
+  why the routing is scoped strictly to the alt-model settings file, leaving subscription
+  sessions untouched.
+- Local `relay-claude-settings-*.json` may hold a provider key; the repo ships only a
+  `REPLACE_WITH_*` template.
+
 ## [0.6.0] — 2026-07-15
 
 ### Added

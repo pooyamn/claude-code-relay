@@ -12,3 +12,7 @@ scripts/openclaw-newcc-plugin/node_modules/
 /USER.md
 /HEARTBEAT.md
 /.openclaw/
+
+# Alt-model settings may carry a provider API key: keep local copies out of git.
+# The repo ships only the REPLACE_WITH_* template committed explicitly.
+relay-work/

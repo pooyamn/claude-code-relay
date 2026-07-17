@@ -1,0 +1,20 @@
+{
+  "autoMemoryDirectory": "REPLACE_WITH_YOUR_GLOBAL_MEMORY_DIR_OR_DELETE_THIS_LINE",
+  "model": "kimi-k2-0905-preview",
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://api.moonshot.ai/anthropic",
+    "ANTHROPIC_AUTH_TOKEN": "REPLACE_WITH_MOONSHOT_KEY"
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 $HOME/.openclaw/workspace/scripts/relay-turn-done"
+          }
+        ]
+      }
+    ]
+  }
+}
