@@ -233,10 +233,14 @@ class _WS:
             pass
 
     def close(self):
+        # The server DRAINS in-flight edits before exiting, so waiting for the process
+        # to die makes this a real ordering barrier: every bubble edit has landed before
+        # we return, and the final answer (sent right after) can never be overtaken by a
+        # late edit. Timeout must exceed the server's 2s drain cap.
         try:
             self.proc.stdin.write(json.dumps({"op": "quit"}) + "\n")
             self.proc.stdin.flush()
-            self.proc.wait(timeout=2)
+            self.proc.wait(timeout=3)
         except Exception:
             try: self.proc.kill()
             except Exception: pass

@@ -60,5 +60,20 @@ rl.on('line',(line)=>{ let o; try{o=JSON.parse(line)}catch(e){return}
    if(Date.now()<pausedUntil){ dropped++; return; }   // respect flood pause
    edits++; req('message.action',{channel:'telegram',action:'edit',idempotencyKey:key(),params:{to:TARGET,threadId:THREAD,messageId:String(o.mid),message:o.text}},"edit#"+edits); }
  else if(o.op==='delete'){ req('message.action',{channel:'telegram',action:'delete',idempotencyKey:key(),params:{to:TARGET,threadId:THREAD,messageId:String(o.mid)}},"delete"); }
- else if(o.op==='quit'){ elog("QUIT edits="+edits+" dropped="+dropped); process.exit(0); }
+ else if(o.op==='quit'){
+   // DRAIN before exiting. An edit is fire-and-forget (no ack to the caller), so at
+   // quit time one can still be in flight in `pend`. Exiting immediately orphans it:
+   // Telegram applies that edit whenever it gets to it -- which is often AFTER the
+   // final answer the caller sends right after close(), so the live progress bubble
+   // visibly updates BELOW/AFTER the reply. Waiting for pend to empty makes close()
+   // a real barrier, so the bubble is always frozen before the answer goes out.
+   const t0=Date.now();
+   (function drain(){
+     if(pend.size===0 || Date.now()-t0>2000){
+       elog("QUIT edits="+edits+" dropped="+dropped+" drained="+(pend.size===0)+" waited="+(Date.now()-t0)+"ms");
+       process.exit(0);
+     }
+     setTimeout(drain,25);
+   })();
+ }
 });
