@@ -441,6 +441,8 @@ def kimi_reply_lines(color_pane, prompt):
             break
         if KIMI_SPIN.search(plain):
             continue
+        if re.search(r"ctrl\+o to expand|\(\d+ more lines?", plain):  # collapse hint
+            continue
         if re.match(r"^[─-╿\s>│]+$", s):     # box-drawing / separators
             continue
         if KIMI_THINK_GREY in ln:                       # grey-italic reasoning
@@ -456,24 +458,34 @@ def kimi_reply_lines(color_pane, prompt):
 # was a real silent-failure source: the watcher never set was_busy, so its idle-delivery
 # path never fired and replies went undelivered (the session answered into the void),
 # and slash commands got no busy feedback. Both states mean "a turn is in flight".
-# The kimi alternations below can never match a `claude` pane (claude never renders
-# a moon/braille spinner, nor a "context: N% (a/b)" gauge), so merging them here
-# leaves every claude call site semantically unchanged while making busy/idle
-# detection work for a kimi-backed session too -- no per-call-site branching.
-BUSY = re.compile(r"esc to interrupt"
-                  r"|waiting for \d+ [a-z ]*(?:agents?|workflows?) to finish"
-                  r"|[\U0001F311-\U0001F318]"                 # kimi moon spinner
-                  r"|[⠇⠋⠙⠸⠴⠦⠧⠏⡇]", re.I)  # kimi braille spinner
-READY = re.compile(r"for agents|for shortcuts"
-                   r"|context:\s*[\d.]+%\s*\(")   # kimi idle/footer gauge
+class _BackendRe:
+    """A backend-aware matcher exposing .search(): the claude pattern ALWAYS applies;
+    the kimi pattern applies ONLY in a kimi session. So a claude reply that happens to
+    contain a kimi glyph (a moon emoji, a braille spinner, a 'context: N% (' string --
+    all of which I might legitimately type in an answer) can NEVER be misread as busy /
+    idle. For a claude session this is byte-identical to the original bare regex."""
+    def __init__(self, claude_re, kimi_re):
+        self._c, self._k = claude_re, kimi_re
+    def search(self, s):
+        return self._c.search(s) or (self._k.search(s) if is_kimi() else None)
+
+# claude "working" states unchanged; kimi busy = its moon/braille spinner animating.
+BUSY = _BackendRe(
+    re.compile(r"esc to interrupt"
+               r"|waiting for \d+ [a-z ]*(?:agents?|workflows?) to finish", re.I),
+    re.compile(r"[\U0001F311-\U0001F318]|[⠇⠋⠙⠸⠴⠦⠧⠏⡇]"))  # moon / braille
+READY = _BackendRe(
+    re.compile(r"for agents|for shortcuts"),
+    re.compile(r"context:\s*[\d.]+%\s*\("))               # kimi idle/footer gauge
 SURVEY = re.compile(r"How is Claude doing")         # periodic satisfaction popup
 # The permission/hint footer is present whenever the normal input prompt is up
 # (idle OR mid-turn). A full-screen overlay (/workflows, /config, a stray dialog)
 # REPLACES that footer -- so its absence, on a stable non-menu pane, means a modal
 # is blocking ALL keyboard input and a relay-bound topic is wedged behind it.
-INPUTBAR = re.compile(r"shift\+tab|bypass permissions|accept edits|plan mode|"
-                      r"for agents|for shortcuts|for commands|"
-                      r"context:\s*[\d.]+%\s*\(", re.I)  # kimi input-bar gauge
+INPUTBAR = _BackendRe(
+    re.compile(r"shift\+tab|bypass permissions|accept edits|plan mode|"
+               r"for agents|for shortcuts|for commands", re.I),
+    re.compile(r"context:\s*[\d.]+%\s*\("))            # kimi input-bar gauge
 
 # --- menu detection ----------------------------------------------------------
 OPT = re.compile(r'^\s*(❯)?\s*(\d+)\.\s+(.*\S)\s*$')
