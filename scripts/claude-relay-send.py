@@ -472,7 +472,8 @@ SURVEY = re.compile(r"How is Claude doing")         # periodic satisfaction popu
 # REPLACES that footer -- so its absence, on a stable non-menu pane, means a modal
 # is blocking ALL keyboard input and a relay-bound topic is wedged behind it.
 INPUTBAR = re.compile(r"shift\+tab|bypass permissions|accept edits|plan mode|"
-                      r"for agents|for shortcuts|for commands", re.I)
+                      r"for agents|for shortcuts|for commands|"
+                      r"context:\s*[\d.]+%\s*\(", re.I)  # kimi input-bar gauge
 
 # --- menu detection ----------------------------------------------------------
 OPT = re.compile(r'^\s*(❯)?\s*(\d+)\.\s+(.*\S)\s*$')
