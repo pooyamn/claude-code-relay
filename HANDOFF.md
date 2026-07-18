@@ -86,7 +86,34 @@ wrong service.
   own prompt/tools/loop — it ignores those definitions and returns prose, so Claude's
   agentic loop dies. Agent-inside-an-agent. This was investigated and rejected.
 - **Models** (`GET /coding/v1/models`): `kimi-for-coding` (K2.7, ctx 262144),
-  `kimi-for-coding-highspeed`, `k3` (K3, ctx 262144).
+  `kimi-for-coding-highspeed` (262144), `k3` (now **ctx 1048576 / 1M** on the upgraded plan).
+
+### Context window: the wedge trap and the 1M override (verified 2026-07-17)
+
+The plan's context cap and **Claude Code's assumed window are two different limits**, and
+mismatches between them are what wedge a session.
+
+- Claude Code sizes its auto-compact threshold to the window it *thinks* the model has.
+  For a non-Anthropic model it isn't in the registry, so it defaults to **200k**
+  (confirmed via `/context`: a fresh k3 session showed `25.4k/200k`).
+- **How the wedge happened once:** a session ran 395 msgs on `claude-fable-5` (1M window),
+  grew past 256k, then `cc model k3` dropped that oversized conversation onto k3's *old*
+  256k plan cap → every request 401'd, and `/compact` couldn't run (it sends the whole
+  conversation, the exact thing that's too big). Only a relaunch escapes.
+- **Override (found by disassembling the resolver `rFc`):**
+  `CLAUDE_CODE_MAX_CONTEXT_TOKENS=<n>` sets the window for any model whose id does **not**
+  start with `claude-`, *without* disabling auto-compact. (There is a second, higher-prio
+  branch that also reads this var but only when `DISABLE_COMPACT` is set — not the one we
+  use.) The `!startsWith("claude-")` guard means it can never affect opus/fable/sonnet.
+- **What is wired:** `relay-claude-settings-k3.json` carries
+  `CLAUDE_CODE_MAX_CONTEXT_TOKENS=1000000`. Verified on a scratch folder: `/context` shows
+  `25.4k/1m`, auto-compact still on (triggers ~920k, safely under the 1M hard cap).
+- **`kimi-for-coding` deliberately has NO override** — its plan cap is 256k, and Claude
+  Code's default 200k is already under it, so it is safe and never wedges. Do not add the
+  1M override to it; that would re-create the trap.
+
+Rule of thumb: `CLAUDE_CODE_MAX_CONTEXT_TOKENS` must stay **below the model's plan cap**,
+and auto-compact then keeps you clear of even that. Never set it above the cap.
 
 ### How it is wired
 

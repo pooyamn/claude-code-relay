@@ -3,7 +3,8 @@
   "model": "k3",
   "env": {
     "ANTHROPIC_BASE_URL": "https://api.kimi.com/coding",
-    "ANTHROPIC_AUTH_TOKEN": "REPLACE_WITH_YOUR_KIMI_CODE_KEY"
+    "ANTHROPIC_AUTH_TOKEN": "REPLACE_WITH_YOUR_KIMI_CODE_KEY",
+    "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1000000"
   },
   "hooks": {
     "Stop": [
