@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-RELAY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # Per-folder persistent, resumable Claude relay: one dedicated Claude session per
 # project folder. Reopens (resumes) the SAME conversation even after the tmux
 # session or the whole machine dies, via Claude Code's per-folder `--continue`.
@@ -9,18 +8,21 @@ RELAY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 #
 # The folder IS the durable key: same folder -> same Claude conversation, forever.
 set -uo pipefail
-DIR="$RELAY_DIR"
+DIR="/Users/pouya/.openclaw/workspace/scripts"
 RAW="${1:?usage: claude-relay-group <WORKDIR> \"<prompt>\"}"; shift
 WORKDIR="$(cd "$RAW" 2>/dev/null && pwd)" || { echo "claude-relay-group: no such folder: $RAW" >&2; exit 1; }
-# Unattended relay: bypass per-tool permission prompts ("Do you want to
-# proceed?") entirely, since there's no human at the TUI to approve each turn.
-# Override with CLAUDE_RELAY_PERM=acceptEdits for a stricter, edits-only session.
 KEY="cr-$(printf '%s' "$WORKDIR" | md5 | cut -c1-10)"   # stable per-folder tmux name
 
 # "Alive" = the claude TUI is running in ANY usable state: idle input box, busy
 # turn, OR an open selection menu. Crucially we must NOT treat an open menu as
 # dead, or the session (and the menu) gets killed right before a button pick.
-ready(){ tmux capture-pane -t "$KEY" -p 2>/dev/null | grep -qE "for agents|for shortcuts|esc to interrupt|Esc to cancel|to navigate|❯ +[0-9]+\."; }
+# NOTE: an ALT backend (`cc model ik3` -> kimi) renders NONE of claude's chrome. Its
+# input bar carries a "context: N% (a/b)" gauge instead. Without that alternation a
+# healthy kimi session reads as dead here and gets killed + replaced by claude on the
+# very next message -- which is exactly what silently broke ik3 (the session came back
+# as claude while the backend marker still said kimi, so the watcher scraped a claude
+# pane with the kimi parser and delivered nothing).
+ready(){ tmux capture-pane -t "$KEY" -p 2>/dev/null | grep -qE "for agents|for shortcuts|esc to interrupt|Esc to cancel|to navigate|❯ +[0-9]+\.|context: *[0-9.]+% *\("; }
 
 if ! ( tmux has-session -t "$KEY" 2>/dev/null && ready ); then
   tmux kill-session -t "$KEY" 2>/dev/null || true
@@ -29,10 +31,16 @@ if ! ( tmux has-session -t "$KEY" 2>/dev/null && ready ); then
   CONT=""
   ls "$HOME/.claude/projects/$ENC"/*.jsonl >/dev/null 2>&1 && CONT="--continue"
   tmux new-session -d -s "$KEY" -x 200 -y 50
-  # Per-folder session that still keeps global memory + skills. --settings pins
-  # auto-memory to a global dir so it loads regardless of the folder's own git
-  # root; skills load by default. Isolation is just the separate folder/session.
-  SETTINGS="$RELAY_DIR/relay-claude-settings.json"
+  # Per-folder session, but global memory + global skills stay loaded (Pouya wants
+  # them available in bound sessions). --settings pins auto-memory to the global
+  # memory dir so it loads regardless of the folder's own git root; skills load by
+  # default. Isolation is just the separate folder/session.
+  SETTINGS="/Users/pouya/.openclaw/workspace/scripts/relay-claude-settings.json"
+  # This path ALWAYS (re)launches claude, so the session's backend marker must be
+  # reset to claude. Leaving a stale `kimi` marker here makes the watcher parse a
+  # claude pane with the kimi parser -> extracts nothing -> replies never delivered.
+  printf '{"backend": "claude"}' \
+    > "/Users/pouya/.openclaw/workspace/scripts/relay-work/backend-$KEY.json" 2>/dev/null || true
   tmux send-keys -t "$KEY" "cd $WORKDIR && claude $CONT --settings $SETTINGS --dangerously-skip-permissions" Enter
   for i in $(seq 1 90); do
     sleep 1
