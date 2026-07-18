@@ -375,15 +375,97 @@ def pane(scroll=0):
         args += ["-S", f"-{scroll}"]
     return tmux(*args, capture=True)
 
+def pane_color(scroll=0):
+    # -ep keeps ANSI escapes: kimi renders THINKING grey/italic and the ANSWER
+    # bright, so the reply parser needs color to drop reasoning from the answer.
+    args = ["capture-pane", "-t", SESSION, "-ep", "-J"]
+    if scroll:
+        args += ["-S", f"-{scroll}"]
+    return tmux(*args, capture=True)
+
+# --- backend selection -------------------------------------------------------
+# The relay drives `claude` by default. An ALT model can instead run a DIFFERENT
+# CLI (currently `kimi` = Kimi Code, `cc model ik3`), whose TUI chrome differs in
+# every anchor. restart_with_model() records the live backend per-session here so
+# the long-lived watcher + per-message inject parse the right way (re-read each
+# poll, since `cc model` can switch a running session mid-life).
+BACKEND_FILE = os.path.join(STATE_DIR, f"backend-{SESSION}.json")
+
+def _backend():
+    try:
+        return json.load(open(BACKEND_FILE))
+    except Exception:
+        return {"backend": "claude"}
+
+def is_kimi():
+    return _backend().get("backend") == "kimi"
+
+# kimi TUI markers (empirically characterised, not guessed):
+#   thinking bullet ● rendered grey+italic  -> ESC[38;2;136;136;136 (drop)
+#   answer  bullet ●/• rendered bright        -> ESC[38;2;224;224;224 (keep)
+#   user prompt echo prefixed ✨
+#   busy = a moon-phase / braille spinner is animating on a "· Tip:" line
+#   idle input bar carries the "context: N% (a/b)" gauge in the footer
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+KIMI_THINK_GREY = "38;2;136;136;136"
+KIMI_MARK = "●"
+KIMI_PROMPT_MARK = "✨"
+KIMI_SPIN = re.compile(r"working\.\.\.|·\s*Tip:"
+                       r"|[\U0001F311-\U0001F318]"            # 🌑..🌘 moon spinner
+                       r"|[⠇⠋⠙⠸⠴⠦⠧⠏⡇]")  # braille spinner
+KIMI_GAUGE = re.compile(r"context:\s*[\d.]+%\s*\(")
+
+def _strip_ansi(s):
+    return _ANSI.sub("", s)
+
+def kimi_reply_lines(color_pane, prompt):
+    """Extract kimi's ANSWER from a COLORED (-ep) pane, dropping grey-italic
+    thinking. Start just after the echoed user prompt (✨ + needle); stop at the
+    input box or the status footer. Proven against captured real panes."""
+    lines = color_pane.splitlines()
+    needle = (prompt.strip().splitlines() or [""])[0][:50]
+    start = 0
+    for i, ln in enumerate(lines):
+        plain = _strip_ansi(ln)
+        if KIMI_PROMPT_MARK in plain and (not needle or needle in plain):
+            start = i + 1
+    out = []
+    for ln in lines[start:]:
+        plain = _strip_ansi(ln).rstrip()
+        s = plain.strip()
+        if not s:
+            continue
+        if s.startswith("│ >") or s.startswith("> ") or s == "│ >":
+            break
+        if re.search(r"yolo\s+\S+\s+thinking:|context:\s*[\d.]+%", plain):
+            break
+        if KIMI_SPIN.search(plain):
+            continue
+        if re.match(r"^[─-╿\s>│]+$", s):     # box-drawing / separators
+            continue
+        if KIMI_THINK_GREY in ln:                       # grey-italic reasoning
+            continue
+        s = s.lstrip("●• ").rstrip()          # strip ● / • bullets
+        if s:
+            out.append(s)
+    return out
+
 # "Working" states. "esc to interrupt" covers a normal turn, but a session that has
 # fanned out sub-agents/workflows sits at "Waiting for N background agents to finish"
 # with NO "esc to interrupt" and the normal input bar showing. Treating that as IDLE
 # was a real silent-failure source: the watcher never set was_busy, so its idle-delivery
 # path never fired and replies went undelivered (the session answered into the void),
 # and slash commands got no busy feedback. Both states mean "a turn is in flight".
+# The kimi alternations below can never match a `claude` pane (claude never renders
+# a moon/braille spinner, nor a "context: N% (a/b)" gauge), so merging them here
+# leaves every claude call site semantically unchanged while making busy/idle
+# detection work for a kimi-backed session too -- no per-call-site branching.
 BUSY = re.compile(r"esc to interrupt"
-                  r"|waiting for \d+ [a-z ]*(?:agents?|workflows?) to finish", re.I)
-READY = re.compile(r"for agents|for shortcuts")     # input box footer = idle
+                  r"|waiting for \d+ [a-z ]*(?:agents?|workflows?) to finish"
+                  r"|[\U0001F311-\U0001F318]"                 # kimi moon spinner
+                  r"|[⠇⠋⠙⠸⠴⠦⠧⠏⡇]", re.I)  # kimi braille spinner
+READY = re.compile(r"for agents|for shortcuts"
+                   r"|context:\s*[\d.]+%\s*\(")   # kimi idle/footer gauge
 SURVEY = re.compile(r"How is Claude doing")         # periodic satisfaction popup
 # The permission/hint footer is present whenever the normal input prompt is up
 # (idle OR mid-turn). A full-screen overlay (/workflows, /config, a stray dialog)
@@ -551,6 +633,8 @@ CHROME = re.compile(
     r"|\? for shortcuts|Try \"|esc to interrupt|Worked for")
 
 def _reply_lines(prompt):
+    if is_kimi():
+        return kimi_reply_lines(pane_color(scroll=4000), prompt)
     full = pane(scroll=4000).splitlines()
     box = len(full)
     for i in range(len(full) - 1, -1, -1):
@@ -616,7 +700,7 @@ def reflow(lines):
     return "\n".join(merged)
 
 def count_marker():
-    return pane(scroll=4000).count("⏺")
+    return pane(scroll=4000).count(KIMI_MARK if is_kimi() else "⏺")
 
 # --- actions -----------------------------------------------------------------
 def send(prompt):
@@ -804,6 +888,21 @@ def type_prompt(prompt):
     tmux("send-keys", "-t", SESSION, "C-u"); time.sleep(0.2)
     tmux("send-keys", "-t", SESSION, "-l", prompt); time.sleep(0.4)
     tmux("send-keys", "-t", SESSION, "Enter")
+    # Confirm the Enter actually submitted. At a busy->idle render transition the
+    # submit can be swallowed, leaving the text sitting on the "❯" input line
+    # unsent (the whole topic then looks dead). If our prompt is still on the input
+    # line after a beat -- and no turn is running -- re-send Enter once. Guarded by
+    # `not BUSY` so an intentionally-queued slash command (typed behind a running
+    # turn) is NOT force-submitted into that turn.
+    snip = prompt.strip()[:12]
+    for _ in range(3):
+        time.sleep(0.4)
+        p = pane()
+        if not (snip and re.search(r"❯\s+.*" + re.escape(snip), p)):
+            break  # input line cleared -> it submitted
+        if BUSY.search(p):
+            break  # a turn is running (queued on purpose) -> leave it
+        tmux("send-keys", "-t", SESSION, "Enter")
 
 def deliver(text):
     """Send a finished reply (the notifying message), chunked over the TG cap."""
@@ -848,6 +947,37 @@ def settings_for_model(model):
         return alt, mid
     return os.path.join(base, "relay-claude-settings.json"), model
 
+# Resolve the kimi binary to an ABSOLUTE path -- the gateway-spawned relay process
+# gets a minimal PATH that often lacks /opt/homebrew/bin, so a bare "kimi" would
+# not be found (same reason FREEZE is resolved absolutely above).
+KIMI_BIN = (shutil.which("kimi")
+            or next((p for p in ("/opt/homebrew/bin/kimi", "/usr/local/bin/kimi")
+                     if os.path.exists(p)), "kimi"))
+
+def backend_for_model(model):
+    """If `cc model <model>` should run a NATIVE ALT CLI (not claude), return its
+    backend config dict; else None (=claude). Convention: an ALT settings file
+    `relay-claude-settings-<model>.json` with `"backend":"kimi"` declares it, e.g.
+    `ik3` -> {"backend":"kimi","model":"kimi-code/k3","label":"K3"}."""
+    base = os.path.dirname(STATE_DIR)
+    alt = os.path.join(base, f"relay-claude-settings-{model.lower()}.json")
+    try:
+        cfg = json.load(open(alt))
+    except Exception:
+        return None
+    if cfg.get("backend") != "kimi":
+        return None
+    return {"backend": "kimi",
+            "model": cfg.get("model") or "kimi-code/k3",
+            "label": cfg.get("label") or model}
+
+def _write_backend(cfg):
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        json.dump(cfg, open(BACKEND_FILE, "w"))
+    except Exception:
+        pass
+
 def restart_with_model(model):
     """Switch this session's model RELIABLY by relaunching `claude` with --model
     (+ --continue to keep context). The live /model command is gated on big cached
@@ -857,9 +987,19 @@ def restart_with_model(model):
     if not folder:
         deliver(f"⚠️ Couldn't resolve this session's folder, so can't restart on {model}.")
         return
-    settings, alt_model = settings_for_model(model)
-    cmd = (f"claude --model {alt_model} --continue --settings {settings} "
-           f"--dangerously-skip-permissions")
+    # A model prefixed for a native ALT CLI (e.g. `ik3` -> kimi) launches that CLI
+    # instead of `claude`; the backend marker tells the watcher/inject how to parse.
+    kb = backend_for_model(model)
+    if kb:
+        _write_backend(kb)
+        cmd = f"{KIMI_BIN} -m {kb['model']} -c --yolo"
+        expect = kb.get("label", model)
+    else:
+        _write_backend({"backend": "claude"})   # reset if switching back from kimi
+        settings, alt_model = settings_for_model(model)
+        cmd = (f"claude --model {alt_model} --continue --settings {settings} "
+               f"--dangerously-skip-permissions")
+        expect = model
     tmux("kill-session", "-t", SESSION)
     time.sleep(0.5)
     tmux("new-session", "-d", "-s", SESSION, "-x", "200", "-y", "50", "-c", folder, cmd)
@@ -877,12 +1017,12 @@ def restart_with_model(model):
         deliver(f"🔄 Relaunched on `{model}`, but the TUI didn't confirm ready in 45s; "
                 "give it a moment or check the session.")
         return
-    # Verify: read the actually-active model from the picker (open, read the ✔ line,
-    # Esc without changing), so a silent mismatch (--model rejected) is surfaced.
+    # Verify: read the actually-active model back from the TUI (claude: the /model
+    # ✔ line; kimi: the footer), so a silent mismatch (model rejected) is surfaced.
     actual = current_model()
-    req = model.lower()
-    if actual and (req in actual.lower() or actual.lower().split()[0].startswith(req)
-                   or req.startswith(actual.lower().split()[0])):
+    exp = expect.lower()
+    if actual and (exp in actual.lower() or actual.lower().split()[0].startswith(exp)
+                   or exp.startswith(actual.lower().split()[0])):
         deliver(f"🔄 Restarted — confirmed now on **{actual}** (context kept).")
     elif actual:
         deliver(f"⚠️ Restarted, but the active model reads **{actual}**, not `{model}` "
@@ -891,11 +1031,18 @@ def restart_with_model(model):
         deliver(f"🔄 Restarted on `{model}` (context kept), but couldn't read back the "
                 "active model to confirm.")
 
-
 def current_model():
     """Read the currently-selected model from the /model picker: open it, capture the
     ✔ line, Esc WITHOUT changing anything. Returns a short label ('Opus 4.8', 'Fable
     5') or '' if it couldn't be read."""
+    if is_kimi():
+        # kimi has no gated /model dialog; the active model is in the footer
+        # ("yolo  K3 thinking: max"). Read it back directly -- real, not requested.
+        for line in pane().splitlines():
+            m = re.search(r"yolo\s+(\S+)\s+thinking:", line)
+            if m:
+                return m.group(1)
+        return _backend().get("label", "")
     tmux("send-keys", "-t", SESSION, "-l", "/model"); time.sleep(0.8)
     tmux("send-keys", "-t", SESSION, "Enter"); time.sleep(1.5)
     label = ""
@@ -907,16 +1054,6 @@ def current_model():
             break
     tmux("send-keys", "-t", SESSION, "Escape"); time.sleep(0.4)
     return label
-
-# Resolve freeze to an ABSOLUTE path: the per-message relay process is spawned by
-# the gateway with a minimal PATH that often lacks /opt/homebrew/bin, so a bare
-# "freeze" subprocess call fails (FileNotFoundError) and screenshots silently fall
-# back to text. shutil.which honours PATH when it works; the explicit paths cover
-# the gateway case; bare "freeze" is the last-resort default for other installs.
-FREEZE = (shutil.which("freeze")
-          or next((p for p in ("/opt/homebrew/bin/freeze", "/usr/local/bin/freeze",
-                               os.path.expanduser("~/bin/freeze")) if os.path.exists(p)),
-                  "freeze"))
 
 # Resolve freeze to an ABSOLUTE path: the per-message relay process is spawned by
 # the gateway with a minimal PATH that often lacks /opt/homebrew/bin, so a bare

@@ -140,6 +140,50 @@ do not add an `env` block to the default settings file.
   identity) and takes precedence over the saved Max login while set. Expected, not a bug.
 - Kimi ALT sessions do **not** draw on the Max subscription; they bill the Kimi plan.
 
+## Native Kimi backend — `cc model ik3` (added 2026-07-18, tested)
+
+Two ways to run Kimi now exist, and they are DIFFERENT:
+- `cc model kimi` / `cc model k3` — **claude** pointed at Kimi's Anthropic-compatible
+  gateway (the ALT-settings section above). Still the `claude` binary.
+- `cc model ik3` — **native Kimi Code** (`i` = native): the relay drives the **`kimi`
+  binary** in tmux instead of `claude`. Uses Kimi's OAuth login + `~/.kimi-code/config.toml`.
+
+### How it works (isolated backend branch in `claude-relay-send.py`)
+
+The scraper is deeply `claude`-coupled (reply marker `⏺`, ready `for agents`, busy
+`esc to interrupt`, input cursor `❯`). Kimi's TUI differs in EVERY one of those. Rather
+than thread a flag through claude's working code, kimi is an **isolated additive branch**
+— the claude path is byte-for-byte unchanged (verified: full test suite passes clean).
+
+Mechanism:
+- `backend-<session>.json` records the live backend per session (`restart_with_model`
+  writes it; re-read each poll so a mid-life `cc model` switch is seen). `is_kimi()` reads it.
+- `BUSY`/`READY` were **extended**, not branched: kimi's moon/braille spinner and
+  `context: N% (a/b)` gauge can NEVER appear in a claude pane, so merging those alternations
+  leaves all ~12 claude call sites semantically identical while making busy/idle work for
+  kimi. (Do NOT add `working...` text to BUSY — it can appear in a kimi answer and would
+  wedge delivery; spinner glyphs are the safe signal.)
+- Only extraction is branched: `_reply_lines` → `kimi_reply_lines(pane_color(...), prompt)`,
+  `count_marker` → counts `●`, `current_model` → reads the footer `yolo <M> thinking:`.
+- **Thinking vs answer split is by COLOR** (empirically characterised, NOT guessed): kimi
+  renders thinking grey-italic `ESC[38;2;136;136;136m` and the answer bright
+  `ESC[38;2;224;224;224m`, both with a `●` bullet. `kimi_reply_lines` captures with
+  `capture-pane -ep` (color) and drops the grey lines. Proven on real bullet/prose/code
+  answers.
+- Launch: `kimi -m kimi-code/k3 -c --yolo` (no `--settings`, no trust dialog; `-c`=continue,
+  `--yolo`=auto-approve). `KIMI_BIN` resolved to an absolute path (gateway PATH is minimal).
+- Declared by `relay-claude-settings-ik3.json` = `{"backend":"kimi","model":"kimi-code/k3",
+  "label":"K3"}`. **No secret in it** (kimi uses its own OAuth), so it is safe in git.
+  `backend_for_model()` reads it; any `relay-claude-settings-<x>.json` with `"backend":"kimi"`
+  adds a new native model for free.
+
+### Gotchas specific to ik3
+- Kimi's model alias is namespaced: **`kimi-code/k3`**, not bare `k3` (bare → "not configured").
+- `--prompt` (headless) rejects `--yolo`; the TUI path uses `--yolo` fine.
+- Kimi's config `max_context_size` starts at 262144 but the footer shows the true **1.0M**
+  after it connects to the gateway (native kimi picks up the upgraded plan on its own).
+- Native kimi does NOT carry your claude auto-memory or claude skills (different tool).
+
 ## Kimi CLI specifics (only if you ever use `kimi` itself — not needed for the above)
 
 - Global instructions: `$KIMI_CODE_HOME/AGENTS.md`, else `~/.kimi-code/AGENTS.md`.
