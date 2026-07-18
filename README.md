@@ -93,29 +93,71 @@ The `cc-relay-commands` plugin registers `/newcc`, `/unbind`, `/ccstatus` as **p
 - **It's screen-scraping, not an API.** Robust for normal replies, lists, code, prose, and selection menus — but not bulletproof. `claude-attach` is the reliable fallback for fiddly interactive sequences.
 - **Per-group or per-topic.** Bind a whole group (`/newcc` posts the group peer) or a single forum topic (the peer carries `:topic:<N>`). A group-level binding catches every topic in that group, so for a multi-project forum bind each topic explicitly.
 - **Model switching:** use `cc model <name>`. It **relaunches the session** with `--model <name> --continue` (context kept) and reads the model back to confirm — a live `/model` is gated on large cached conversations and silently reports "Kept model as …". Tapping a `/model` picker button does **not** switch the model.
-### ALT models (Kimi / K3)
+- **Privacy:** a bound session carries your global Claude memory and can read the host filesystem via its tools. Only add other people to a bound group if you're comfortable with that.
+
+## Kimi support
+
+There are **two independent ways** to run Kimi, and they are not the same thing.
+
+### 1. `cc model kimi` / `cc model k3` — Claude Code *on* Kimi
+
+Still the `claude` binary; only the model endpoint changes. Kimi Code's gateway
+(`https://api.kimi.com/coding`) is **natively Anthropic-compatible**, so no proxy or shim
+is involved.
 
 `cc model <name>` looks for `scripts/relay-claude-settings-<name>.json`. If it exists, that
-model is launched with those settings; **every other model keeps the default settings and
-your subscription auth, untouched.** Adding an ALT model is just adding a file.
-
-Shipped templates route to Kimi Code's **natively Anthropic-compatible** gateway
-(`https://api.kimi.com/coding`) — no proxy needed:
+model launches with those settings; **every other model keeps the default settings and your
+subscription auth, untouched.** Adding an ALT model is just adding a file.
 
 | file | `cc model …` | model |
 |---|---|---|
-| `relay-claude-settings-kimi.json` | `cc model kimi` | `kimi-for-coding` (K2.7, 262k ctx) |
-| `relay-claude-settings-k3.json` | `cc model k3` | `k3` (K3, 262k ctx) |
+| `relay-claude-settings-kimi.json` | `cc model kimi` | `kimi-for-coding` (K2.7, 256k) |
+| `relay-claude-settings-k3.json` | `cc model k3` | `k3` (K3, up to 1M) |
 
-Fill in `ANTHROPIC_AUTH_TOKEN` with a **Kimi Code** key (`sk-kimi-…`). Note this is *not* a
-Moonshot platform key — `api.moonshot.ai` rejects it with a misleading
-`401 Invalid Authentication`. They are different products.
+Put a **Kimi Code** key (`sk-kimi-…`) in `ANTHROPIC_AUTH_TOKEN`. Note it is *not* a Moonshot
+platform key — `api.moonshot.ai` rejects a valid Kimi Code key with a misleading
+`401 Invalid Authentication`. They are different products with different auth.
 
-Two caveats: an ALT model bills that provider, **not** your Max subscription; and setting
-`ANTHROPIC_BASE_URL` **disables Remote Control and voice dictation** (both need a claude.ai
-identity). Keep the key out of git — `relay-claude-settings-*.json` should be gitignored.
+**Context window.** Claude Code doesn't know these models, so it defaults them to a 200k
+window regardless of your plan. `CLAUDE_CODE_MAX_CONTEXT_TOKENS` raises it (it applies only
+to model ids that don't start with `claude-`, and does **not** disable auto-compact), which
+is why the k3 template sets `1000000`. Keep this value **below the model's real plan cap**
+and let auto-compact hold the margin — setting it above the cap recreates the trap below.
 
-- **Privacy:** a bound session carries your global Claude memory and can read the host filesystem via its tools. Only add other people to a bound group if you're comfortable with that.
+> **Don't switch a large session onto a small-cap model.** A conversation grown past the
+> target model's cap 401s on every request, and `/compact` can't save it (compaction sends
+> the whole conversation — the exact thing that's too big). Only a relaunch escapes. Start
+> fresh sessions on a capped model rather than switching a big one into it.
+
+### 2. `cc model ik3` — native Kimi Code (`i` = native)
+
+Drives the **`kimi` binary** in tmux instead of `claude`, using Kimi's own OAuth login and
+`~/.kimi-code/config.toml`. Run `kimi login` once first. Kimi bills flat-rate, so there is
+no metered-pool concern.
+
+Declared by `relay-claude-settings-ik3.json`:
+
+```json
+{ "backend": "kimi", "model": "kimi-code/k3", "label": "K3" }
+```
+
+**No secret in that file** (kimi uses its own OAuth), so it is safe in git. Any
+`relay-claude-settings-<x>.json` carrying `"backend": "kimi"` adds another native model.
+
+Kimi's TUI shares no chrome with Claude's, so the scraper carries an isolated kimi branch:
+a per-session `backend-<session>.json` marker selects it, busy/idle come from kimi's spinner
+and `context: N% (a/b)` gauge, and the reply is split from the model's inline reasoning **by
+colour** (kimi renders thinking grey-italic and the answer bright, both with a `●` bullet).
+The claude path is untouched by all of it.
+
+**`ik3` does not carry your Claude conversation.** `cc model kimi|k3` run `claude --continue`
+so context survives; `ik3` launches a different binary with its own transcript store, so it
+starts fresh in that folder. To hand context across, drop a `HANDOFF.md` in the folder — a
+global `~/.kimi-code/AGENTS.md` rule tells kimi to read it before doing anything.
+
+> Newer and less battle-tested than the claude path: it has been verified end-to-end
+> (extraction, model read-back, and the full watcher delivery loop), but on scratch
+> sessions. Try it on a low-stakes topic first.
 
 ## Files
 
@@ -131,6 +173,8 @@ identity). Keep the key out of git — `relay-claude-settings-*.json` should be 
 | `scripts/relay-codes.json` | `{ "code": "/abs/folder" }` registry |
 | `scripts/relay-claude-settings.json` | Claude `--settings` (auto-memory dir) |
 | `scripts/relay-claude-settings-<name>.json` | optional ALT-model settings (e.g. `kimi`, `k3`) — routes that model to another gateway |
+| `scripts/relay-claude-settings-ik3.json` | native-backend declaration: `cc model ik3` drives the `kimi` binary (no secret — kimi uses its own OAuth) |
+| `scripts/relay-ws-edit-server.mjs` | fast WS transport for the live progress bubble (drains edits on quit) |
 | `scripts/openclaw-newcc-plugin/` | OpenClaw plugin: pre-agent `/newcc` `/unbind` `/ccstatus` |
 | `install.sh` | one-shot installer (copy scripts, install plugin, enable buttons) |
 

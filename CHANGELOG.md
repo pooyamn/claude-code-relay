@@ -3,6 +3,48 @@
 All notable changes to **claude-code-relay** are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions are date-tagged.
 
+## [0.8.0] — 2026-07-18
+
+### Added
+- **`cc model ik3` — native Kimi Code backend.** Drives the **`kimi` binary** in tmux
+  instead of `claude` (`i` = native), using kimi's own OAuth + `config.toml`. Kimi bills
+  flat-rate, so headless/metered concerns don't apply. Declared by
+  `relay-claude-settings-ik3.json` (`{"backend":"kimi",...}`) — no secret in it, so it is
+  safe in git. Implemented as an **isolated** branch: a per-session
+  `backend-<session>.json` marker selects kimi parsing, and the claude path is unchanged.
+  Kimi's thinking is split from its answer **by colour** (grey-italic reasoning vs bright
+  answer, both bulleted `●`), characterised from real panes rather than assumed.
+- **`CLAUDE_CODE_MAX_CONTEXT_TOKENS` on the k3 template**, so an upgraded 1M plan is
+  actually usable. Claude Code defaults an unknown model to a 200k window regardless of
+  plan; this raises it without disabling auto-compact (it only applies to model ids that
+  don't start with `claude-`).
+
+### Fixed
+- **Live progress bubble could land AFTER the final reply.** Bubble edits are
+  fire-and-forget, and the WS edit server's `quit` handler called `process.exit(0)`
+  immediately — orphaning an in-flight edit that Telegram then applied after the answer.
+  `quit` now drains pending edits (2s cap) and `close()` waits for it, making close a real
+  ordering barrier. Also explains the "bubble frozen, nothing happening" reports: the same
+  Telegram flood-pause that drops edits.
+- **`ik3` silently killed comms on a bound topic.** `claude-relay-group`'s liveness probe
+  only matched claude chrome, so a healthy kimi session read as dead and was replaced by
+  claude — while the backend marker still said kimi, so the watcher scraped a claude pane
+  with the kimi parser and delivered nothing. The probe now accepts kimi's input-bar gauge,
+  and every claude (re)launch path resets the marker.
+- **Watcher Esc'd kimi's screen**, so a kimi turn never reached delivery: the overlay/wedge
+  guard treated kimi's normal input bar as a full-screen overlay.
+- **Kimi busy/idle patterns are now backend-gated.** They were merged into the shared
+  BUSY/READY/INPUTBAR regexes on the assumption they could never appear in a claude pane —
+  wrong, since a claude *reply* can legitimately contain a moon emoji, a braille glyph, or
+  a `context: N% (` string. They now apply only in a kimi session.
+
+### Changed
+- **Corrects 0.7.0's endpoint claim.** Kimi Code keys (`sk-kimi-…`) do **not** authenticate
+  against `api.moonshot.ai` — the Moonshot *platform* API and the Kimi Code *coding gateway*
+  are different products, and the platform returns a misleading `401 Invalid Authentication`
+  for a perfectly valid key. The working, natively Anthropic-compatible endpoint is
+  **`https://api.kimi.com/coding`**; the shipped templates use it.
+
 ## [0.7.0] — 2026-07-16
 
 ### Added
