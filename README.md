@@ -84,6 +84,7 @@ The `cc-relay-commands` plugin registers `/newcc`, `/unbind`, `/ccstatus` as **p
 | any message | piped to Claude Code, clean reply |
 | `cc model sonnet` | runs `/model sonnet` in the session |
 | `cc clear` | runs `/clear` |
+| `cc unq` | drops messages queued behind the running turn (they never run) |
 | Claude asks a question | tappable buttons appear; tap to answer |
 | `claude-attach 123456` (terminal) | attach to the live TUI |
 

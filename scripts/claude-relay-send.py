@@ -716,6 +716,69 @@ def reflow(lines):
             merged.append(ln)
     return "\n".join(merged)
 
+# --- queued-message control -------------------------------------------------
+# Claude Code queues input typed while the model is ACTIVELY GENERATING (not while
+# a tool/background shell runs -- then it just answers immediately, nothing queues).
+# In that state the pane shows this hint, and Up pulls every queued message into the
+# input box AND REMOVES IT FROM THE QUEUE (verified: after Up + clear, the messages
+# never ran when the turn ended).
+QUEUED_HINT = re.compile(r"Press up to edit queued messages", re.I)
+_BORDER_LINE = re.compile(r"^\s*[─━]{20,}\s*$")
+
+def input_box_text():
+    """Text currently sitting in the TUI input box (the region between the last two
+    box-border rules), with the prompt glyph stripped. Multi-line safe."""
+    lines = pane().splitlines()
+    borders = [i for i, l in enumerate(lines) if _BORDER_LINE.match(l)]
+    if len(borders) < 2:
+        return ""
+    top, bottom = borders[-2], borders[-1]
+    out = []
+    for l in lines[top + 1:bottom]:
+        out.append(re.sub(r"^\s*❯\s?", "", l).rstrip())
+    return "\n".join(out).strip()
+
+def clear_input_box():
+    """Empty the input box WITHOUT pressing Escape -- Escape would interrupt a running
+    turn, and unqueueing only ever happens mid-turn. C-u/C-k don't clear a multi-line
+    buffer (verified: they leave the first line behind), so delete by backspace, sized
+    to the actual content."""
+    txt = input_box_text()
+    n = min(len(txt) + 20, 4000)
+    for _ in range(n):
+        tmux("send-keys", "-t", SESSION, "BSpace")
+    time.sleep(0.5)
+    return txt
+
+def unqueue_pending():
+    """`cc unq` -- drop messages queued behind the running turn, so they never run.
+
+    Telegram never tells a bot that a message was deleted (the Bot API has no
+    deleted-message update for regular chats -- only Business accounts), so this is
+    the supported way to take back something you queued."""
+    if not QUEUED_HINT.search(pane()):
+        deliver("📭 Nothing queued — there are no messages waiting behind this turn. "
+                "(Input only queues while the model is actively generating.)")
+        return
+    tmux("send-keys", "-t", SESSION, "Up")      # pull queue into the input box
+    time.sleep(0.8)
+    dropped = clear_input_box()
+    time.sleep(0.4)
+    p = pane()
+    still_queued = bool(QUEUED_HINT.search(p))
+    leftover = input_box_text()
+    if still_queued or leftover:
+        deliver(f"⚠️ Tried to drop the queue but it isn't clean "
+                f"(queued={'yes' if still_queued else 'no'}, "
+                f"input={'not empty' if leftover else 'empty'}). Check the session.")
+        return
+    if dropped:
+        items = [l.strip() for l in dropped.splitlines() if l.strip()]
+        shown = "\n".join(f"• {l}" for l in items)
+        deliver(f"🗑 Dropped {len(items)} queued message(s) — they will not run:\n{shown}")
+    else:
+        deliver("🗑 Queue cleared.")
+
 def count_marker():
     return pane(scroll=4000).count(KIMI_MARK if is_kimi() else "⏺")
 
@@ -1207,6 +1270,12 @@ def inject(prompt):
     if prompt.strip().lower() in ("/cancel", "/interrupt", "/esc"):
         tmux("send-keys", "-t", SESSION, "Escape")
         deliver("✋ Interrupted the current turn (sent Esc).")
+        return ""
+    # `cc unq` -> drop messages queued behind the running turn. MUST be before the
+    # busy-warning below: a queue only EXISTS while a turn is running, so the busy
+    # path would queue this command itself instead of executing it.
+    if prompt.strip().lower() in ("/unq", "/unqueue"):
+        unqueue_pending()
         return ""
     # Busy-aware feedback for forwarded slash commands (/clear, /compact, /model, ...).
     # Typed while a turn is running, a slash command does NOT execute -- Claude Code
