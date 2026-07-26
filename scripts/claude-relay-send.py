@@ -8,7 +8,7 @@ approval, any numbered question), we DON'T scrape it as a reply. We return the
 options formatted for Telegram and remember a menu is open; the user's next
 message (a number) is sent back as an arrow+Enter selection into the TUI.
 """
-import subprocess, sys, time, hashlib, re, os, json, shutil
+import subprocess, sys, time, hashlib, re, os, json, shutil, shlex
 
 SESSION = os.environ.get("CLAUDE_RELAY_SESSION", "clauderelay")
 CHAT_ID = os.environ.get("RELAY_CHAT_ID", "")     # telegram chat id (numeric)
@@ -984,12 +984,111 @@ def type_prompt(prompt):
             break  # a turn is running (queued on purpose) -> leave it
         tmux("send-keys", "-t", SESSION, "Enter")
 
+# Table blocks (box-drawing OR markdown pipe tables) rely on a monospace font to keep
+# columns aligned, but Telegram renders normal message text in a PROPORTIONAL font, so
+# an ASCII/box table sent as plain text misaligns. Telegram only uses a fixed-width font
+# INSIDE a ``` code block (OpenClaw renders our markdown -> Telegram HTML <pre>), so we
+# wrap detected table blocks in a fence before sending. (This is also why the live
+# progress bubble already looks right -- raw_view wraps the whole pane in ```.)
+_BOXCH = "─━│┃┌┐└┘├┤┬┴┼╭╮╯╰═║╔╗╚╝╠╣╦╩╬▏▕▎▍▌▋▊▉█▔▁▂▃▄▅▆▇"
+_BOXRE = re.compile("[" + re.escape(_BOXCH) + "]")
+_FENCE = re.compile(r"^\s*```")
+_MDSEP = re.compile(r"^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$")
+_MDROW = re.compile(r"^\s*\|.*\|\s*$")
+
+def _pad_md_table(rows):
+    cells = [[c.strip() for c in r.strip().strip("|").split("|")] for r in rows]
+    ncol = max(len(r) for r in cells)
+    for r in cells:
+        r += [""] * (ncol - len(r))
+    sep = lambda c: bool(re.fullmatch(r":?-{2,}:?", c.strip()))
+    widths = [0] * ncol
+    for r in cells:
+        if all(sep(c) or c == "" for c in r):
+            continue
+        for i, c in enumerate(r):
+            widths[i] = max(widths[i], len(c))
+    out = []
+    for r in cells:
+        if all(sep(c) or c == "" for c in r):
+            out.append("|-" + "-|-".join("-" * w for w in widths) + "-|")
+        else:
+            out.append("| " + " | ".join(c.ljust(widths[i]) for i, c in enumerate(r)) + " |")
+    return out
+
+def monospace_tables(text):
+    """Wrap box-drawing / markdown pipe-table blocks in a ``` fence so Telegram
+    renders them monospace and columns stay aligned. Never double-wraps content that
+    is already inside a fence, and leaves prose (a stray `|`) alone."""
+    lines = text.split("\n")
+    out, i, in_fence = [], 0, False
+    while i < len(lines):
+        ln = lines[i]
+        if _FENCE.match(ln):
+            in_fence = not in_fence; out.append(ln); i += 1; continue
+        if in_fence:
+            out.append(ln); i += 1; continue
+        if _BOXRE.search(ln):                                  # box-drawing table
+            j = i
+            while j < len(lines) and _BOXRE.search(lines[j]):
+                j += 1
+            block = lines[i:j]
+            if len(block) >= 2:
+                out.append("```"); out.extend(block); out.append("```")
+            else:
+                out.extend(block)
+            i = j; continue
+        if _MDROW.match(ln) and i + 1 < len(lines) and _MDSEP.match(lines[i + 1]):
+            j = i                                              # markdown pipe table
+            while j < len(lines) and _MDROW.match(lines[j]):
+                j += 1
+            out.append("```"); out.extend(_pad_md_table(lines[i:j])); out.append("```")
+            i = j; continue
+        out.append(ln); i += 1
+    return "\n".join(out)
+
+def _fence_safe_chunks(text, limit):
+    """Split into <=limit pieces on line boundaries, keeping ``` fences balanced
+    within each piece (a fence split across chunks would render as broken markup)."""
+    chunks, cur, cur_len, open_fence = [], [], 0, False
+    def flush():
+        nonlocal cur, cur_len
+        if not cur:
+            return
+        body = "\n".join(cur)
+        if open_fence:
+            body += "\n```"
+        chunks.append(body)
+        cur, cur_len = ([], 0)
+    for line in text.split("\n"):
+        add = len(line) + 1
+        # while a fence is open, reserve 4 chars for the "\n```" we append on flush
+        budget = limit - (4 if open_fence else 0)
+        # long single line: hard-slice it (rare; e.g. a 4k-char no-newline blob)
+        if add > limit:
+            flush()
+            for k in range(0, len(line), limit):
+                chunks.append(line[k:k + limit])
+            continue
+        if cur_len + add > budget:
+            reopen = open_fence
+            flush()
+            if reopen:
+                cur = ["```"]; cur_len = 4; open_fence = True
+        cur.append(line); cur_len += add
+        if _FENCE.match(line):
+            open_fence = not open_fence
+    flush()
+    return chunks or [text[:limit]]
+
 def deliver(text):
-    """Send a finished reply (the notifying message), chunked over the TG cap."""
+    """Send a finished reply (the notifying message). Wraps table blocks in a
+    monospace fence so columns stay aligned, then chunks fence-safely over the cap."""
     if not text:
         return
-    for i in range(0, len(text), TG_LIMIT):
-        tg_send(text[i:i + TG_LIMIT])
+    text = monospace_tables(text)
+    for chunk in _fence_safe_chunks(text, TG_LIMIT):
+        tg_send(chunk)
 
 def folder_for_session():
     """Reverse-lookup this session's bound folder from relay-codes.json
@@ -1077,8 +1176,11 @@ def restart_with_model(model):
     else:
         _write_backend({"backend": "claude"})   # reset if switching back from kimi
         settings, alt_model = settings_for_model(model)
-        cmd = (f"claude --model {alt_model} --continue --settings {settings} "
-               f"--dangerously-skip-permissions")
+        # QUOTE the model: a 1M-context id carries brackets (`claude-opus-5[1m]`) and
+        # tmux runs this through zsh, where an unquoted bracket is a glob -- it dies
+        # "no matches found" and the session never launches at all.
+        cmd = (f"claude --model {shlex.quote(alt_model)} --continue "
+               f"--settings {shlex.quote(settings)} --dangerously-skip-permissions")
         expect = model
     tmux("kill-session", "-t", SESSION)
     time.sleep(0.5)
