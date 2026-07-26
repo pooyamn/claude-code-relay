@@ -1059,13 +1059,39 @@ def _table_segments(text):
     flush()
     return segs
 
+# Menlo (the macOS Terminal font) is monospace with FULL box-drawing coverage --
+# EVERY glyph, incl. ─ │ ┌ ┼ ┤, has the same advance width (measured: all 24px at
+# size 40), so the borders connect into solid lines and columns align pixel-perfectly.
+# freeze cannot do this: it ignores --font.file/--font.family (byte-identical output
+# regardless) and its bundled font lacks box-drawing, so those chars fall back to a
+# PROPORTIONAL font -- the lines gap and the columns drift. So we render the table
+# ourselves with PIL + Menlo, and keep freeze only as a fallback.
+_TABLE_FONT = "/System/Library/Fonts/Menlo.ttc"
+
 def _render_table_png(block):
-    """Render a table block (list of lines) to a PNG via freeze. Returns the path, or
-    None on failure (caller then falls back to fenced text so nothing is lost).
-    --language txt is REQUIRED: without it freeze can't guess a language for a plain
-    table and dies 'Language Unknown'."""
+    """Render a table block (list of lines) to a PNG. PIL + Menlo gives a
+    pixel-perfect monospace grid; freeze is a fallback; None means neither worked and
+    the caller sends fenced text so nothing is lost."""
     png = os.path.join(STATE_DIR, f"table-{SESSION}.png")
     try:
+        from PIL import Image, ImageDraw, ImageFont
+        os.makedirs(STATE_DIR, exist_ok=True)
+        font = ImageFont.truetype(_TABLE_FONT, 36)
+        asc, desc = font.getmetrics()
+        line_h = asc + desc                       # exact line box -> vertical rules tile
+        pad = 28
+        lines = [l.rstrip("\n") for l in block] or [""]
+        w = int(max((font.getlength(l) for l in lines), default=0)) + pad * 2
+        h = line_h * len(lines) + pad * 2
+        img = Image.new("RGB", (max(w, 1), max(h, 1)), (24, 24, 27))
+        draw = ImageDraw.Draw(img)
+        for i, l in enumerate(lines):
+            draw.text((pad, pad + i * line_h), l, font=font, fill=(220, 220, 220))
+        img.save(png)
+        return png
+    except Exception:
+        pass
+    try:                                          # fallback: freeze (box-drawing may gap)
         os.makedirs(STATE_DIR, exist_ok=True)
         r = subprocess.run([FREEZE, "--language", "txt", "--padding", "20",
                             "--font.size", "26", "-o", png],
