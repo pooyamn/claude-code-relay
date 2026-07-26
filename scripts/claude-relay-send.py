@@ -120,13 +120,16 @@ def tg_send(text, silent=False):
     _oplog("SEND" + ("-SILENT" if silent else ""), mid, text, r)
     return mid
 
-def tg_send_media(path, caption=""):
-    """Send a local image/file as media (used for TUI screenshots). --force-document
-    keeps full resolution so the small terminal text stays legible -- a compressed
-    Telegram photo blurs it. Returns the message id."""
+def tg_send_media(path, caption="", document=True):
+    """Send a local image/file as media. document=True (--force-document) keeps full
+    resolution -- used for TUI screenshots where small terminal text must stay legible
+    (a compressed Telegram photo blurs it). document=False sends an INLINE photo that
+    renders in the chat and pinch-zooms -- used for rendered tables, whose larger font
+    survives compression. Returns the message id."""
     cmd = ["openclaw", "message", "send", "--channel", "telegram",
-           "--target", CHAT_ID, *_thread_args(),
-           "--media", path, "--force-document", "--json"]
+           "--target", CHAT_ID, *_thread_args(), "--media", path, "--json"]
+    if document:
+        cmd.insert(-1, "--force-document")
     if caption:
         cmd += ["--message", caption[:TG_LIMIT]]
     r = subprocess.run(cmd, capture_output=True, text=True)
@@ -1016,36 +1019,81 @@ def _pad_md_table(rows):
             out.append("| " + " | ".join(c.ljust(widths[i]) for i, c in enumerate(r)) + " |")
     return out
 
-def monospace_tables(text):
-    """Wrap box-drawing / markdown pipe-table blocks in a ``` fence so Telegram
-    renders them monospace and columns stay aligned. Never double-wraps content that
-    is already inside a fence, and leaves prose (a stray `|`) alone."""
+# A table narrower than this (chars) fits a phone screen as monospace text, so it
+# stays inline in a fence. A WIDER one would wrap on a narrow screen even in monospace
+# -- Telegram wraps a too-wide code block instead of scrolling it, which scrambles the
+# columns -- so it is rendered to an image and sent as an inline photo instead.
+TABLE_IMG_WIDTH = 46
+
+def _table_segments(text):
+    """Split text into ('text', str) and ('table', [lines]) segments in order,
+    fence-aware. A box-drawing run (>=2 lines) or a markdown pipe table is a 'table';
+    everything else (incl. content inside an existing ``` fence) is 'text'."""
     lines = text.split("\n")
-    out, i, in_fence = [], 0, False
+    segs, buf, i, in_fence = [], [], 0, False
+    def flush():
+        if buf:
+            segs.append(("text", "\n".join(buf))); buf.clear()
     while i < len(lines):
         ln = lines[i]
         if _FENCE.match(ln):
-            in_fence = not in_fence; out.append(ln); i += 1; continue
+            in_fence = not in_fence; buf.append(ln); i += 1; continue
         if in_fence:
-            out.append(ln); i += 1; continue
-        if _BOXRE.search(ln):                                  # box-drawing table
+            buf.append(ln); i += 1; continue
+        if _BOXRE.search(ln):
             j = i
             while j < len(lines) and _BOXRE.search(lines[j]):
                 j += 1
-            block = lines[i:j]
-            if len(block) >= 2:
-                out.append("```"); out.extend(block); out.append("```")
+            if j - i >= 2:
+                flush(); segs.append(("table", lines[i:j]))
             else:
-                out.extend(block)
+                buf.extend(lines[i:j])
             i = j; continue
         if _MDROW.match(ln) and i + 1 < len(lines) and _MDSEP.match(lines[i + 1]):
-            j = i                                              # markdown pipe table
+            j = i
             while j < len(lines) and _MDROW.match(lines[j]):
                 j += 1
-            out.append("```"); out.extend(_pad_md_table(lines[i:j])); out.append("```")
+            flush(); segs.append(("table", _pad_md_table(lines[i:j])))
             i = j; continue
-        out.append(ln); i += 1
-    return "\n".join(out)
+        buf.append(ln); i += 1
+    flush()
+    return segs
+
+def _render_table_png(block):
+    """Render a table block (list of lines) to a PNG via freeze. Returns the path, or
+    None on failure (caller then falls back to fenced text so nothing is lost).
+    --language txt is REQUIRED: without it freeze can't guess a language for a plain
+    table and dies 'Language Unknown'."""
+    png = os.path.join(STATE_DIR, f"table-{SESSION}.png")
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        r = subprocess.run([FREEZE, "--language", "txt", "--padding", "20",
+                            "--font.size", "26", "-o", png],
+                           input="\n".join(block), capture_output=True, text=True)
+        if r.returncode == 0 and os.path.exists(png):
+            return png
+    except Exception:
+        pass
+    return None
+
+def render_reply(text):
+    """Prepare a reply for delivery. Returns (body, wide_tables):
+    - narrow tables are wrapped in a ``` fence inline (monospace, aligned);
+    - wide tables are replaced in `body` by a one-line marker and returned in
+      `wide_tables` (list of line-lists) for the caller to send as inline images.
+    Prose, stray `|`, and already-fenced content are left untouched."""
+    body, wide = [], []
+    for kind, payload in _table_segments(text):
+        if kind == "text":
+            body.append(payload)
+            continue
+        block = payload
+        if max(len(l) for l in block) > TABLE_IMG_WIDTH:
+            wide.append(block)
+            body.append("🖼 table below (too wide for the screen, sent as an image)")
+        else:
+            body.append("```\n" + "\n".join(block) + "\n```")
+    return "\n".join(body), wide
 
 def _fence_safe_chunks(text, limit):
     """Split into <=limit pieces on line boundaries, keeping ``` fences balanced
@@ -1082,13 +1130,23 @@ def _fence_safe_chunks(text, limit):
     return chunks or [text[:limit]]
 
 def deliver(text):
-    """Send a finished reply (the notifying message). Wraps table blocks in a
-    monospace fence so columns stay aligned, then chunks fence-safely over the cap."""
+    """Send a finished reply (the notifying message). Narrow tables are fenced inline
+    (monospace); tables too wide for a phone screen are rendered to an image and sent
+    as an inline photo right after the text. Text is chunked fence-safely over the cap."""
     if not text:
         return
-    text = monospace_tables(text)
-    for chunk in _fence_safe_chunks(text, TG_LIMIT):
+    body, wide = render_reply(text)
+    for chunk in _fence_safe_chunks(body, TG_LIMIT):
         tg_send(chunk)
+    # Wide tables as inline photos, right after the text (in document/reading order).
+    for block in wide:
+        png = _render_table_png(block)
+        if png:
+            tg_send_media(png, document=False)      # inline photo, pinch-zoomable
+        else:                                       # freeze failed -> don't lose it
+            fenced = "```\n" + "\n".join(block) + "\n```"
+            for chunk in _fence_safe_chunks(fenced, TG_LIMIT):
+                tg_send(chunk)
 
 def folder_for_session():
     """Reverse-lookup this session's bound folder from relay-codes.json
