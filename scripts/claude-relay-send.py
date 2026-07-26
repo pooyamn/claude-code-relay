@@ -1076,11 +1076,20 @@ def _render_table_png(block):
         pass
     return None
 
-def render_reply(text):
+# The bot account is Telegram Premium, so a photo CAPTION can hold up to ~4096 chars
+# (vs 1024 for a standard account -- verified live). That makes a single "photo +
+# caption" bubble viable for most replies, which is the only Telegram-native way to
+# get an image and its text in ONE message. Kept a margin under the cap.
+CAPTION_MAX = 4000
+
+def render_reply(text, image_marker=True):
     """Prepare a reply for delivery. Returns (body, wide_tables):
     - narrow tables are wrapped in a ``` fence inline (monospace, aligned);
-    - wide tables are replaced in `body` by a one-line marker and returned in
-      `wide_tables` (list of line-lists) for the caller to send as inline images.
+    - wide tables are collected in `wide_tables` for image rendering. In `body` each
+      is replaced by a one-line marker when image_marker=True (they arrive as a
+      SEPARATE photo after the text), or dropped when image_marker=False (the caller
+      is sending the image AS this same bubble via photo+caption, so a "below" marker
+      would be wrong).
     Prose, stray `|`, and already-fenced content are left untouched."""
     body, wide = [], []
     for kind, payload in _table_segments(text):
@@ -1090,10 +1099,11 @@ def render_reply(text):
         block = payload
         if max(len(l) for l in block) > TABLE_IMG_WIDTH:
             wide.append(block)
-            body.append("🖼 table below (too wide for the screen, sent as an image)")
+            if image_marker:
+                body.append("🖼 table below (too wide for the screen, sent as an image)")
         else:
             body.append("```\n" + "\n".join(block) + "\n```")
-    return "\n".join(body), wide
+    return "\n".join(body).strip(), wide
 
 def _fence_safe_chunks(text, limit):
     """Split into <=limit pieces on line boundaries, keeping ``` fences balanced
@@ -1130,16 +1140,28 @@ def _fence_safe_chunks(text, limit):
     return chunks or [text[:limit]]
 
 def deliver(text):
-    """Send a finished reply (the notifying message). Narrow tables are fenced inline
-    (monospace); tables too wide for a phone screen are rendered to an image and sent
-    as an inline photo right after the text. Text is chunked fence-safely over the cap."""
+    """Send a finished reply. Narrow tables stay inline as monospace fences. For a
+    reply with exactly ONE wide table whose surrounding text fits a caption, the whole
+    thing goes as a SINGLE photo+caption bubble (image + text together -- the
+    Telegram-native way to combine them, enabled by the account's Premium caption
+    limit). Otherwise: text first, then each wide table as an inline photo after it."""
     if not text:
         return
-    body, wide = render_reply(text)
+    _, wide = render_reply(text, image_marker=True)
+    # One-bubble path: single wide table + caption that fits -> photo + caption.
+    if len(wide) == 1:
+        caption, _ = render_reply(text, image_marker=False)   # image IS this bubble
+        if len(caption) <= CAPTION_MAX:
+            png = _render_table_png(wide[0])
+            if png:
+                tg_send_media(png, caption=caption, document=False)
+                return
+            # freeze failed -> fall through to the text+fenced fallback below
+    # Default path: text (narrow tables inline, wide-table markers), then photos.
+    body, blocks = render_reply(text, image_marker=True)
     for chunk in _fence_safe_chunks(body, TG_LIMIT):
         tg_send(chunk)
-    # Wide tables as inline photos, right after the text (in document/reading order).
-    for block in wide:
+    for block in blocks:
         png = _render_table_png(block)
         if png:
             tg_send_media(png, document=False)      # inline photo, pinch-zoomable
