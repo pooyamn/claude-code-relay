@@ -1067,26 +1067,139 @@ def _table_segments(text):
 # PROPORTIONAL font -- the lines gap and the columns drift. So we render the table
 # ourselves with PIL + Menlo, and keep freeze only as a fallback.
 _TABLE_FONT = "/System/Library/Fonts/Menlo.ttc"
+# Menlo covers box-drawing/math/arrows/accents but NOT emoji, Arabic/Farsi or CJK --
+# those render as tofu (□) and, being a different advance, also break the column grid.
+# So draw PER CHARACTER with a fallback chain. Size 40 is deliberate: Apple Color Emoji
+# is a bitmap font that only loads at fixed strikes (20/26/32/40/48/...).
+_TABLE_FONT_SIZE = 40
+_FALLBACK_FONTS = [
+    "/Library/Fonts/Arial Unicode.ttf",          # Farsi/Arabic + CJK + most scripts
+    "/System/Library/Fonts/STHeiti Light.ttc",   # CJK
+    "/System/Library/Fonts/Apple Color Emoji.ttc",  # emoji (bitmap, fixed sizes)
+    "/System/Library/Fonts/Apple Symbols.ttf",
+]
+
+def _is_wide(ch):
+    """True for characters a terminal renders in TWO cells (CJK, emoji, fullwidth).
+    The source table's spacing was computed against that, so the renderer must
+    advance two cells too or every later column drifts."""
+    import unicodedata
+    if unicodedata.east_asian_width(ch) in ("W", "F"):
+        return True
+    o = ord(ch)
+    return (0x1F300 <= o <= 0x1FAFF     # emoji & pictographs
+            or 0x2600 <= o <= 0x27BF    # misc symbols / dingbats
+            or 0x1F000 <= o <= 0x1F2FF)
+
+def _draw_fitted(draw, img, x, y, ch, font, box_w, box_h):
+    """Draw a fallback glyph scaled to fit its cell span, so a colour-emoji bitmap or
+    an oversized CJK glyph cannot overflow into the neighbouring column."""
+    from PIL import Image, ImageDraw
+    tile = Image.new("RGBA", (int(box_w * 2), int(box_h * 2)), (0, 0, 0, 0))
+    td = ImageDraw.Draw(tile)
+    try:
+        td.text((0, 0), ch, font=font, fill=(220, 220, 220, 255), embedded_color=True)
+    except TypeError:
+        td.text((0, 0), ch, font=font, fill=(220, 220, 220, 255))
+    bbox = tile.getbbox()
+    if not bbox:
+        return
+    glyph = tile.crop(bbox)
+    scale = min(box_w / glyph.width, box_h / glyph.height, 1.0)
+    if scale <= 0:
+        return
+    gw, gh = max(1, int(glyph.width * scale)), max(1, int(glyph.height * scale))
+    glyph = glyph.resize((gw, gh), Image.LANCZOS)
+    # centre horizontally in the span, sit on the text baseline vertically
+    ox = int(x + (box_w - gw) / 2)
+    oy = int(y + (box_h - gh) / 2)
+    img.paste(glyph, (ox, oy), glyph)
+
+def _load_table_fonts():
+    """(primary, [fallbacks], tofu_bitmaps) -- tofu_bitmaps lets us detect a missing
+    glyph by rasterizing U+FFFF (guaranteed unassigned) and comparing: PIL reports a
+    normal advance width for .notdef, so width checks CANNOT detect a missing glyph."""
+    from PIL import Image, ImageDraw, ImageFont
+    def raster(f, ch):
+        im = Image.new("L", (90, 90), 0)
+        ImageDraw.Draw(im).text((5, 5), ch, font=f, fill=255)
+        return im.tobytes()
+    primary = ImageFont.truetype(_TABLE_FONT, _TABLE_FONT_SIZE)
+    fonts, tofu = [], {}
+    for p in _FALLBACK_FONTS:
+        if not os.path.exists(p):
+            continue
+        try:
+            f = ImageFont.truetype(p, _TABLE_FONT_SIZE)
+        except Exception:
+            continue
+        fonts.append(f)
+    for f in [primary] + fonts:
+        try:
+            tofu[id(f)] = raster(f, "￿")
+        except Exception:
+            tofu[id(f)] = None
+    return primary, fonts, tofu, raster
 
 def _render_table_png(block):
-    """Render a table block (list of lines) to a PNG. PIL + Menlo gives a
-    pixel-perfect monospace grid; freeze is a fallback; None means neither worked and
-    the caller sends fenced text so nothing is lost."""
+    """Render a table block to a PNG. Draws char-by-char on a fixed monospace cell
+    grid: the cell width comes from Menlo, so columns stay pixel-aligned even when a
+    character (emoji/Farsi/CJK) has to come from a fallback font. freeze is a last
+    resort; None means the caller falls back to fenced text so nothing is lost."""
     png = os.path.join(STATE_DIR, f"table-{SESSION}.png")
     try:
-        from PIL import Image, ImageDraw, ImageFont
+        from PIL import Image, ImageDraw
         os.makedirs(STATE_DIR, exist_ok=True)
-        font = ImageFont.truetype(_TABLE_FONT, 36)
-        asc, desc = font.getmetrics()
-        line_h = asc + desc                       # exact line box -> vertical rules tile
+        primary, fallbacks, tofu, raster = _load_table_fonts()
+        asc, desc = primary.getmetrics()
+        line_h = asc + desc
+        cell_w = primary.getlength("─")           # monospace cell (all Menlo glyphs equal)
         pad = 28
         lines = [l.rstrip("\n") for l in block] or [""]
-        w = int(max((font.getlength(l) for l in lines), default=0)) + pad * 2
+        ncols = max((len(l) for l in lines), default=1)
+        w = int(cell_w * ncols) + pad * 2
         h = line_h * len(lines) + pad * 2
         img = Image.new("RGB", (max(w, 1), max(h, 1)), (24, 24, 27))
         draw = ImageDraw.Draw(img)
-        for i, l in enumerate(lines):
-            draw.text((pad, pad + i * line_h), l, font=font, fill=(220, 220, 220))
+
+        def font_for(ch):
+            """First font that renders ch as a real glyph (not tofu)."""
+            if raster(primary, ch) != tofu.get(id(primary)):
+                return primary
+            for f in fallbacks:
+                try:
+                    if raster(f, ch) != tofu.get(id(f)):
+                        return f
+                except Exception:
+                    continue
+            return primary
+        cache = {}
+        for row, l in enumerate(lines):
+            y = pad + row * line_h
+            col = 0
+            for ch in l:
+                if ch == " ":
+                    col += 1
+                    continue
+                f = cache.get(ch) or cache.setdefault(ch, font_for(ch))
+                x = pad + col * cell_w
+                # Terminals give emoji/CJK TWO cells; the source table was aligned
+                # against that, so advance 2 columns for wide chars or every following
+                # column (and the closing │) lands in the wrong place.
+                span = 2 if _is_wide(ch) else 1
+                try:
+                    if f is not primary:
+                        # Scale a fallback glyph to fit its cell span so it can't
+                        # overflow into the next column.
+                        _draw_fitted(draw, img, x, y, ch, f, span * cell_w, line_h)
+                    else:
+                        draw.text((x, y), ch, font=f, fill=(220, 220, 220))
+                except Exception:
+                    try:
+                        draw.text((x, y), ch, font=f, fill=(220, 220, 220))
+                    except Exception:
+                        pass
+                col += span
         img.save(png)
         return png
     except Exception:
