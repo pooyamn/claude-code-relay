@@ -1,0 +1,37 @@
+#!/usr/bin/env python3
+"""PreToolUse hook: refuse SendUserFile in a relay session and name the way that works.
+
+SendUserFile delivers an attachment to a Claude Code CLIENT. A relay session has
+no client -- it is a tmux pane that claude-relay-send.py scrapes as TEXT (grep it
+for "SendUserFile": no hits). So the call renders "> [file] foo.pdf (383.7KB)" in
+the pane, the watcher relays those characters as words, and the user receives a
+message DESCRIBING files that were never attached. The model then reports "Sent."
+in good faith, because nothing told it otherwise.
+
+That is the worst failure shape available: silent, and confidently misreported.
+Denying the tool converts it into a visible redirect at the moment of use, which
+is the only place the correct alternative can actually be acted on.
+
+Emits the documented PreToolUse decision envelope; anything else here is treated
+as hook failure and the tool call proceeds.
+"""
+import json, sys
+
+REASON = (
+    "SendUserFile does not work in a relay-bound session: there is no Claude Code "
+    "client to receive the attachment. The pane is scraped as plain text, so the "
+    "user would get a message listing filenames with nothing attached.\n\n"
+    "Send the files over Telegram instead:\n"
+    "  ~/.claude/skills/send-file/send-file.sh <path> [more paths...]\n\n"
+    "It zips first (OpenClaw and Telegram silently drop many raw extensions) and "
+    "resolves this session's destination chat/topic itself -- you never pass a "
+    "chat id. Optional caption: SEND_CAPTION=\"...\" before the command."
+)
+
+json.dump({
+    "hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "deny",
+        "permissionDecisionReason": REASON,
+    }
+}, sys.stdout)

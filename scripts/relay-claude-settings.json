@@ -4,6 +4,10 @@
   "hooks": {
     "Stop": [
       { "hooks": [ { "type": "command", "command": "python3 $HOME/.openclaw/workspace/scripts/relay-turn-done" } ] }
+    ],
+    "PreToolUse": [
+      { "matcher": "SendUserFile",
+        "hooks": [ { "type": "command", "command": "python3 $HOME/.openclaw/workspace/scripts/relay-block-senduserfile" } ] }
     ]
   }
 }
