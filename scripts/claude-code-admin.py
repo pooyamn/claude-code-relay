@@ -46,8 +46,9 @@ def unbind(peer, restart):
     binds[:] = [b for b in binds if b not in removed]
     if not removed:
         print(f"No binding found for peer={peer}"); return
-    # Leave the backend/model/agent definitions in place (harmless, reusable);
-    # only the binding is removed so the chat reverts to the default agent.
+    # Drop only the binding here; the backend/model/agent triple is swept below
+    # (they were assumed harmless and reusable, but they accumulate and make a
+    # broken group hard to read).
     txt = json.dumps(d, indent=2); json.loads(txt)
     open(CFG, "w").write(txt)
     only_live = (CFG == os.path.expanduser("~/.openclaw/openclaw.json"))
@@ -59,6 +60,23 @@ def unbind(peer, restart):
             print("ERROR: config invalid, rolled back.", file=sys.stderr)
             print(r.stdout or r.stderr, file=sys.stderr); sys.exit(3)
     print(f"OK unbound peer={peer} (removed {len(removed)} binding(s)). backup={bak}")
+
+    # Unbinding drops the binding but leaves the agent/model/cliBackend triple it
+    # pointed at, so the config keeps growing dead relay agents that nothing routes
+    # to. Sweep them here for the same reason bind-claude-code.py does: this is a
+    # moment the config churns, and nothing else removes an entry. Non-fatal --
+    # the sweep backs itself up and rolls itself back, and a failure here must
+    # never undo the unbind.
+    reap = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reap-dead-bindings.py")
+    if only_live and os.path.exists(reap):
+        try:
+            rp = subprocess.run([sys.executable, reap, "--apply", "--quiet"],
+                                capture_output=True, text=True, timeout=60)
+            if rp.stdout.strip():
+                print(rp.stdout.strip())
+        except (OSError, subprocess.SubprocessError) as e:
+            print(f"(dead-binding sweep skipped: {e})")
+
     if restart and only_live:
         # Detached + delayed (see bind-claude-code.py): survive being run from
         # inside the relay backend so the reply is delivered before reload.
