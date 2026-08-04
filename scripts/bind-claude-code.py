@@ -84,6 +84,24 @@ def main():
             sys.exit(3)
     print(f"OK bound peer={a.peer} -> agent={agent_id} folder={folder}")
     print(f"backup={bak}")
+
+    # Always sweep dead bindings on the way out. A bind is the one moment the
+    # config reliably churns, and nothing else ever REMOVES an entry -- so
+    # bindings to chats that no longer exist, and the agent/model/backend triples
+    # behind them, accumulate forever and make a silently-broken group much
+    # harder to read. Non-fatal by design: the sweep keeps its own backup and
+    # rolls itself back, and a failure here must never undo the bind the user
+    # just asked for.
+    reap = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reap-dead-bindings.py")
+    if only_live and os.path.exists(reap):
+        try:
+            rp = subprocess.run([sys.executable, reap, "--apply", "--quiet"],
+                                capture_output=True, text=True, timeout=60)
+            if rp.stdout.strip():
+                print(rp.stdout.strip())
+        except (OSError, subprocess.SubprocessError) as e:
+            print(f"(dead-binding sweep skipped: {e})")
+
     if a.restart and only_live:
         # Detached + delayed: when this runs from inside the relay backend, a
         # synchronous restart would kill us (and signal our process group)
