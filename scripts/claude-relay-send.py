@@ -476,8 +476,34 @@ class _BackendRe:
     def search(self, s):
         return self._c.search(s) or (self._k.search(s) if is_kimi() else None)
 
+BUSY_TAIL_LINES = 8   # footer + input box borders + the spinner line above it
+
+class _TailRe(_BackendRe):
+    """Like _BackendRe, but matches ONLY in the pane's live status region.
+
+    A busy marker is chrome, not content -- except some of it is also printed INTO
+    the transcript. "esc to interrupt" lives in the footer and vanishes the moment
+    a turn ends, so scanning the whole pane was harmless for it. "Waiting for N
+    background agents to finish" does not: it is emitted as transcript text and
+    stays on screen as history long after the agent finished. Any pane still
+    showing that line therefore read as permanently busy, and every `cc model` /
+    slash command in that topic was refused with "Session is busy" against an idle
+    session -- until the line happened to scroll off.
+
+    Seen in the website topic 2026-08-05: the match was on line 13 of 50, four
+    lines above "Agent 'Fable horizontal diagram build' finished", while the last
+    five lines showed an empty input box. Measured against a genuinely busy pane,
+    the live marker sits in the FOOTER (line 50 of 50), so the status region is a
+    few lines deep and everything above it is history.
+
+    Same fix protects the kimi spinner, whose glyphs can equally appear in an answer.
+    """
+    def search(self, s):
+        tail = (s or "").rstrip().splitlines()[-BUSY_TAIL_LINES:]
+        return super().search("\n".join(tail))
+
 # claude "working" states unchanged; kimi busy = its moon/braille spinner animating.
-BUSY = _BackendRe(
+BUSY = _TailRe(
     re.compile(r"esc to interrupt"
                r"|waiting for \d+ [a-z ]*(?:agents?|workflows?) to finish", re.I),
     re.compile(r"[\U0001F311-\U0001F318]|[⠇⠋⠙⠸⠴⠦⠧⠏⡇]"))  # moon / braille
