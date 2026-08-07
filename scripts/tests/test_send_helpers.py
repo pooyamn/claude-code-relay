@@ -109,6 +109,21 @@ check("plain mode detected", m.rich_enabled() is False)
 check("plain keeps the 4096 cap", m.text_limit() == m.TG_LIMIT)
 check("plain fences a table but keeps its rows",
       "```" in m.render_reply(_tbl) and "| A | B |" in m.render_reply(_tbl))
+
+# --- box-drawing tables: the shape Claude Code actually emits -----------------
+# The converter reads markdown only, so a box table passed through in rich mode
+# lands in a proportional font with the columns collapsed -- worse than the fence
+# it used to get. It must be converted, and never escape unfenced.
+_box = "\u250c\u2500\u2500\u2500\u252c\u2500\u2500\u2500\u2510\n\u2502 a \u2502 b \u2502\n\u251c\u2500\u2500\u2500\u253c\u2500\u2500\u2500\u2524\n\u2502 1 \u2502 2 \u2502\n\u2514\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2518"
+_mode(_RICH_CFG)
+_rb = m.render_reply(_box)
+check("rich converts a box table to markdown",
+      _rb.startswith("| a | b |") and "|---|---|" in _rb)
+check("no box glyphs survive in rich mode", "\u2502" not in _rb and "\u250c" not in _rb)
+_art = "\u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2510\n\u2502 ART  \u2502\n\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2518"
+check("un-gridded box art falls back to a fence", "```" in m.render_reply(_art))
+_mode(_PLAIN_CFG)
+check("plain still fences a box table", "```" in m.render_reply(_box))
 sent.clear()
 m.deliver("short")
 check("deliver sends a short reply once", sent == ["short"])

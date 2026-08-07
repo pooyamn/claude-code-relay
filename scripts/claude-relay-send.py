@@ -1113,23 +1113,64 @@ def _table_segments(text):
     flush()
     return segs
 
+def _box_to_md(lines):
+    """Convert a box-drawing table (┌─┬─┐ │ a │ b │ └─┴─┘) into markdown rows.
+
+    OpenClaw's converter only understands MARKDOWN. A box table is plain text to it,
+    so passing one through in rich mode drops it into Telegram's proportional font
+    and the columns collapse -- worse than the fence it used to get. Claude Code
+    draws box tables constantly (they are what the TUI renders), so this is the
+    common case, not an edge case.
+
+    Returns markdown lines, or None if this doesn't look like a real grid -- the
+    caller then falls back to fencing, which at least keeps it monospace."""
+    rows = []
+    for ln in lines:
+        if "│" not in ln and "|" not in ln:
+            continue                       # pure border row (├─┼─┤ / └─┴─┘)
+        cells = [c.strip() for c in re.split(r"[│|]", ln)]
+        if cells and cells[0] == "":
+            cells = cells[1:]
+        if cells and cells[-1] == "":
+            cells = cells[:-1]
+        # a separator drawn with │ at the edges, e.g. "│───│───│"
+        if not cells or all(re.fullmatch(r"[─\-\s]*", c) for c in cells):
+            continue
+        rows.append([c.replace("|", "\\|") for c in cells])
+    if len(rows) < 2:
+        return None                        # a header with no body isn't worth converting
+    width = max(len(r) for r in rows)
+    if width < 2:
+        return None
+    rows = [r + [""] * (width - len(r)) for r in rows]
+    out = ["| " + " | ".join(rows[0]) + " |",
+           "|" + "---|" * width]
+    out += ["| " + " | ".join(r) + " |" for r in rows[1:]]
+    return out
+
 def render_reply(text):
     """Prepare a reply for delivery.
 
-    Normal mode (richMessages on): the text goes through UNTOUCHED. OpenClaw turns
-    a markdown table into a native RichBlockTable, so anything done to it here --
-    fencing it, or swapping it for a picture -- only hides the table from the
-    converter.
+    Rich mode (richMessages on): a MARKDOWN table goes through untouched -- OpenClaw
+    turns it into a native RichBlockTable, and fencing it would only hide it from the
+    converter. A BOX-DRAWING table is converted to markdown first, because the
+    converter reads markdown and nothing else: passed through as-is it would land in
+    Telegram's proportional font with the columns collapsed. Claude Code draws box
+    tables constantly, so that is the common path, not a corner.
 
-    Flag off: Telegram renders a table in a proportional font and the columns
-    drift, so tables are fenced to at least keep them monospace. That is a degraded
-    fallback, not a fix -- a wide one still wraps on a narrow screen. Prose, stray
-    `|` and already-fenced content are left untouched either way."""
-    if rich_enabled():
-        return text.strip()
+    Flag off (or a box table we can't parse): fence it, which at least keeps it
+    monospace. That is a degraded fallback, not a fix -- a wide one still wraps on a
+    narrow screen. Prose, stray `|` and already-fenced content are untouched either way."""
+    rich = rich_enabled()
     body = []
     for kind, payload in _table_segments(text):
-        body.append(payload if kind == "text"
+        if kind == "text":
+            body.append(payload)
+            continue
+        md = None
+        if rich:
+            md = payload if _MDROW.match(payload[0]) else _box_to_md(payload)
+        body.append("\n".join(md) if md
                     else "```\n" + "\n".join(payload) + "\n```")
     return "\n".join(body).strip()
 
