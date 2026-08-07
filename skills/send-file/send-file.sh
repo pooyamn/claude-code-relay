@@ -1,17 +1,35 @@
 #!/usr/bin/env bash
-# send-file.sh — zip the given file(s)/folder and send them to THIS session's
-# bound Telegram chat via the OpenClaw gateway.
+# send-file.sh — send file(s)/folder(s) to THIS session's bound Telegram chat via
+# the OpenClaw gateway. Sends RAW when the gateway will accept the file as-is, and
+# falls back to a zip when it won't.
 #
-# Always zips: OpenClaw/Telegram block many raw file extensions (.hex, .exe, .sh,
-# binaries...), but a .zip always gets through. Resolves the destination chat/topic
-# automatically from the relay's per-session target file — no need to pass it.
+# Why not always zip (the old behaviour): the gateway accepts host-local media that
+# it can buffer-verify as "images, audio, video, PDF, Office documents, archives, and
+# validated plain-text documents". Everything else is refused as `unknown`. That is a
+# CONTENT sniff, not an extension blocklist -- so a PDF, a log or a screenshot never
+# needed wrapping, and zipping them cost the real filename, inline image preview, and
+# an unzip step on the phone. Measured 2026-08-07: .txt sent raw, PDF sent raw,
+# .hex refused as unknown.
+#
+# So: try raw, and zip only what actually needs it. The zip fallback is automatic and
+# also covers any type this script's sniff gets wrong -- a raw refusal must never mean
+# an undelivered file.
 #
 # Usage:  send-file.sh <path> [more paths...]
-#         SEND_CAPTION="here's the log" send-file.sh ./build.log
-set -euo pipefail
+#         SEND_CAPTION="here's the log"  send-file.sh ./build.log
+#         SEND_ZIP=1                     send-file.sh ./a.pdf ./b.pdf   # force one zip
+#         SEND_PHOTO=1                   send-file.sh ./shot.png        # inline preview
+#
+# Images go as DOCUMENTS by default. Telegram re-encodes an inline photo (that is
+# what --force-document exists to avoid), and these are usually schematics, plots or
+# TUI screenshots where the detail that gets crushed is the whole point of sending
+# it. SEND_PHOTO=1 opts back into the compressed inline preview when the picture is
+# meant to be glanced at rather than read.
+set -uo pipefail
 
 OPENCLAW="$(command -v openclaw || echo /opt/homebrew/bin/openclaw)"
 RELAY_WORK="$HOME/.openclaw/workspace/scripts/relay-work"
+OUTDIR="$HOME/.openclaw/media/outbound"
 
 [ "$#" -ge 1 ] || { echo "usage: send-file.sh <path> [path...]" >&2; exit 2; }
 
@@ -45,32 +63,96 @@ CHAT="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("chat
 THREAD="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("thread",""))' "$TARGET")"
 [ -n "$CHAT" ] || { echo "send-file: no chat id in $TARGET" >&2; exit 1; }
 
-# --- validate inputs ---
 for f in "$@"; do [ -e "$f" ] || { echo "send-file: not found: $f" >&2; exit 1; }; done
-
-# --- always zip ---
-# Write under media/outbound: OpenClaw only delivers media from allowlisted dirs
-# (the workspace and ~/.openclaw/media/*), NOT from .openclaw/tmp or /tmp.
-TS="$(date +%Y%m%d-%H%M%S)"
-OUTDIR="$HOME/.openclaw/media/outbound"
 mkdir -p "$OUTDIR"
-if [ "$#" -eq 1 ]; then
-  nm="$(basename "$1")"; ZIP="$OUTDIR/${nm%.*}-$TS.zip"
+TS="$(date +%Y%m%d-%H%M%S)"
+
+# --- send one already-staged file -------------------------------------------------
+# $1 path (must be under an allowed dir)  $2 caption  $3 "photo"|"doc"
+send_one() {
+  local path="$1" cap="$2" mode="$3"
+  local args=(message send --channel telegram --target "$CHAT" --media "$path")
+  [ "$mode" = doc ] && args+=(--force-document)
+  [ -n "$THREAD" ] && args+=(--thread-id "$THREAD")
+  args+=(--message "$cap" --json)
+  "$OPENCLAW" "${args[@]}" 2>&1
+}
+
+# The gateway only reads media from allowlisted dirs (the workspace and
+# ~/.openclaw/media/*); /tmp is refused outright. Copy anything else in, keeping the
+# real filename so the user receives "sheet-1-core.pdf", not a timestamped archive.
+stage() {
+  local src="$1"
+  case "$src" in
+    "$HOME/.openclaw/workspace/"*|"$HOME/.openclaw/media/"*) printf '%s' "$src"; return ;;
+  esac
+  local dst="$OUTDIR/$(basename "$src")"
+  cp -f "$src" "$dst" 2>/dev/null && printf '%s' "$dst" || printf '%s' "$src"
+}
+
+# Mirror of the gateway's accepted classes. Deliberately conservative: a wrong "yes"
+# only costs one failed attempt (we then zip), a wrong "no" costs a needless zip.
+raw_ok() {
+  local mime; mime="$(file -b --mime-type "$1" 2>/dev/null)"
+  case "$mime" in
+    image/*|audio/*|video/*|text/*) return 0 ;;
+    application/pdf|application/zip|application/gzip|application/x-tar|application/x-7z-compressed|application/x-bzip2) return 0 ;;
+    application/msword|application/vnd.openxmlformats-officedocument.*|application/vnd.ms-*|application/vnd.oasis.opendocument.*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+is_image() { case "$(file -b --mime-type "$1" 2>/dev/null)" in image/*) return 0 ;; *) return 1 ;; esac; }
+
+zip_and_send() {   # $@ = paths to archive together
+  local zip
+  if [ "$#" -eq 1 ]; then
+    local nm; nm="$(basename "$1")"; zip="$OUTDIR/${nm%.*}-$TS.zip"
+  else
+    zip="$OUTDIR/files-$TS.zip"
+  fi
+  rm -f "$zip"
+  if [ "$#" -eq 1 ] && [ -d "$1" ]; then
+    ( cd "$(dirname "$1")" && zip -q -r "$zip" "$(basename "$1")" )   # keep structure
+  else
+    zip -q -j "$zip" "$@"
+  fi
+  local out; out="$(send_one "$zip" "${SEND_CAPTION:-📦 $(basename "$zip")}" doc)"
+  if printf '%s' "$out" | grep -q "Error"; then
+    echo "send-file: FAILED to send $(basename "$zip")" >&2; printf '%s\n' "$out" >&2; return 1
+  fi
+  echo "send-file: sent $(basename "$zip") ($(du -h "$zip" | cut -f1), zipped) -> chat $CHAT${THREAD:+ topic $THREAD}" >&2
+}
+
+# --- decide per input -------------------------------------------------------------
+# Folders and unknown binaries are collected and zipped together; everything the
+# gateway accepts goes raw, one message each, keeping its own name and (for images)
+# an inline preview instead of a download.
+NEEDS_ZIP=(); RAW=()
+if [ "${SEND_ZIP:-0}" = "1" ]; then
+  NEEDS_ZIP=("$@")
 else
-  ZIP="$OUTDIR/files-$TS.zip"
-fi
-rm -f "$ZIP"
-if [ "$#" -eq 1 ] && [ -d "$1" ]; then
-  ( cd "$(dirname "$1")" && zip -q -r "$ZIP" "$(basename "$1")" )   # keep folder structure
-else
-  zip -q -j "$ZIP" "$@"                                             # flat zip of files
+  for f in "$@"; do
+    if [ -d "$f" ] || ! raw_ok "$f"; then NEEDS_ZIP+=("$f"); else RAW+=("$f"); fi
+  done
 fi
 
-# --- send via the gateway ---
-ARGS=(message send --channel telegram --target "$CHAT" --media "$ZIP" --force-document)
-[ -n "$THREAD" ] && ARGS+=(--thread-id "$THREAD")
-ARGS+=(--message "${SEND_CAPTION:-📦 $(basename "$ZIP")}" --json)
+rc=0
+for f in "${RAW[@]:-}"; do
+  [ -n "$f" ] || continue
+  staged="$(stage "$f")"
+  mode=doc
+  { [ "${SEND_PHOTO:-0}" = "1" ] && is_image "$staged"; } && mode=photo
+  out="$(send_one "$staged" "${SEND_CAPTION:-$(basename "$f")}" "$mode")"
+  if printf '%s' "$out" | grep -q "Error"; then
+    # The gateway refused it despite our sniff -- zip that one file rather than lose it.
+    echo "send-file: raw send refused for $(basename "$f"), falling back to zip" >&2
+    zip_and_send "$f" || rc=1
+  else
+    echo "send-file: sent $(basename "$f") ($(du -h "$f" | cut -f1), raw${mode:+, $mode}) -> chat $CHAT${THREAD:+ topic $THREAD}" >&2
+  fi
+done
 
-"$OPENCLAW" "${ARGS[@]}"
-echo
-echo "send-file: sent $(basename "$ZIP") ($(du -h "$ZIP" | cut -f1)) -> chat $CHAT${THREAD:+ topic $THREAD}" >&2
+if [ "${#NEEDS_ZIP[@]}" -gt 0 ] && [ -n "${NEEDS_ZIP[0]:-}" ]; then
+  zip_and_send "${NEEDS_ZIP[@]}" || rc=1
+fi
+exit $rc

@@ -8,8 +8,19 @@ import os, sys, time, importlib.util
 
 DIR = os.path.dirname(os.path.abspath(__file__))
 SCRIPTS = os.path.dirname(DIR)
-os.environ.setdefault("RELAY_CHAT_ID", "-100")
-os.environ.setdefault("RELAY_THREAD_ID", "5")
+# ASSIGN, don't setdefault: these tests are usually run from INSIDE a relay session,
+# where RELAY_CHAT_ID/RELAY_THREAD_ID are already exported by claude-tui-backend-multi.
+# setdefault left the real values in place, so "thread args from env" compared against
+# the live topic id and failed everywhere except a clean shell.
+os.environ["RELAY_CHAT_ID"] = "-100"
+os.environ["RELAY_THREAD_ID"] = "5"
+# Pin the OpenClaw config the module reads, so rich-vs-plain mode (and therefore the
+# per-message cap) is a property of the test, not of the host's live settings.
+_PLAIN_CFG = os.path.join(DIR, "cfg-plain.json")
+_RICH_CFG = os.path.join(DIR, "cfg-rich.json")
+open(_PLAIN_CFG, "w").write('{"channels": {"telegram": {}}}')
+open(_RICH_CFG, "w").write('{"channels": {"telegram": {"richMessages": true}}}')
+os.environ["RELAY_CFG"] = _PLAIN_CFG
 spec = importlib.util.spec_from_file_location("relaysend", os.path.join(SCRIPTS, "claude-relay-send.py"))
 m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
@@ -79,6 +90,25 @@ m.tg_send = lambda text, silent=False: sent.append(text) or "id"
 m.deliver("x" * (m.TG_LIMIT + 50))
 check("deliver chunks a >cap reply", len(sent) == 2)
 check("deliver chunks stay within cap", all(len(s) <= m.TG_LIMIT for s in sent))
+
+# --- rich mode: bigger cap, and tables must survive untouched ----------------
+def _mode(path):
+    os.environ["RELAY_CFG"] = path
+    m._RICH_CACHE.update(t=0.0, v=None)      # drop the TTL cache between modes
+_mode(_RICH_CFG)
+check("rich mode detected", m.rich_enabled() is True)
+check("rich raises the cap", m.text_limit() == m.TG_RICH_LIMIT)
+_tbl = "Intro\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\nOutro"
+check("rich passes a table through unfenced",
+      m.render_reply(_tbl) == _tbl.strip() and "```" not in m.render_reply(_tbl))
+sent.clear()
+m.deliver("x" * 5000)
+check("rich sends 5k as ONE message", len(sent) == 1)
+_mode(_PLAIN_CFG)
+check("plain mode detected", m.rich_enabled() is False)
+check("plain keeps the 4096 cap", m.text_limit() == m.TG_LIMIT)
+check("plain fences a table but keeps its rows",
+      "```" in m.render_reply(_tbl) and "| A | B |" in m.render_reply(_tbl))
 sent.clear()
 m.deliver("short")
 check("deliver sends a short reply once", sent == ["short"])

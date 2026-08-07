@@ -16,3 +16,5 @@ scripts/openclaw-newcc-plugin/node_modules/
 # Alt-model settings may carry a provider API key: keep local copies out of git.
 # The repo ships only the REPLACE_WITH_* template committed explicitly.
 relay-work/
+scripts/tests/cfg-plain.json
+scripts/tests/cfg-rich.json

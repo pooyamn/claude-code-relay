@@ -121,7 +121,8 @@ def rich_enabled():
     now = time.time()
     if _RICH_CACHE["v"] is None or now - _RICH_CACHE["t"] > 30:
         try:
-            cfg = json.load(open(os.path.expanduser("~/.openclaw/openclaw.json")))
+            path = os.environ.get("RELAY_CFG", os.path.expanduser("~/.openclaw/openclaw.json"))
+            cfg = json.load(open(path))
             v = cfg.get("channels", {}).get("telegram", {}).get("richMessages") is True
         except Exception:
             v = False        # unreadable config -> assume plain; never lose a reply

@@ -88,6 +88,27 @@ The `cc-relay-commands` plugin registers `/newcc`, `/unbind`, `/ccstatus` as **p
 | Claude asks a question | tappable buttons appear; tap to answer |
 | `claude-attach 123456` (terminal) | attach to the live TUI |
 
+## Telegram rich messages (tables that actually line up)
+
+Telegram renders normal message text in a **proportional** font, so any table — ASCII,
+box-drawing or markdown — has columns that drift, and a phone wraps a too-wide code
+block instead of scrolling it. OpenClaw ≥ 2026.7 can convert markdown into Bot API 10.2
+**rich blocks**, where a table becomes a real table. It is off by default:
+
+```json
+{ "channels": { "telegram": { "richMessages": true } } }
+```
+
+With it on, the relay passes replies through untouched so the converter sees the
+markdown, and the per-message cap follows suit (32768 vs 4096). With it off, tables are
+wrapped in a `` ``` `` fence to at least keep them monospace. The relay re-reads the flag
+every 30s, so toggling it doesn't need a watcher restart.
+
+**Check your clients first.** OpenClaw's own docs warn that some Desktop, Web, Android
+and third-party clients display rich messages as *unsupported* rather than degrading, so
+enable it only if every client you read the bot on handles it. Captions are unaffected —
+they stay HTML, capped at 1024.
+
 ## Honest caveats
 
 - **Terms of service.** Automating the interactive client with no human watching each turn is the same signal Anthropic uses to move usage to the metered pool. It may be detected or blocked. Use deliberately and at your own risk.
@@ -176,7 +197,11 @@ global `~/.kimi-code/AGENTS.md` rule tells kimi to read it before doing anything
 | `scripts/relay-claude-settings-<name>.json` | optional ALT-model settings (e.g. `kimi`, `k3`) — routes that model to another gateway |
 | `scripts/relay-claude-settings-ik3.json` | native-backend declaration: `cc model ik3` drives the `kimi` binary (no secret — kimi uses its own OAuth) |
 | `scripts/relay-ws-edit-server.mjs` | fast WS transport for the live progress bubble (drains edits on quit) |
+| `scripts/reap-dead-bindings.py` | remove bindings whose chat or workspace is gone, plus the config they leave behind |
+| `scripts/relay-block-senduserfile` | PreToolUse hook: deny `SendUserFile` (no client in a relay session) and point at the send-file skill |
 | `scripts/openclaw-newcc-plugin/` | OpenClaw plugin: pre-agent `/newcc` `/unbind` `/ccstatus` |
+| `skills/send-file/` | send a file to the bound chat; raw when the gateway accepts it, zipped when it doesn't |
+| `skills/move-to-topic/` | fork this session into a new topic (`move-to-topic.sh`) or bind another folder to one (`bind-folder-to-topic.sh`) |
 | `install.sh` | one-shot installer (copy scripts, install plugin, enable buttons) |
 
 ## Tests

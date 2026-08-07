@@ -3,6 +3,59 @@
 All notable changes to **claude-code-relay** are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/); versions are date-tagged.
 
+## [0.9.0] — 2026-08-07
+
+### Added
+- **Telegram rich messages.** OpenClaw ≥ 2026.7 converts markdown into Bot API 10.2 rich
+  blocks behind `channels.telegram.richMessages` (off by default). With it on a markdown
+  table becomes a native table, so `render_reply()` now passes text through untouched —
+  anything done to a table here would only hide it from the converter. The per-message cap
+  follows the mode (32768 vs 4096); captions deliberately do not, because OpenClaw keeps
+  them as HTML at 1024. The flag is re-read on a 30s TTL rather than cached at import: the
+  watcher is long-lived and would otherwise hold the startup value until every watcher
+  restarted.
+- **`reap-dead-bindings.py`.** Every `newcc` bind writes four coupled entries (binding,
+  `agents.list`, model, cliBackend) and nothing ever removed them. Reaps three evidenced
+  classes — workspace gone, chat id orphaned by a group→supergroup upgrade, and config no
+  binding references — and only *reports* the case whose fix is a human decision: two peers
+  sharing one workspace. Runs after every bind/unbind plus a 6-hourly sweep.
+- **`bind-folder-to-topic.sh` gained `--chat`,** the only way to create a topic in a group
+  the calling session isn't bound to. Validated hard: the target must be a configured
+  group *and* a `-100` supergroup.
+
+### Fixed
+- **Busy state was read from the whole pane.** `esc to interrupt` is footer chrome and
+  vanishes when a turn ends, but *"Waiting for N background agents to finish"* is printed
+  as transcript text and stays on screen forever. Any pane still showing it read as
+  permanently busy, so every `cc model` / slash command in that topic was refused against
+  an idle session. Measured against a live busy pane the marker is in the **footer**, so
+  matching is now limited to the last 8 lines.
+- **`SendUserFile` silently delivered nothing.** It targets a Claude Code *client*; a relay
+  session is a tmux pane scraped as text, so attachments rendered as filenames in the pane
+  and the model reported "Sent." in good faith. A PreToolUse hook now denies it and names
+  the send-file skill — the built-in tool wins on its own merits, so an instruction wouldn't
+  have held.
+- **Two topics could share one Claude session.** The relay keys a session by *folder* while
+  OpenClaw keys an agent by *peer*, so two peers on one workspace shared one conversation
+  and one reply target (last inbound wins). `bind-folder-to-topic.sh` now refuses a folder
+  any binding already claims, and creates the folder when missing.
+- **`unbind` leaked config.** It dropped the binding and left the agent/model/backend triple
+  behind as "harmless, reusable"; they accumulate and obscure the cause of a broken group.
+
+### Changed
+- **Table-as-image pipeline removed** (~200 lines and the PIL dependency): the PNG renderer,
+  Menlo font fallback chain, U+FFFF tofu probe and the photo+caption bubble. It existed only
+  to work around the proportional font, which rich blocks fix properly. The `` ``` `` fence
+  fallback is kept for `richMessages=off`. `/screenshot` and `/workflows` are unaffected.
+- **send-file no longer zips everything.** The gateway accepts host-local media it can
+  buffer-verify as images, audio, video, PDF, Office documents, archives and validated
+  plain text — a *content sniff*, not the extension blocklist the skill assumed. PDFs, logs
+  and screenshots now go raw with their real filename; unknown binaries and folders are
+  zipped, and a refused raw send falls back to zip automatically. Images default to
+  documents so Telegram doesn't re-encode detail out of schematics (`SEND_PHOTO=1` opts
+  back in).
+- **Live progress window 4000 → 10000 chars,** now that the rich text cap allows it.
+
 ## [0.8.0] — 2026-07-18
 
 ### Added
