@@ -1078,12 +1078,6 @@ def _pad_md_table(rows):
             out.append("| " + " | ".join(c.ljust(widths[i]) for i, c in enumerate(r)) + " |")
     return out
 
-# A table narrower than this (chars) fits a phone screen as monospace text, so it
-# stays inline in a fence. A WIDER one would wrap on a narrow screen even in monospace
-# -- Telegram wraps a too-wide code block instead of scrolling it, which scrambles the
-# columns -- so it is rendered to an image and sent as an inline photo instead.
-TABLE_IMG_WIDTH = 46
-
 def _table_segments(text):
     """Split text into ('text', str) and ('table', [lines]) segments in order,
     fence-aware. A box-drawing run (>=2 lines) or a markdown pipe table is a 'table';
@@ -1118,199 +1112,25 @@ def _table_segments(text):
     flush()
     return segs
 
-# Menlo (the macOS Terminal font) is monospace with FULL box-drawing coverage --
-# EVERY glyph, incl. ─ │ ┌ ┼ ┤, has the same advance width (measured: all 24px at
-# size 40), so the borders connect into solid lines and columns align pixel-perfectly.
-# freeze cannot do this: it ignores --font.file/--font.family (byte-identical output
-# regardless) and its bundled font lacks box-drawing, so those chars fall back to a
-# PROPORTIONAL font -- the lines gap and the columns drift. So we render the table
-# ourselves with PIL + Menlo, and keep freeze only as a fallback.
-_TABLE_FONT = "/System/Library/Fonts/Menlo.ttc"
-# Menlo covers box-drawing/math/arrows/accents but NOT emoji, Arabic/Farsi or CJK --
-# those render as tofu (□) and, being a different advance, also break the column grid.
-# So draw PER CHARACTER with a fallback chain. Size 40 is deliberate: Apple Color Emoji
-# is a bitmap font that only loads at fixed strikes (20/26/32/40/48/...).
-_TABLE_FONT_SIZE = 40
-_FALLBACK_FONTS = [
-    "/Library/Fonts/Arial Unicode.ttf",          # Farsi/Arabic + CJK + most scripts
-    "/System/Library/Fonts/STHeiti Light.ttc",   # CJK
-    "/System/Library/Fonts/Apple Color Emoji.ttc",  # emoji (bitmap, fixed sizes)
-    "/System/Library/Fonts/Apple Symbols.ttf",
-]
+def render_reply(text):
+    """Prepare a reply for delivery.
 
-def _is_wide(ch):
-    """True for characters a terminal renders in TWO cells (CJK, emoji, fullwidth).
-    The source table's spacing was computed against that, so the renderer must
-    advance two cells too or every later column drifts."""
-    import unicodedata
-    if unicodedata.east_asian_width(ch) in ("W", "F"):
-        return True
-    o = ord(ch)
-    return (0x1F300 <= o <= 0x1FAFF     # emoji & pictographs
-            or 0x2600 <= o <= 0x27BF    # misc symbols / dingbats
-            or 0x1F000 <= o <= 0x1F2FF)
+    Normal mode (richMessages on): the text goes through UNTOUCHED. OpenClaw turns
+    a markdown table into a native RichBlockTable, so anything done to it here --
+    fencing it, or swapping it for a picture -- only hides the table from the
+    converter.
 
-def _draw_fitted(draw, img, x, y, ch, font, box_w, box_h):
-    """Draw a fallback glyph scaled to fit its cell span, so a colour-emoji bitmap or
-    an oversized CJK glyph cannot overflow into the neighbouring column."""
-    from PIL import Image, ImageDraw
-    tile = Image.new("RGBA", (int(box_w * 2), int(box_h * 2)), (0, 0, 0, 0))
-    td = ImageDraw.Draw(tile)
-    try:
-        td.text((0, 0), ch, font=font, fill=(220, 220, 220, 255), embedded_color=True)
-    except TypeError:
-        td.text((0, 0), ch, font=font, fill=(220, 220, 220, 255))
-    bbox = tile.getbbox()
-    if not bbox:
-        return
-    glyph = tile.crop(bbox)
-    scale = min(box_w / glyph.width, box_h / glyph.height, 1.0)
-    if scale <= 0:
-        return
-    gw, gh = max(1, int(glyph.width * scale)), max(1, int(glyph.height * scale))
-    glyph = glyph.resize((gw, gh), Image.LANCZOS)
-    # centre horizontally in the span, sit on the text baseline vertically
-    ox = int(x + (box_w - gw) / 2)
-    oy = int(y + (box_h - gh) / 2)
-    img.paste(glyph, (ox, oy), glyph)
-
-def _load_table_fonts():
-    """(primary, [fallbacks], tofu_bitmaps) -- tofu_bitmaps lets us detect a missing
-    glyph by rasterizing U+FFFF (guaranteed unassigned) and comparing: PIL reports a
-    normal advance width for .notdef, so width checks CANNOT detect a missing glyph."""
-    from PIL import Image, ImageDraw, ImageFont
-    def raster(f, ch):
-        im = Image.new("L", (90, 90), 0)
-        ImageDraw.Draw(im).text((5, 5), ch, font=f, fill=255)
-        return im.tobytes()
-    primary = ImageFont.truetype(_TABLE_FONT, _TABLE_FONT_SIZE)
-    fonts, tofu = [], {}
-    for p in _FALLBACK_FONTS:
-        if not os.path.exists(p):
-            continue
-        try:
-            f = ImageFont.truetype(p, _TABLE_FONT_SIZE)
-        except Exception:
-            continue
-        fonts.append(f)
-    for f in [primary] + fonts:
-        try:
-            tofu[id(f)] = raster(f, "￿")
-        except Exception:
-            tofu[id(f)] = None
-    return primary, fonts, tofu, raster
-
-def _render_table_png(block):
-    """Render a table block to a PNG. Draws char-by-char on a fixed monospace cell
-    grid: the cell width comes from Menlo, so columns stay pixel-aligned even when a
-    character (emoji/Farsi/CJK) has to come from a fallback font. freeze is a last
-    resort; None means the caller falls back to fenced text so nothing is lost."""
-    png = os.path.join(STATE_DIR, f"table-{SESSION}.png")
-    try:
-        from PIL import Image, ImageDraw
-        os.makedirs(STATE_DIR, exist_ok=True)
-        primary, fallbacks, tofu, raster = _load_table_fonts()
-        asc, desc = primary.getmetrics()
-        line_h = asc + desc
-        cell_w = primary.getlength("─")           # monospace cell (all Menlo glyphs equal)
-        pad = 28
-        lines = [l.rstrip("\n") for l in block] or [""]
-        ncols = max((len(l) for l in lines), default=1)
-        w = int(cell_w * ncols) + pad * 2
-        h = line_h * len(lines) + pad * 2
-        img = Image.new("RGB", (max(w, 1), max(h, 1)), (24, 24, 27))
-        draw = ImageDraw.Draw(img)
-
-        def font_for(ch):
-            """First font that renders ch as a real glyph (not tofu)."""
-            if raster(primary, ch) != tofu.get(id(primary)):
-                return primary
-            for f in fallbacks:
-                try:
-                    if raster(f, ch) != tofu.get(id(f)):
-                        return f
-                except Exception:
-                    continue
-            return primary
-        cache = {}
-        for row, l in enumerate(lines):
-            y = pad + row * line_h
-            col = 0
-            for ch in l:
-                if ch == " ":
-                    col += 1
-                    continue
-                f = cache.get(ch) or cache.setdefault(ch, font_for(ch))
-                x = pad + col * cell_w
-                # Terminals give emoji/CJK TWO cells; the source table was aligned
-                # against that, so advance 2 columns for wide chars or every following
-                # column (and the closing │) lands in the wrong place.
-                span = 2 if _is_wide(ch) else 1
-                try:
-                    if f is not primary:
-                        # Scale a fallback glyph to fit its cell span so it can't
-                        # overflow into the next column.
-                        _draw_fitted(draw, img, x, y, ch, f, span * cell_w, line_h)
-                    else:
-                        draw.text((x, y), ch, font=f, fill=(220, 220, 220))
-                except Exception:
-                    try:
-                        draw.text((x, y), ch, font=f, fill=(220, 220, 220))
-                    except Exception:
-                        pass
-                col += span
-        img.save(png)
-        return png
-    except Exception:
-        pass
-    try:                                          # fallback: freeze (box-drawing may gap)
-        os.makedirs(STATE_DIR, exist_ok=True)
-        r = subprocess.run([FREEZE, "--language", "txt", "--padding", "20",
-                            "--font.size", "26", "-o", png],
-                           input="\n".join(block), capture_output=True, text=True)
-        if r.returncode == 0 and os.path.exists(png):
-            return png
-    except Exception:
-        pass
-    return None
-
-# The bot account is Telegram Premium, so a photo CAPTION can hold up to ~4096 chars
-# (vs 1024 for a standard account -- verified live). That makes a single "photo +
-# caption" bubble viable for most replies, which is the only Telegram-native way to
-# get an image and its text in ONE message. Kept a margin under the cap.
-CAPTION_MAX = 4000
-
-def render_reply(text, image_marker=True):
-    """Prepare a reply for delivery. Returns (body, wide_tables):
-    - narrow tables are wrapped in a ``` fence inline (monospace, aligned);
-    - wide tables are collected in `wide_tables` for image rendering. In `body` each
-      is replaced by a one-line marker when image_marker=True (they arrive as a
-      SEPARATE photo after the text), or dropped when image_marker=False (the caller
-      is sending the image AS this same bubble via photo+caption, so a "below" marker
-      would be wrong).
-    Prose, stray `|`, and already-fenced content are left untouched.
-
-    With richMessages on, none of that applies: OpenClaw turns a markdown table
-    into a native RichBlockTable, so the table must arrive UNTOUCHED. Fencing it
-    would make it a preformatted block and a PNG would hide it entirely -- either
-    way the converter never sees a table and we keep paying for a workaround that
-    is no longer needed. Pass the text straight through and return no wide tables,
-    which also short-circuits the photo paths in deliver()."""
+    Flag off: Telegram renders a table in a proportional font and the columns
+    drift, so tables are fenced to at least keep them monospace. That is a degraded
+    fallback, not a fix -- a wide one still wraps on a narrow screen. Prose, stray
+    `|` and already-fenced content are left untouched either way."""
     if rich_enabled():
-        return text.strip(), []
-    body, wide = [], []
+        return text.strip()
+    body = []
     for kind, payload in _table_segments(text):
-        if kind == "text":
-            body.append(payload)
-            continue
-        block = payload
-        if max(len(l) for l in block) > TABLE_IMG_WIDTH:
-            wide.append(block)
-            if image_marker:
-                body.append("🖼 table below (too wide for the screen, sent as an image)")
-        else:
-            body.append("```\n" + "\n".join(block) + "\n```")
-    return "\n".join(body).strip(), wide
+        body.append(payload if kind == "text"
+                    else "```\n" + "\n".join(payload) + "\n```")
+    return "\n".join(body).strip()
 
 def _fence_safe_chunks(text, limit):
     """Split into <=limit pieces on line boundaries, keeping ``` fences balanced
@@ -1347,35 +1167,11 @@ def _fence_safe_chunks(text, limit):
     return chunks or [text[:limit]]
 
 def deliver(text):
-    """Send a finished reply. Narrow tables stay inline as monospace fences. For a
-    reply with exactly ONE wide table whose surrounding text fits a caption, the whole
-    thing goes as a SINGLE photo+caption bubble (image + text together -- the
-    Telegram-native way to combine them, enabled by the account's Premium caption
-    limit). Otherwise: text first, then each wide table as an inline photo after it."""
+    """Send a finished reply, split to fit Telegram's per-message cap."""
     if not text:
         return
-    _, wide = render_reply(text, image_marker=True)
-    # One-bubble path: single wide table + caption that fits -> photo + caption.
-    if len(wide) == 1:
-        caption, _ = render_reply(text, image_marker=False)   # image IS this bubble
-        if len(caption) <= CAPTION_MAX:
-            png = _render_table_png(wide[0])
-            if png:
-                tg_send_media(png, caption=caption, document=False)
-                return
-            # freeze failed -> fall through to the text+fenced fallback below
-    # Default path: text (narrow tables inline, wide-table markers), then photos.
-    body, blocks = render_reply(text, image_marker=True)
-    for chunk in _fence_safe_chunks(body, text_limit()):
+    for chunk in _fence_safe_chunks(render_reply(text), text_limit()):
         tg_send(chunk)
-    for block in blocks:
-        png = _render_table_png(block)
-        if png:
-            tg_send_media(png, document=False)      # inline photo, pinch-zoomable
-        else:                                       # freeze failed -> don't lose it
-            fenced = "```\n" + "\n".join(block) + "\n```"
-            for chunk in _fence_safe_chunks(fenced, text_limit()):
-                tg_send(chunk)
 
 def folder_for_session():
     """Reverse-lookup this session's bound folder from relay-codes.json
