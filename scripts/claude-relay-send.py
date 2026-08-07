@@ -14,7 +14,9 @@ SESSION = os.environ.get("CLAUDE_RELAY_SESSION", "clauderelay")
 CHAT_ID = os.environ.get("RELAY_CHAT_ID", "")     # telegram chat id (numeric)
 THREAD_ID = os.environ.get("RELAY_THREAD_ID", "")  # forum topic id, if any
 STREAM = os.environ.get("RELAY_STREAM", "1") != "0"  # live-edit progress; 0 disables
-TG_LIMIT = 4096                                    # telegram message hard cap
+TG_LIMIT = 4096                                    # telegram message hard cap (plain text)
+TG_RICH_LIMIT = 32768        # OpenClaw TELEGRAM_RICH_TEXT_LIMIT, when richMessages=true
+LIVE_WINDOW = 10000          # chars of the live TUI pane shown in the progress bubble
 STATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "relay-work")
 STATE = os.path.join(STATE_DIR, f"menu-{SESSION}.json")
 STREAM_LOG = os.path.join(STATE_DIR, f"stream-{SESSION}.log")
@@ -100,6 +102,37 @@ def tg_remove_buttons(msg_id, note):
                        capture_output=True, text=True)
     _oplog("EDIT-BTNS", msg_id, note, r)
 
+_RICH_CACHE = {"t": 0.0, "v": None}
+
+def rich_enabled():
+    """True when OpenClaw converts our markdown into Telegram rich blocks.
+
+    This flips a core assumption of this file. Our fence/PNG table fallbacks exist
+    ONLY because plain Telegram renders a table in a proportional font, so columns
+    never line up and a phone wraps them into mush. With richMessages=true a
+    markdown table becomes a native RichBlockTable -- but only if it reaches
+    OpenClaw INTACT. Pre-mangling it here (fencing it, or replacing it with a PNG)
+    hides the table from the converter, and we would keep shipping screenshots of
+    something Telegram can now draw properly.
+
+    Re-read on a short TTL so toggling the flag doesn't need a watcher restart --
+    the watcher is long-lived and would otherwise hold the startup value forever.
+    """
+    now = time.time()
+    if _RICH_CACHE["v"] is None or now - _RICH_CACHE["t"] > 30:
+        try:
+            cfg = json.load(open(os.path.expanduser("~/.openclaw/openclaw.json")))
+            v = cfg.get("channels", {}).get("telegram", {}).get("richMessages") is True
+        except Exception:
+            v = False        # unreadable config -> assume plain; never lose a reply
+        _RICH_CACHE.update(t=now, v=v)
+    return _RICH_CACHE["v"]
+
+def text_limit():
+    """Per-message cap for TEXT. Captions are NOT rich (OpenClaw keeps them HTML,
+    1024) so tg_send_media deliberately keeps using TG_LIMIT."""
+    return TG_RICH_LIMIT if rich_enabled() else TG_LIMIT
+
 def tg_send(text, silent=False):
     """Send a plain text message to the bound chat/topic. Returns the message id.
 
@@ -108,7 +141,7 @@ def tg_send(text, silent=False):
     final answer."""
     cmd = ["openclaw", "message", "send", "--channel", "telegram",
            "--target", CHAT_ID, *_thread_args(),
-           "--message", text[:TG_LIMIT], "--json"]
+           "--message", text[:text_limit()], "--json"]
     if silent:
         cmd.append("--silent")
     r = subprocess.run(cmd, capture_output=True, text=True)
@@ -154,7 +187,7 @@ def tg_edit(msg_id, text):
         return
     r = subprocess.run(["openclaw", "message", "edit", "--channel", "telegram",
                         "--target", CHAT_ID, *_thread_args(), "--message-id", str(msg_id),
-                        "--message", text[:TG_LIMIT]],
+                        "--message", text[:text_limit()]],
                        capture_output=True, text=True)
     _oplog("EDIT", msg_id, text, r)
 
@@ -198,7 +231,7 @@ class _WS:
             return ""
         self._n += 1; rid = f"s{self._n}"
         try:
-            self.proc.stdin.write(json.dumps({"op": "send", "text": text[:TG_LIMIT],
+            self.proc.stdin.write(json.dumps({"op": "send", "text": text[:text_limit()],
                                               "silent": silent, "reqid": rid}) + "\n")
             self.proc.stdin.flush()
             end = time.time() + 8
@@ -221,7 +254,7 @@ class _WS:
             return
         try:
             self.proc.stdin.write(json.dumps({"op": "edit", "mid": str(mid),
-                                              "text": text[:TG_LIMIT]}) + "\n")
+                                              "text": text[:text_limit()]}) + "\n")
             self.proc.stdin.flush()
         except Exception:
             pass
@@ -305,7 +338,7 @@ def progress_snapshot(p, started, prompt=""):
     # Neutralise backticks: without the code-block wrapper an unbalanced one
     # (mid-render code) would swallow the rest into an inline code span.
     out = f"{head}\n\n{tail}".strip().replace("`", "'")
-    return (out[: TG_LIMIT - 1] or "✶ thinking…")
+    return (out[: text_limit() - 1] or "✶ thinking…")
 
 def raw_view(p, started):
     """Live progress = the REAL terminal: the last ~4000 chars of the actual TUI
@@ -314,7 +347,7 @@ def raw_view(p, started):
     s = p.rstrip().replace("`", "'")
     if not s.strip():
         return f"⏳ working… ({int(time.time()-started)}s)"
-    s = s[-4000:]
+    s = s[-LIVE_WINDOW:]
     nl = s.find("\n")          # start on a clean line (drop a partial first line)
     if 0 <= nl < 200:
         s = s[nl + 1:]
@@ -852,7 +885,7 @@ def send(prompt):
         except Exception: pass
     reply = extract_reply(prompt) or "(done)"
     if ws:
-        if stream and stream.id and len(reply) <= TG_LIMIT:
+        if stream and stream.id and len(reply) <= text_limit():
             ws.send(reply)      # the answer, as its OWN message (this one notifies)
             ws.close()
             return ""
@@ -1255,7 +1288,16 @@ def render_reply(text, image_marker=True):
       SEPARATE photo after the text), or dropped when image_marker=False (the caller
       is sending the image AS this same bubble via photo+caption, so a "below" marker
       would be wrong).
-    Prose, stray `|`, and already-fenced content are left untouched."""
+    Prose, stray `|`, and already-fenced content are left untouched.
+
+    With richMessages on, none of that applies: OpenClaw turns a markdown table
+    into a native RichBlockTable, so the table must arrive UNTOUCHED. Fencing it
+    would make it a preformatted block and a PNG would hide it entirely -- either
+    way the converter never sees a table and we keep paying for a workaround that
+    is no longer needed. Pass the text straight through and return no wide tables,
+    which also short-circuits the photo paths in deliver()."""
+    if rich_enabled():
+        return text.strip(), []
     body, wide = [], []
     for kind, payload in _table_segments(text):
         if kind == "text":
@@ -1324,7 +1366,7 @@ def deliver(text):
             # freeze failed -> fall through to the text+fenced fallback below
     # Default path: text (narrow tables inline, wide-table markers), then photos.
     body, blocks = render_reply(text, image_marker=True)
-    for chunk in _fence_safe_chunks(body, TG_LIMIT):
+    for chunk in _fence_safe_chunks(body, text_limit()):
         tg_send(chunk)
     for block in blocks:
         png = _render_table_png(block)
@@ -1332,7 +1374,7 @@ def deliver(text):
             tg_send_media(png, document=False)      # inline photo, pinch-zoomable
         else:                                       # freeze failed -> don't lose it
             fenced = "```\n" + "\n".join(block) + "\n```"
-            for chunk in _fence_safe_chunks(fenced, TG_LIMIT):
+            for chunk in _fence_safe_chunks(fenced, text_limit()):
                 tg_send(chunk)
 
 def folder_for_session():
