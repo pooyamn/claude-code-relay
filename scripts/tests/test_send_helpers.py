@@ -124,6 +124,20 @@ _art = "\u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2510\n\u2502 ART  \u2502\n\u
 check("un-gridded box art falls back to a fence", "```" in m.render_reply(_art))
 _mode(_PLAIN_CFG)
 check("plain still fences a box table", "```" in m.render_reply(_box))
+
+# --- CHROME must not eat table DATA rows -------------------------------------
+# Regression: `│` was in the banner character class, so every "│ a │ b │" row was
+# dropped as chrome while the ├─┼─┤ borders survived. A scraped table then arrived
+# as a fence containing nothing but borders. A banner body has two bars, a table
+# row has three or more.
+_row = "  \u2502 Analog switches \u2502 19 x TS5A23157 \u2502 +$1.48 \u2502"
+_bord = "  \u251c\u2500\u2500\u2500\u253c\u2500\u2500\u2500\u2524"
+_banner = "  \u2502 Welcome back to Claude Code   \u2502"
+_round = "  \u256d\u2500\u2500\u2500\u2500\u2500\u256e"
+check("CHROME keeps a table data row", not m.CHROME.search(_row))
+check("CHROME keeps a table border row", not m.CHROME.search(_bord))
+check("CHROME still drops the banner body", bool(m.CHROME.search(_banner)))
+check("CHROME still drops rounded banner rows", bool(m.CHROME.search(_round)))
 sent.clear()
 m.deliver("short")
 check("deliver sends a short reply once", sent == ["short"])

@@ -706,7 +706,13 @@ CHROME = re.compile(
     r"^\s*$|Claude Code v|Tips for getting started|Welcome back|What's new"
     r"|Auto mode is now|Plugins in|Added .claude|/release-notes|Claude Fable"
     r"|Opus 4.8 is here|Ask Claude to create|^[│╭╰─┌┐└┘▐▝▘▛▜█ ]+$|/effort"
-    r"|^\s*[│╭╰╮╯┃┏┓┗┛].*"                     # banner/box rows (incl. text inside borders)
+    r"|^\s*[╭╰╮╯┃┏┓┗┛].*"                      # banner/panel rows (rounded/heavy corners)
+    # Banner BODY only: a line whose ONLY bars are the two edges ("│ Welcome back │").
+    # `│` used to be in the class above, which silently ate every DATA ROW of every
+    # box-drawing table -- the border rows (├─┼─┤) start with different glyphs and
+    # survived, so a scraped table arrived as a fence full of nothing but borders.
+    # A real table row has >=3 bars (two edges + at least one divider), a banner has 2.
+    r"|^\s*│[^│]*│\s*$"
     r"|~/.openclaw/workspace"                    # Claude Code session header path line
     r"|● high|● medium|● low|· /effort"          # status/footer bits
     r"|tmux detected|scroll with PgUp|set -g (mouse|focus)|focus-events"  # tmux hints
