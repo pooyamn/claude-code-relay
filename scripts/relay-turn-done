@@ -9,7 +9,43 @@ hook_event_name, ...}. We key the marker by the session's working directory the
 same way claude-relay-group derives its tmux session name (cr-<md5(cwd)[:10]>),
 so the matching watcher picks it up. Atomic write so the watcher never reads a
 half-written file. Never fail the hook (exit 0 regardless)."""
-import sys, os, json, hashlib, tempfile
+import sys, os, re, json, hashlib, tempfile, subprocess
+
+def _key_for(path):
+    return "cr-" + hashlib.md5(os.path.abspath(path).encode()).hexdigest()[:10]
+
+def resolve_key(cwd, base):
+    """Work out WHICH relay session this turn belongs to.
+
+    Keying on the hook's `cwd` alone is wrong the moment a session moves into a
+    subdirectory (a monorepo subproject, a worktree): the marker lands under
+    cr-<md5(subdir)> while the watcher, keyed by the BOUND folder, keeps reading
+    cr-<md5(bound)> and never sees it. The turn then falls back to pane scraping --
+    and the pane is an alternate screen with NO scrollback, so anything longer than
+    the visible ~50 lines arrives cropped from the top. That is what happened to the
+    dut-board topic, whose agent works in dut-stm32-lqfp64/.
+
+    So: trust the tmux session we are running inside (it IS the relay key), and
+    failing that walk UP from cwd to the nearest ancestor that already has a reply
+    target -- i.e. the folder actually bound to a chat."""
+    pane = os.environ.get("TMUX_PANE")
+    if pane:
+        try:
+            s = subprocess.run(["tmux", "display-message", "-p", "-t", pane, "#S"],
+                               capture_output=True, text=True, timeout=3).stdout.strip()
+            if re.fullmatch(r"cr-[0-9a-f]{10}", s):
+                return s
+        except Exception:
+            pass
+    d = os.path.abspath(cwd)
+    while True:
+        k = _key_for(d)
+        if os.path.exists(os.path.join(base, f"target-{k}.json")):
+            return k
+        parent = os.path.dirname(d)
+        if parent == d:
+            return _key_for(cwd)
+        d = parent
 
 def main():
     try:
@@ -17,8 +53,8 @@ def main():
     except Exception:
         data = {}
     cwd = data.get("cwd") or os.getcwd()
-    key = "cr-" + hashlib.md5(cwd.encode()).hexdigest()[:10]
     base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "relay-work")
+    key = resolve_key(cwd, base)
     try:
         os.makedirs(base, exist_ok=True)
         payload = {

@@ -13,6 +13,7 @@ run() {
 
 run "extract"       python3 "$DIR/test_extract.py"
 run "send-helpers"  python3 "$DIR/test_send_helpers.py"
+run "turndone"      python3 "$DIR/test_turndone.py"
 run "backend"       bash    "$DIR/test_backend.sh"
 
 echo "============================================="
