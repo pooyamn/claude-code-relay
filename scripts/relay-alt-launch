@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+"""Resolve a `cc model` token + folder to a NATIVE ALT CLI launch command.
+
+Prints "<backend-json>\t<command>" when the token names a native backend, and
+nothing at all otherwise (so the caller falls through to claude). Reads the same
+relay-claude-settings-<token>.json the `cc model` path uses, so a token means one
+thing whether it arrives from chat or from a folder's pinned default.
+
+Continuation is DIRECTORY-SCOPED, which is the whole reason this is not a plain
+string template. `opencode -c` continues the most recently used session GLOBALLY,
+not the one for this folder: pinning a folder to ox and relaunching resumed an
+unrelated project's conversation, in that project's directory (observed live --
+the kicad session came up inside a scratch dir). opencode records each session's
+directory in its own SQLite db, so resolve the newest session FOR THIS FOLDER and
+pass -s <id>; with no match, start clean rather than inherit someone else's.
+kimi's -c is per-directory already, so it keeps using it.
+"""
+import json, os, shutil, sqlite3, sys
+
+D = "/Users/pouya/.openclaw/workspace/scripts"
+OC_DB = os.path.expanduser("~/.local/share/opencode/opencode.db")
+
+def opencode_resume_flag(folder):
+    if not folder or not os.path.exists(OC_DB):
+        return ""
+    real = os.path.realpath(folder)
+    try:
+        con = sqlite3.connect(f"file:{OC_DB}?mode=ro", uri=True)
+        rows = con.execute(
+            "SELECT id, directory FROM session ORDER BY rowid DESC LIMIT 400").fetchall()
+    except Exception:
+        return ""
+    for sid, d in rows:
+        if d and os.path.realpath(d) == real:
+            return f" -s {sid}"
+    return ""
+
+def main():
+    if len(sys.argv) < 2 or not sys.argv[1].strip():
+        return 0
+    tok = sys.argv[1].strip().lower()
+    folder = sys.argv[2] if len(sys.argv) > 2 else ""
+    try:
+        cfg = json.load(open(os.path.join(D, f"relay-claude-settings-{tok}.json")))
+    except Exception:
+        return 0
+    be = cfg.get("backend")
+    if be == "kimi":
+        name, tmpl, cont = "kimi", "{bin} -m {model} -c --yolo", ""
+    elif be == "opencode":
+        name, tmpl, cont = "opencode", "{bin} -m {model}", opencode_resume_flag(folder)
+    else:
+        return 0
+    binpath = shutil.which(name) or f"/opt/homebrew/bin/{name}"
+    if not os.path.exists(binpath):
+        return 0
+    cmd = tmpl.format(bin=binpath, model=cfg.get("model", "")) + cont
+    sys.stdout.write(json.dumps({"backend": be}) + "\t" + cmd)
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())

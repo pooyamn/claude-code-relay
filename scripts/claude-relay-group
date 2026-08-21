@@ -22,7 +22,7 @@ KEY="cr-$(printf '%s' "$WORKDIR" | md5 | cut -c1-10)"   # stable per-folder tmux
 # very next message -- which is exactly what silently broke ik3 (the session came back
 # as claude while the backend marker still said kimi, so the watcher scraped a claude
 # pane with the kimi parser and delivered nothing).
-ready(){ tmux capture-pane -t "$KEY" -p 2>/dev/null | grep -qE "for agents|for shortcuts|esc to interrupt|Esc to cancel|to navigate|❯ +[0-9]+\.|context: *[0-9.]+% *\("; }
+ready(){ tmux capture-pane -t "$KEY" -p 2>/dev/null | grep -qE "for agents|for shortcuts|esc to interrupt|Esc to cancel|to navigate|❯ +[0-9]+\.|context: *[0-9.]+% *\(|ctrl\+p commands"; }
 
 if ! ( tmux has-session -t "$KEY" 2>/dev/null && ready ); then
   tmux kill-session -t "$KEY" 2>/dev/null || true
@@ -39,9 +39,25 @@ if ! ( tmux has-session -t "$KEY" 2>/dev/null && ready ); then
   # This path ALWAYS (re)launches claude, so the session's backend marker must be
   # reset to claude. Leaving a stale `kimi` marker here makes the watcher parse a
   # claude pane with the kimi parser -> extracts nothing -> replies never delivered.
-  printf '{"backend": "claude"}' \
-    > "/Users/pouya/.openclaw/workspace/scripts/relay-work/backend-$KEY.json" 2>/dev/null || true
-  tmux send-keys -t "$KEY" "cd $WORKDIR && claude $CONT --settings $SETTINGS --dangerously-skip-permissions" Enter
+  RW="/Users/pouya/.openclaw/workspace/scripts/relay-work"
+  # A folder can PIN a native ALT backend by naming a model token in
+  # default-model-<KEY>.txt (e.g. "ox"). Without this the relaunch path below
+  # unconditionally rewrote the marker to claude, so `cc model ox` survived only
+  # until the next respawn: the pin appeared to work, then silently reverted.
+  # relay-alt-launch resolves the token through the SAME relay-claude-settings-
+  # <token>.json the `cc model` path uses, so a token means one thing either way.
+  ALT="$(python3 /Users/pouya/.openclaw/workspace/scripts/relay-alt-launch \
+        "$(cat "$RW/default-model-$KEY.txt" 2>/dev/null)" "$WORKDIR" 2>/dev/null || true)"
+  if [ -n "$ALT" ]; then
+    printf '%s' "${ALT%%$'\t'*}" > "$RW/backend-$KEY.json" 2>/dev/null || true
+    tmux send-keys -t "$KEY" "cd $WORKDIR && ${ALT#*$'\t'}" Enter
+  else
+    # This path relaunches CLAUDE, so the marker must be reset. Leaving a stale
+    # alt marker makes the watcher parse a claude pane with the wrong parser ->
+    # extracts nothing -> replies never delivered (exactly how ik3 broke).
+    printf '{"backend": "claude"}' > "$RW/backend-$KEY.json" 2>/dev/null || true
+    tmux send-keys -t "$KEY" "cd $WORKDIR && claude $CONT --settings $SETTINGS --dangerously-skip-permissions" Enter
+  fi
   for i in $(seq 1 90); do
     sleep 1
     pane="$(tmux capture-pane -t "$KEY" -p 2>/dev/null || true)"

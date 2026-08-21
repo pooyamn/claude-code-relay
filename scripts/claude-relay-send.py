@@ -1415,8 +1415,25 @@ def restart_with_model(model):
     kb = backend_for_model(model)
     if kb:
         _write_backend(kb)
+        # Resolve through relay-alt-launch so a chat-initiated switch and a
+        # folder-pinned default build the SAME command -- including the
+        # directory-scoped resume. opencode's -c continues the last session
+        # GLOBALLY, so a shared template here would resume another project's
+        # conversation in that project's directory.
         spec = NATIVE_BACKENDS[kb["backend"]]
-        cmd = spec["cmd"].format(bin=spec["bin"], model=shlex.quote(kb["model"]))
+        cmd = ""
+        try:
+            r = subprocess.run(
+                [sys.executable,
+                 os.path.join(os.path.dirname(STATE_DIR), "relay-alt-launch"),
+                 model, folder],
+                capture_output=True, text=True, timeout=15)
+            if "\t" in (r.stdout or ""):
+                cmd = r.stdout.split("\t", 1)[1].strip()
+        except Exception:
+            cmd = ""
+        if not cmd:      # resolver unavailable -> template, minus any resume flag
+            cmd = spec["cmd"].format(bin=spec["bin"], model=shlex.quote(kb["model"]))
         expect = kb.get("label", model)
     else:
         _write_backend({"backend": "claude"})   # reset if switching back from kimi

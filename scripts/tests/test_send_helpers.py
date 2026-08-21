@@ -157,6 +157,21 @@ check("opencode drops the echoed prompt", "what is 2+2?" not in " ".join(m.openc
 check("no footer in the answer", "Build" not in " ".join(m.opencode_reply_lines(_oc_pane, "")))
 check("cc model ox resolves to opencode",
       (m.backend_for_model("ox") or {}).get("backend") == "opencode")
+
+# relay-alt-launch is the single resolver for BOTH `cc model <x>` and a folder's
+# pinned default, so a token cannot mean two different commands.
+import subprocess as _sp
+_R = os.path.join(SCRIPTS, "relay-alt-launch")
+def _alt(tok, folder=""):
+    return _sp.run([sys.executable, _R, tok, folder], capture_output=True, text=True).stdout
+check("alt-launch resolves ox to opencode", '"backend": "opencode"' in _alt("ox", "/tmp"))
+check("alt-launch resolves ik3 to kimi", '"backend": "kimi"' in _alt("ik3", "/tmp"))
+check("alt-launch ignores a claude model", _alt("opus", "/tmp").strip() == "")
+# opencode's -c continues the last session GLOBALLY; an unknown folder must start
+# clean rather than inherit another project's conversation.
+check("alt-launch adds no resume for an unknown folder",
+      " -s " not in _alt("ox", "/tmp/definitely-not-an-opencode-project"))
+check("alt-launch never uses bare -c for opencode", " -c" not in _alt("ox", "/tmp"))
 sent.clear()
 m.deliver("short")
 check("deliver sends a short reply once", sent == ["short"])
