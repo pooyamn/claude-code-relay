@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# opencode-remote-setup — finish the Cloudflare named-tunnel wiring for opencode.
+#
+# Run AFTER `cloudflared tunnel login` (that step needs a browser and cannot be
+# automated). Idempotent: re-running reuses an existing tunnel and DNS route.
+#
+# Why a NAMED tunnel and not `cloudflared tunnel --url`: `opencode serve` and
+# `opencode web` expose NO authentication -- no password, no token, no CORS-independent
+# gate. A quick trycloudflare.com URL would therefore publish an agent with full shell
+# access, this machine's filesystem and its keychain to anyone who learns the URL. A
+# named tunnel is the only form that can sit behind Cloudflare Access, which is what
+# actually supplies the missing login.
+set -euo pipefail
+NAME="${OC_TUNNEL_NAME:-opencode}"
+HOST="${OC_HOSTNAME:-oc.example.com}"
+PORT="${OC_PORT:-4096}"
+CFG_DIR="$HOME/.cloudflared"
+
+[ -f "$CFG_DIR/cert.pem" ] || {
+  echo "opencode-remote-setup: not logged in. Run first:" >&2
+  echo "    cloudflared tunnel login" >&2
+  exit 1
+}
+
+if cloudflared tunnel list 2>/dev/null | awk '{print $2}' | grep -qx "$NAME"; then
+  echo "tunnel '$NAME' already exists"
+else
+  cloudflared tunnel create "$NAME"
+fi
+UUID="$(cloudflared tunnel list 2>/dev/null | awk -v n="$NAME" '$2==n {print $1}' | head -1)"
+[ -n "$UUID" ] || { echo "could not resolve tunnel id for '$NAME'" >&2; exit 1; }
+
+cat > "$CFG_DIR/config.yml" <<YML
+tunnel: $UUID
+credentials-file: $CFG_DIR/$UUID.json
+
+ingress:
+  - hostname: $HOST
+    service: http://127.0.0.1:$PORT
+  - service: http_status:404
+YML
+echo "wrote $CFG_DIR/config.yml  ($HOST -> 127.0.0.1:$PORT)"
+
+cloudflared tunnel route dns "$NAME" "$HOST" 2>&1 | tail -2 || true
+
+cat <<EOF
+
+Next, and this is the part that matters:
+  Cloudflare dashboard -> Zero Trust -> Access -> Applications -> Add self-hosted
+    domain: $HOST
+    policy: Allow, emails = you@example.com   (or your preferred identity)
+
+Until that Access application exists, $HOST is an UNAUTHENTICATED agent with shell
+access on this machine. Do not start the tunnel before the policy is in place.
+
+Then run:  opencode-remote start
+EOF

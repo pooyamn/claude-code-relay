@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# opencode-remote {start|stop|status} — run opencode's server behind the Cloudflare
+# named tunnel created by opencode-remote-setup.
+#
+# Binds opencode to 127.0.0.1 ONLY. The tunnel is the sole path in, so the Access
+# policy in front of it cannot be bypassed by anything on the LAN. Refuses to start
+# if the tunnel config is missing, because without it opencode would be listening
+# with no authentication at all.
+set -euo pipefail
+PORT="${OC_PORT:-4096}"
+HOST="${OC_HOSTNAME:-oc.example.com}"
+DIR="${OC_WORKDIR:-$HOME/.openclaw/workspace}"
+RUN="$HOME/.openclaw/workspace/scripts/relay-work"
+mkdir -p "$RUN"
+OC_PID="$RUN/opencode-server.pid"; CF_PID="$RUN/opencode-tunnel.pid"
+LOG="$RUN/opencode-remote.log"
+
+alive() { [ -f "$1" ] && kill -0 "$(cat "$1")" 2>/dev/null; }
+
+case "${1:-status}" in
+  start)
+    [ -f "$HOME/.cloudflared/config.yml" ] || {
+      echo "no tunnel config -- run opencode-remote-setup first (and add the Access policy)." >&2
+      exit 1; }
+    if alive "$OC_PID"; then echo "opencode server already up (pid $(cat $OC_PID))"
+    else
+      nohup opencode serve --port "$PORT" --hostname 127.0.0.1 >>"$LOG" 2>&1 &
+      echo $! > "$OC_PID"; echo "opencode serve -> 127.0.0.1:$PORT (pid $(cat $OC_PID))"
+    fi
+    if alive "$CF_PID"; then echo "tunnel already up (pid $(cat $CF_PID))"
+    else
+      nohup cloudflared tunnel run >>"$LOG" 2>&1 &
+      echo $! > "$CF_PID"; echo "cloudflared tunnel -> https://$HOST (pid $(cat $CF_PID))"
+    fi
+    ;;
+  stop)
+    for f in "$CF_PID" "$OC_PID"; do
+      alive "$f" && { kill "$(cat "$f")" 2>/dev/null; echo "stopped $(basename "$f" .pid)"; }
+      rm -f "$f"
+    done
+    ;;
+  status)
+    alive "$OC_PID" && echo "opencode server: up (pid $(cat $OC_PID), 127.0.0.1:$PORT)" || echo "opencode server: down"
+    alive "$CF_PID" && echo "tunnel:          up (pid $(cat $CF_PID), https://$HOST)"    || echo "tunnel:          down"
+    ;;
+  *) echo "usage: opencode-remote {start|stop|status}" >&2; exit 2 ;;
+esac
