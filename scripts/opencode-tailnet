@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# opencode-tailnet {up|down|status} [port] — expose an opencode session to your
+# tailnet, privately.
+#
+# Why this and not a Cloudflare quick tunnel: opencode's web UI boots by opening an
+# SSE stream on /event and waiting for "server.connected". trycloudflare.com buffers
+# text/event-stream and delivers ZERO bytes -- measured against the TUI's server and
+# a standalone `opencode serve`, on plain/http2/no-chunked-encoding, with identity
+# and gzip, and with an origin shim adding X-Accel-Buffering:no plus a 2KB primer.
+# All returned nothing, so the page loads and never finishes booting. Tailscale is
+# not an HTTP edge -- `tailscale serve` is a local reverse proxy on a WireGuard mesh,
+# so streaming just works.
+#
+# It is also private: reachable only from YOUR devices, no public hostname, nothing
+# to expire. The session itself stays bound to 127.0.0.1.
+set -uo pipefail
+TS="$(command -v tailscale || echo /opt/homebrew/bin/tailscale)"
+PORT="${2:-${OC_PORT:-4446}}"
+
+case "${1:-status}" in
+  up)
+    "$TS" status >/dev/null 2>&1 || {
+      echo "tailscale is not running/logged in. First:" >&2
+      echo "    sudo brew services start tailscale" >&2
+      echo "    tailscale up" >&2
+      exit 1; }
+    lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1 || {
+      echo "nothing is listening on 127.0.0.1:$PORT -- start the session first" >&2; exit 1; }
+    "$TS" serve --bg "http://127.0.0.1:$PORT" || exit 1
+    echo "exposed 127.0.0.1:$PORT to the tailnet:"
+    "$TS" serve status 2>/dev/null | head -20
+    ;;
+  down)
+    "$TS" serve reset && echo "tailnet exposure removed"
+    ;;
+  status)
+    "$TS" status 2>/dev/null | head -5 || echo "tailscale not running"
+    echo "--- serve ---"
+    "$TS" serve status 2>/dev/null || echo "(nothing served)"
+    ;;
+  *) echo "usage: opencode-tailnet {up|down|status} [port]" >&2; exit 2 ;;
+esac
