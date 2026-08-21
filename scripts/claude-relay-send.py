@@ -1280,11 +1280,27 @@ NATIVE_BACKENDS = {
         "default_model": "kimi-code/k3",
         "parser": "kimi",
     },
+    # opencode 1.18.15. Chrome characterised from a live pane 2026-08-21 (scratch
+    # dir, unauthenticated -- enough to see every state transition except a real
+    # answer):
+    #   busy      "esc interrupt" + an animated block spinner (⬝⬝■■■■■■ -> ⬝⬝⬝⬝⬝⬝⬝⬝)
+    #   input bar "ctrl+p commands", present in BOTH busy and idle
+    #   idle      a context gauge in the footer, e.g. "13.8K (7%)"
+    #   footer    "• OpenCode <version>"; input box drawn with ┃
+    # Note "esc interrupt" has no "to": claude's r"esc to interrupt" does NOT match
+    # it and vice versa, so the two backends' busy regexes cannot cross-fire.
     "opencode": {
         "bin": _alt_bin("opencode", "/opt/homebrew/bin/opencode"),
         "cmd": "{bin} -m {model} -c",
         "default_model": "",
-        "parser": None,          # TODO: characterise the opencode TUI from a live pane
+        "busy": r"esc interrupt",
+        "inputbar": r"ctrl\+p commands",
+        "ready": r"[\d.]+K \(\d+%\)|ctrl\+p commands",
+        # STILL MISSING: how an assistant reply is delimited on screen. That needs an
+        # authenticated turn -- kimi's answer/thinking split turned out to be a COLOUR
+        # difference invisible in plain capture, and guessing it is what made ik3
+        # deliver silence. parser stays None (backend_for_model refuses) until then.
+        "parser": None,
     },
 }
 
