@@ -172,6 +172,18 @@ check("alt-launch ignores a claude model", _alt("opus", "/tmp").strip() == "")
 check("alt-launch adds no resume for an unknown folder",
       " -s " not in _alt("ox", "/tmp/definitely-not-an-opencode-project"))
 check("alt-launch never uses bare -c for opencode", " -c" not in _alt("ox", "/tmp"))
+
+# --- a failed send must NOT be recorded as delivered ------------------------
+# Recording it loses the reply permanently: the dedup guard then treats it as
+# already sent and never retries. Seen live when a relinked ada-url left an older
+# node unable to load libada.3.dylib and every send failed for ~20 minutes.
+_real_send = m.tg_send
+m.tg_send = lambda text, silent=False: ""          # simulate a failing send
+check("deliver() reports failure", m.deliver("anything") is False)
+m.tg_send = lambda text, silent=False: "12345"     # simulate success
+check("deliver() reports success", m.deliver("anything") is True)
+check("empty reply is not a success", m.deliver("") is False)
+m.tg_send = _real_send
 sent.clear()
 m.deliver("short")
 check("deliver sends a short reply once", sent == ["short"])

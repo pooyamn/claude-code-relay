@@ -1283,11 +1283,21 @@ def _fence_safe_chunks(text, limit):
     return chunks or [text[:limit]]
 
 def deliver(text):
-    """Send a finished reply, split to fit Telegram's per-message cap."""
+    """Send a finished reply, split to fit Telegram's per-message cap.
+
+    Returns True only if EVERY chunk got a message id back. The caller records the
+    reply as delivered, and doing that after a failed send loses the message for
+    good: the dedup guard then treats it as already sent and never retries. That
+    happened for real -- a brew upgrade relinked ada-url, an older node could not
+    load libada.3.dylib, and every `openclaw message send` failed with rc=-6 for
+    ~20 minutes. The replies were generated, marked delivered, and never left."""
     if not text:
-        return
+        return False
+    ok = True
     for chunk in _fence_safe_chunks(render_reply(text), text_limit()):
-        tg_send(chunk)
+        if not tg_send(chunk):
+            ok = False
+    return ok
 
 def folder_for_session():
     """Reverse-lookup this session's bound folder from relay-codes.json
@@ -1716,9 +1726,9 @@ def watch():
             if h and h != delivered:
                 if stream and stream.ws:
                     stream.ws.close()
-                deliver(msg)
-                delivered = h
-                save_delivered(h)
+                if deliver(msg):
+                    delivered = h
+                    save_delivered(h)
             stream, was_busy, idle_stable = None, False, 0
             continue
         p = pane()
@@ -1780,9 +1790,9 @@ def watch():
             # Leave the progress bubble in the chat as a frozen record of the
             # turn; deliver the clean answer as a separate, new message below it.
             # The next turn opens a fresh bubble.
-            deliver(reply)
-            delivered = h
-            save_delivered(h)
+            if deliver(reply):
+                delivered = h
+                save_delivered(h)
         if stream and stream.ws:
             stream.ws.close()
         stream, was_busy = None, False
