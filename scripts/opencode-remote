@@ -47,16 +47,30 @@ case "${1:-status}" in
     # here. Two mitigations, both weak by nature: the hostname is random, and the
     # tunnel self-terminates after TTL seconds (default 24h) rather than living
     # until someone remembers it.
-    if alive "$OC_PID"; then echo "opencode server already up (pid $(cat $OC_PID))"
+    # If something is ALREADY listening on $PORT, tunnel that instead of starting a
+    # second server. This is how you expose a live relay session: its TUI serves on
+    # its own port, and a standalone `opencode serve` would be a second process on
+    # the same store -- two writers on one conversation. It also fixes the empty
+    # session list: a standalone server scopes the UI to ITS cwd, and the relay
+    # sessions live in subfolders, so the browser correctly showed nothing.
+    if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+      echo "port $PORT already serving -- tunnelling the existing process"
+    elif alive "$OC_PID"; then
+      echo "opencode server already up (pid $(cat $OC_PID))"
     else
       nohup opencode serve --port "$PORT" --hostname 127.0.0.1 >>"$LOG" 2>&1 &
       echo $! > "$OC_PID"
     fi
     rm -f "$URLF"
+    # Mark the log first: every quick tunnel gets a NEW random hostname, and
+    # grepping the whole file happily returns the PREVIOUS tunnel's URL -- which
+    # looks like success and points at a tunnel that no longer exists.
+    MARK="=== tunnel start $(date +%s) ==="
+    printf '%s\n' "$MARK" >> "$LOG"
     nohup cloudflared tunnel --url "http://127.0.0.1:$PORT" >>"$LOG" 2>&1 &
     echo $! > "$CF_PID"
     for i in $(seq 1 40); do
-      u="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG" 2>/dev/null | tail -1)"
+      u="$(sed -n "/$MARK/,\$p" "$LOG" 2>/dev/null | grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -1)"
       [ -n "$u" ] && { printf '%s\n' "$u" > "$URLF"; break; }
       sleep 1
     done

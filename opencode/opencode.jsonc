@@ -1,0 +1,12 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "~/.config/opencode/relay-instructions.md"
+  ],
+  "permission": {
+    "*": "allow",
+    "edit": "allow",
+    "bash": "allow",
+    "webfetch": "allow"
+  }
+}
