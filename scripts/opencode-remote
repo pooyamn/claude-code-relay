@@ -13,6 +13,7 @@ DIR="${OC_WORKDIR:-$HOME/.openclaw/workspace}"
 RUN="$HOME/.openclaw/workspace/scripts/relay-work"
 mkdir -p "$RUN"
 OC_PID="$RUN/opencode-server.pid"; CF_PID="$RUN/opencode-tunnel.pid"
+URLF="$RUN/opencode-public-url.txt"
 LOG="$RUN/opencode-remote.log"
 
 alive() { [ -f "$1" ] && kill -0 "$(cat "$1")" 2>/dev/null; }
@@ -34,14 +35,53 @@ case "${1:-status}" in
     fi
     ;;
   stop)
-    for f in "$CF_PID" "$OC_PID"; do
+    for f in "$RUN/opencode-ttl.pid" "$CF_PID" "$OC_PID"; do
       alive "$f" && { kill "$(cat "$f")" 2>/dev/null; echo "stopped $(basename "$f" .pid)"; }
       rm -f "$f"
     done
     ;;
+  quick)
+    # UNAUTHENTICATED quick tunnel, at the user's explicit request. opencode serve
+    # and opencode web expose no password or token, so the trycloudflare.com URL is
+    # the ONLY thing standing between the internet and an agent with shell access
+    # here. Two mitigations, both weak by nature: the hostname is random, and the
+    # tunnel self-terminates after TTL seconds (default 24h) rather than living
+    # until someone remembers it.
+    if alive "$OC_PID"; then echo "opencode server already up (pid $(cat $OC_PID))"
+    else
+      nohup opencode serve --port "$PORT" --hostname 127.0.0.1 >>"$LOG" 2>&1 &
+      echo $! > "$OC_PID"
+    fi
+    rm -f "$URLF"
+    nohup cloudflared tunnel --url "http://127.0.0.1:$PORT" >>"$LOG" 2>&1 &
+    echo $! > "$CF_PID"
+    for i in $(seq 1 40); do
+      u="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG" 2>/dev/null | tail -1)"
+      [ -n "$u" ] && { printf '%s\n' "$u" > "$URLF"; break; }
+      sleep 1
+    done
+    TTL="${OC_TTL:-86400}"
+    # Absolute path: $0 is relative when invoked as ./opencode-remote, and the
+    # detached shell that fires 24h later has no guarantee of the same cwd -- the
+    # watchdog exited immediately and the tunnel would have lived forever.
+    SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+    nohup sh -c "sleep $TTL; '$SELF' stop" >/dev/null 2>&1 &
+    echo "$!" > "$RUN/opencode-ttl.pid"
+    u="$(cat "$URLF" 2>/dev/null)"
+    if [ -n "$u" ]; then
+      echo "PUBLIC (no auth): $u"
+      echo "expires in $TTL s (~$((TTL/3600))h), or run: opencode-remote stop"
+    else
+      echo "tunnel started but no URL appeared in $LOG yet" >&2
+    fi
+    ;;
   status)
     alive "$OC_PID" && echo "opencode server: up (pid $(cat $OC_PID), 127.0.0.1:$PORT)" || echo "opencode server: down"
-    alive "$CF_PID" && echo "tunnel:          up (pid $(cat $CF_PID), https://$HOST)"    || echo "tunnel:          down"
+    if alive "$CF_PID"; then
+      u="$(cat "$URLF" 2>/dev/null)"
+      echo "tunnel:          up (pid $(cat $CF_PID), ${u:-https://$HOST})"
+      [ -n "$u" ] && echo "                 ^ PUBLIC, NO AUTHENTICATION"
+    else echo "tunnel:          down"; fi
     ;;
-  *) echo "usage: opencode-remote {start|stop|status}" >&2; exit 2 ;;
+  *) echo "usage: opencode-remote {start|quick|stop|status}" >&2; exit 2 ;;
 esac
