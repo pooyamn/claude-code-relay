@@ -1260,9 +1260,33 @@ def settings_for_model(model):
 # Resolve the kimi binary to an ABSOLUTE path -- the gateway-spawned relay process
 # gets a minimal PATH that often lacks /opt/homebrew/bin, so a bare "kimi" would
 # not be found (same reason FREEZE is resolved absolutely above).
-KIMI_BIN = (shutil.which("kimi")
-            or next((p for p in ("/opt/homebrew/bin/kimi", "/usr/local/bin/kimi")
-                     if os.path.exists(p)), "kimi"))
+def _alt_bin(name, *fallbacks):
+    return (shutil.which(name)
+            or next((p for p in fallbacks if os.path.exists(p)), name))
+
+KIMI_BIN = _alt_bin("kimi", "/opt/homebrew/bin/kimi", "/usr/local/bin/kimi")
+
+# Registry of NATIVE alt CLIs the relay can drive in place of `claude`.
+#   cmd   : launch template; {bin} and {model} are substituted
+#   parser: which pane parser understands this TUI. A backend WITHOUT a parser is
+#           declared but not usable -- launching one would put a foreign TUI on
+#           screen that the scraper reads with claude's rules, which delivers
+#           silence (exactly how ik3 broke when its markers were guessed rather
+#           than characterised). backend_for_model() refuses those on purpose.
+NATIVE_BACKENDS = {
+    "kimi": {
+        "bin": KIMI_BIN,
+        "cmd": "{bin} -m {model} -c --yolo",
+        "default_model": "kimi-code/k3",
+        "parser": "kimi",
+    },
+    "opencode": {
+        "bin": _alt_bin("opencode", "/opt/homebrew/bin/opencode"),
+        "cmd": "{bin} -m {model} -c",
+        "default_model": "",
+        "parser": None,          # TODO: characterise the opencode TUI from a live pane
+    },
+}
 
 def backend_for_model(model):
     """If `cc model <model>` should run a NATIVE ALT CLI (not claude), return its
@@ -1275,10 +1299,15 @@ def backend_for_model(model):
         cfg = json.load(open(alt))
     except Exception:
         return None
-    if cfg.get("backend") != "kimi":
+    spec = NATIVE_BACKENDS.get(cfg.get("backend"))
+    if not spec:
         return None
-    return {"backend": "kimi",
-            "model": cfg.get("model") or "kimi-code/k3",
+    if not spec.get("parser"):
+        # Declared but not characterised: refuse rather than launch a TUI whose
+        # replies we cannot read.
+        return None
+    return {"backend": cfg["backend"],
+            "model": cfg.get("model") or spec["default_model"],
             "label": cfg.get("label") or model}
 
 def _write_backend(cfg):
@@ -1302,7 +1331,8 @@ def restart_with_model(model):
     kb = backend_for_model(model)
     if kb:
         _write_backend(kb)
-        cmd = f"{KIMI_BIN} -m {kb['model']} -c --yolo"
+        spec = NATIVE_BACKENDS[kb["backend"]]
+        cmd = spec["cmd"].format(bin=spec["bin"], model=shlex.quote(kb["model"]))
         expect = kb.get("label", model)
     else:
         _write_backend({"backend": "claude"})   # reset if switching back from kimi
