@@ -438,8 +438,14 @@ def _backend():
     except Exception:
         return {"backend": "claude"}
 
+def backend_name():
+    return _backend().get("backend") or "claude"
+
 def is_kimi():
-    return _backend().get("backend") == "kimi"
+    return backend_name() == "kimi"
+
+def is_opencode():
+    return backend_name() == "opencode"
 
 # kimi TUI markers (empirically characterised, not guessed):
 #   thinking bullet ● rendered grey+italic  -> ESC[38;2;136;136;136 (drop)
@@ -497,6 +503,58 @@ def kimi_reply_lines(color_pane, prompt):
 # fanned out sub-agents/workflows sits at "Waiting for N background agents to finish"
 # with NO "esc to interrupt" and the normal input bar showing. Treating that as IDLE
 # was a real silent-failure source: the watcher never set was_busy, so its idle-delivery
+# opencode TUI markers, characterised from a real turn (2026-08-21, Ox Alpha Free):
+#   ┃ gutter   carries the ECHOED USER PROMPT and the input box -- never the answer
+#   + Thought: Nms   collapsed reasoning header (orange); no body while collapsed
+#   <answer>         plain, indented, NO gutter glyph
+#   ▣  Build · <model> · N.Ns   end-of-turn footer
+# Unlike kimi, the split is STRUCTURAL, so the plain pane is enough -- the answer and
+# the footer share a foreground colour (238;238;238), so a colour rule would have
+# swallowed the footer.
+OC_TURN_END = re.compile(r"▣\s+Build\s+·")
+OC_THOUGHT = re.compile(r"^\s*[+-]\s*Thought:")
+
+def _oc_content_width(lines):
+    """Column where opencode's right-hand panel starts.
+
+    The TUI paints a sidebar (Context / tokens / cost / LSP) on the right of the
+    SAME text rows as the answer, so a naive line read returns "2+2 equals 4.
+    ... $0.00 spent". Derive the boundary from the TUI itself rather than guessing
+    a column: the input box's bottom border (╹▀▀▀...) spans exactly the content
+    width. Falls back to the full line if that border isn't on screen."""
+    for ln in lines:
+        cols = [j for j, ch in enumerate(ln) if ch in "╹▀"]
+        if len(cols) > 20:
+            return max(cols) + 1
+    return None
+
+def opencode_reply_lines(plain_pane, prompt):
+    """Extract opencode's ANSWER: the lines between the reasoning header and the
+    end-of-turn footer. Anchored on the LAST footer so a pane holding several turns
+    yields the newest one."""
+    lines = plain_pane.splitlines()
+    width = _oc_content_width(lines)
+    if width:
+        lines = [ln[:width] for ln in lines]
+    end = None
+    for i, ln in enumerate(lines):
+        if OC_TURN_END.search(ln):
+            end = i
+    if end is None:
+        return []
+    start = 0
+    for j in range(end - 1, -1, -1):
+        if OC_THOUGHT.match(lines[j]) or lines[j].lstrip().startswith("┃"):
+            start = j + 1
+            break
+    out = []
+    for ln in lines[start:end]:
+        t = ln.strip()
+        if not t or t.startswith("┃"):
+            continue
+        out.append(t)
+    return out
+
 # path never fired and replies went undelivered (the session answered into the void),
 # and slash commands got no busy feedback. Both states mean "a turn is in flight".
 class _BackendRe:
@@ -505,10 +563,14 @@ class _BackendRe:
     contain a kimi glyph (a moon emoji, a braille spinner, a 'context: N% (' string --
     all of which I might legitimately type in an answer) can NEVER be misread as busy /
     idle. For a claude session this is byte-identical to the original bare regex."""
-    def __init__(self, claude_re, kimi_re):
-        self._c, self._k = claude_re, kimi_re
+    def __init__(self, claude_re, kimi_re, opencode_re=None):
+        self._c, self._k, self._o = claude_re, kimi_re, opencode_re
     def search(self, s):
-        return self._c.search(s) or (self._k.search(s) if is_kimi() else None)
+        hit = self._c.search(s)
+        if hit:
+            return hit
+        alt = {"kimi": self._k, "opencode": self._o}.get(backend_name())
+        return alt.search(s) if alt else None
 
 BUSY_TAIL_LINES = 8   # footer + input box borders + the spinner line above it
 
@@ -540,10 +602,12 @@ class _TailRe(_BackendRe):
 BUSY = _TailRe(
     re.compile(r"esc to interrupt"
                r"|waiting for \d+ [a-z ]*(?:agents?|workflows?) to finish", re.I),
-    re.compile(r"[\U0001F311-\U0001F318]|[⠇⠋⠙⠸⠴⠦⠧⠏⡇]"))  # moon / braille
+    re.compile(r"[\U0001F311-\U0001F318]|[⠇⠋⠙⠸⠴⠦⠧⠏⡇]"),  # moon / braille
+    re.compile(r"esc interrupt"))                          # opencode
 READY = _BackendRe(
     re.compile(r"for agents|for shortcuts"),
-    re.compile(r"context:\s*[\d.]+%\s*\("))               # kimi idle/footer gauge
+    re.compile(r"context:\s*[\d.]+%\s*\("),              # kimi idle/footer gauge
+    re.compile(r"ctrl\+p commands"))                       # opencode input bar
 SURVEY = re.compile(r"How is Claude doing")         # periodic satisfaction popup
 # The permission/hint footer is present whenever the normal input prompt is up
 # (idle OR mid-turn). A full-screen overlay (/workflows, /config, a stray dialog)
@@ -552,7 +616,8 @@ SURVEY = re.compile(r"How is Claude doing")         # periodic satisfaction popu
 INPUTBAR = _BackendRe(
     re.compile(r"shift\+tab|bypass permissions|accept edits|plan mode|"
                r"for agents|for shortcuts|for commands", re.I),
-    re.compile(r"context:\s*[\d.]+%\s*\("))            # kimi input-bar gauge
+    re.compile(r"context:\s*[\d.]+%\s*\("),           # kimi input-bar gauge
+    re.compile(r"ctrl\+p commands"))                    # opencode input bar
 
 # --- menu detection ----------------------------------------------------------
 OPT = re.compile(r'^\s*(❯)?\s*(\d+)\.\s+(.*\S)\s*$')
@@ -721,6 +786,8 @@ CHROME = re.compile(
 def _reply_lines(prompt):
     if is_kimi():
         return kimi_reply_lines(pane_color(scroll=4000), prompt)
+    if is_opencode():
+        return opencode_reply_lines(pane(scroll=4000), prompt)
     full = pane(scroll=4000).splitlines()
     box = len(full)
     for i in range(len(full) - 1, -1, -1):
@@ -849,7 +916,8 @@ def unqueue_pending():
         deliver("🗑 Queue cleared.")
 
 def count_marker():
-    return pane(scroll=4000).count(KIMI_MARK if is_kimi() else "⏺")
+    mark = {"kimi": KIMI_MARK, "opencode": "▣"}.get(backend_name(), "⏺")
+    return pane(scroll=4000).count(mark)
 
 # --- actions -----------------------------------------------------------------
 def send(prompt):
@@ -1300,7 +1368,7 @@ NATIVE_BACKENDS = {
         # authenticated turn -- kimi's answer/thinking split turned out to be a COLOUR
         # difference invisible in plain capture, and guessing it is what made ik3
         # deliver silence. parser stays None (backend_for_model refuses) until then.
-        "parser": None,
+        "parser": "opencode",
     },
 }
 

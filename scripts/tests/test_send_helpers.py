@@ -138,6 +138,25 @@ check("CHROME keeps a table data row", not m.CHROME.search(_row))
 check("CHROME keeps a table border row", not m.CHROME.search(_bord))
 check("CHROME still drops the banner body", bool(m.CHROME.search(_banner)))
 check("CHROME still drops rounded banner rows", bool(m.CHROME.search(_round)))
+
+# --- opencode backend --------------------------------------------------------
+# Answer sits between the "+ Thought:" header and the "▣ Build ·" footer, with a
+# right-hand sidebar painted on the SAME rows -- so the extractor must cut at the
+# content width derived from the input box border, not read whole lines.
+_bar = "  \u2579" + "\u2580" * 60
+_oc_pane = "\n".join([
+    "  \u2503  what is 2+2?                                                  Context",
+    "     + Thought: 705ms                                                   13,834 tokens",
+    "     2+2 equals 4.                                                      $0.00 spent",
+    "     \u25a3  Build \u00b7 Ox Alpha Free (Unlimited) \u00b7 4.2s        LSP",
+    _bar + "   scratchpad:main",
+])
+check("opencode answer extracted", m.opencode_reply_lines(_oc_pane, "what is 2+2?") == ["2+2 equals 4."])
+check("opencode drops the sidebar", "tokens" not in " ".join(m.opencode_reply_lines(_oc_pane, "")))
+check("opencode drops the echoed prompt", "what is 2+2?" not in " ".join(m.opencode_reply_lines(_oc_pane, "")))
+check("no footer in the answer", "Build" not in " ".join(m.opencode_reply_lines(_oc_pane, "")))
+check("cc model ox resolves to opencode",
+      (m.backend_for_model("ox") or {}).get("backend") == "opencode")
 sent.clear()
 m.deliver("short")
 check("deliver sends a short reply once", sent == ["short"])
