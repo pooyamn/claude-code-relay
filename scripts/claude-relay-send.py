@@ -542,15 +542,24 @@ def opencode_reply_lines(plain_pane, prompt):
             end = i
     if end is None:
         return []
+    # Walk back to the ECHOED PROMPT (the ┃ gutter), not to "+ Thought:".
+    # With tool use opencode interleaves text, "→ tool" lines and thinking headers,
+    # and the header often lands immediately before the footer -- anchoring on it
+    # collapsed the range to nothing, so a healthy session delivered silence for the
+    # rest of its life. The prompt is the only reliable start-of-turn marker.
     start = 0
     for j in range(end - 1, -1, -1):
-        if OC_THOUGHT.match(lines[j]) or lines[j].lstrip().startswith("┃"):
+        if lines[j].lstrip().startswith("┃"):
             start = j + 1
             break
     out = []
     for ln in lines[start:end]:
         t = ln.strip()
         if not t or t.startswith("┃"):
+            continue
+        if OC_THOUGHT.match(ln):            # "+ Thought: 19.2s"
+            continue
+        if t.startswith(("→", "$", "⎿")):   # tool invocation / shell echo / output
             continue
         out.append(t)
     return out

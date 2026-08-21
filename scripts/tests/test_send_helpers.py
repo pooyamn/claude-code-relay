@@ -197,6 +197,31 @@ check("different folders get different ports",
       _alt("ox", "/tmp/aaa").split("--port")[1].split()[0]
       != _alt("ox", "/tmp/bbb").split("--port")[1].split()[0])
 check("kimi is unaffected by the port logic", "--port" not in _alt("ik3", "/tmp"))
+
+# --- opencode with TOOL USE: the layout that silenced a live session ----------
+# Interleaved text / tool lines / thinking, with "+ Thought:" landing immediately
+# before the footer. Anchoring the start on the thinking header collapsed the range
+# to nothing, so an idle, healthy session returned "" forever.
+_W = 70          # content width; the sidebar must start AFTER it, as it does live
+def _row(main, side=""):
+    return main.ljust(_W) + "  " + side
+_tool_pane = "\n".join([
+    _row("  \u2503  render the sheets", "Context"),
+    _row("     All 7 sheets rendered. Now the visual inspection:", "13,834 tokens"),
+    _row("     \u2192 Read sheet-1.png", "$0.00 spent"),
+    _row("     $ mkdir -p /tmp/out", "LSP"),
+    _row("     One left \u2014 the MCU core sheet:", "LSPs are disabled"),
+    _row("     + Thought: 19.2s"),
+    _row("     \u25a3  Build \u00b7 Ox Alpha Free (Unlimited)"),
+    "  \u2579" + "\u2580" * (_W - 3) + "   scratch:main",
+])
+_got = m.opencode_reply_lines(_tool_pane, "render the sheets")
+check("tool-heavy turn still extracts the answer",
+      _got == ["All 7 sheets rendered. Now the visual inspection:",
+               "One left \u2014 the MCU core sheet:"])
+check("tool invocation lines are dropped", not any(x.startswith("\u2192") for x in _got))
+check("shell echo lines are dropped", not any(x.startswith("$") for x in _got))
+check("thinking header is dropped", not any("Thought" in x for x in _got))
 m.tg_send = _real_send
 sent.clear()
 m.deliver("short")
