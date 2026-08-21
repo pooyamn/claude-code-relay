@@ -22,7 +22,28 @@ KEY="cr-$(printf '%s' "$WORKDIR" | md5 | cut -c1-10)"   # stable per-folder tmux
 # very next message -- which is exactly what silently broke ik3 (the session came back
 # as claude while the backend marker still said kimi, so the watcher scraped a claude
 # pane with the kimi parser and delivered nothing).
-ready(){ tmux capture-pane -t "$KEY" -p 2>/dev/null | grep -qE "for agents|for shortcuts|esc to interrupt|Esc to cancel|to navigate|❯ +[0-9]+\.|context: *[0-9.]+% *\(|ctrl\+p commands"; }
+# Liveness. Getting this wrong is ASYMMETRIC: a false "dead" KILLS a working
+# session mid-turn (the user sees "Session churned right before launch"), while a
+# false "alive" merely skips a relaunch. So test the thing that actually decides
+# it -- is a TUI process running in the pane -- and keep pane-scraping only as a
+# fallback for the case that matters (the TUI exited and left a bare shell).
+# Screen text alone was too fragile: it has to match every backend's chrome in
+# every state, and one unrecognised frame (a modal, a redraw, a background-agent
+# view) was enough to destroy a live session.
+ready(){
+  # Primary test: is a TUI in the FOREGROUND of the pane? Ask tmux, and decide by
+  # what it is NOT. Matching binary names does not work -- claude's is version-named
+  # ("2.1.237"), opencode's is "opencode.exe" -- so any allowlist rots on the next
+  # release. A shell in the foreground means the TUI exited; anything else means it
+  # is running, whatever it renders on screen.
+  local fg
+  fg="$(tmux display-message -p -t "$KEY" '#{pane_current_command}' 2>/dev/null)"
+  case "$fg" in
+    ""|zsh|bash|sh|dash|fish|login|tmux) : ;;   # shell -> TUI is gone, fall through
+    *) return 0 ;;
+  esac
+  tmux capture-pane -t "$KEY" -p 2>/dev/null | grep -qE "for agents|for shortcuts|esc to interrupt|esc interrupt|Esc to cancel|to navigate|❯ +[0-9]+\.|context: *[0-9.]+% *\(|ctrl\+p commands|• OpenCode"
+}
 
 if ! ( tmux has-session -t "$KEY" 2>/dev/null && ready ); then
   tmux kill-session -t "$KEY" 2>/dev/null || true

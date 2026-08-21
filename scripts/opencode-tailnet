@@ -15,28 +15,37 @@
 # to expire. The session itself stays bound to 127.0.0.1.
 set -uo pipefail
 TS="$(command -v tailscale || echo /opt/homebrew/bin/tailscale)"
+# Rootless tailscaled: --tun=userspace-networking needs no sudo, but then the CLI
+# must be pointed at our own socket rather than /var/run's.
+TS_SOCK="${TS_SOCK:-$HOME/.local/share/tailscale/tailscaled.sock}"
+[ -S "$TS_SOCK" ] && TS="$TS --socket=$TS_SOCK"
 PORT="${2:-${OC_PORT:-4446}}"
 
 case "${1:-status}" in
   up)
-    "$TS" status >/dev/null 2>&1 || {
+    $TS status >/dev/null 2>&1 || {
       echo "tailscale is not running/logged in. First:" >&2
       echo "    sudo brew services start tailscale" >&2
       echo "    tailscale up" >&2
       exit 1; }
     lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1 || {
       echo "nothing is listening on 127.0.0.1:$PORT -- start the session first" >&2; exit 1; }
-    "$TS" serve --bg "http://127.0.0.1:$PORT" || exit 1
+    # --http, not HTTPS: `tailscale serve` defaults to HTTPS and blocks forever
+    # provisioning a cert when the tailnet has HTTPS Certificates disabled
+    # (status --json showed CertDomains: None). Plain HTTP is fine here -- the hop
+    # is inside WireGuard, which is already encrypted and tailnet-only.
+    TPORT="${TS_PORT:-$((PORT + 4000))}"
+    $TS serve --bg --http="$TPORT" "http://127.0.0.1:$PORT" || exit 1
     echo "exposed 127.0.0.1:$PORT to the tailnet:"
-    "$TS" serve status 2>/dev/null | head -20
+    $TS serve status 2>/dev/null | head -20
     ;;
   down)
-    "$TS" serve reset && echo "tailnet exposure removed"
+    $TS serve reset && echo "tailnet exposure removed"
     ;;
   status)
-    "$TS" status 2>/dev/null | head -5 || echo "tailscale not running"
+    $TS status 2>/dev/null | head -5 || echo "tailscale not running"
     echo "--- serve ---"
-    "$TS" serve status 2>/dev/null || echo "(nothing served)"
+    $TS serve status 2>/dev/null || echo "(nothing served)"
     ;;
   *) echo "usage: opencode-tailnet {up|down|status} [port]" >&2; exit 2 ;;
 esac
