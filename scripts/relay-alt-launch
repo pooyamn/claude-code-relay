@@ -15,7 +15,7 @@ directory in its own SQLite db, so resolve the newest session FOR THIS FOLDER an
 pass -s <id>; with no match, start clean rather than inherit someone else's.
 kimi's -c is per-directory already, so it keeps using it.
 """
-import json, os, shutil, sqlite3, sys
+import hashlib, json, os, shutil, socket, sqlite3, sys
 
 D = "/Users/pouya/.openclaw/workspace/scripts"
 OC_DB = os.path.expanduser("~/.local/share/opencode/opencode.db")
@@ -35,6 +35,33 @@ def opencode_resume_flag(folder):
             return f" -s {sid}"
     return ""
 
+OC_PORT_BASE, OC_PORT_SPAN = 4100, 700
+
+def _free(port):
+    with socket.socket() as sk:
+        try:
+            sk.bind(("127.0.0.1", port)); return True
+        except OSError:
+            return False
+
+def opencode_port(folder):
+    """Stable loopback port so this session is remote-controllable.
+
+    opencode's TUI serves its own API when given --port, which is the equivalent of
+    Claude Code's remoteControlAtStartup -- without it a session can only be driven
+    from its terminal. Derived from the folder so a session keeps the same port
+    across restarts (a random port would be unreachable without rediscovery), and
+    probed for collisions because two folders can hash to one slot. Bound to
+    127.0.0.1: remote access goes through a tunnel, never a raw public listener.
+    """
+    h = int(hashlib.md5((folder or "default").encode()).hexdigest()[:8], 16)
+    start = OC_PORT_BASE + (h % OC_PORT_SPAN)
+    for i in range(OC_PORT_SPAN):
+        port = OC_PORT_BASE + ((start - OC_PORT_BASE + i) % OC_PORT_SPAN)
+        if _free(port):
+            return port
+    return start
+
 def main():
     if len(sys.argv) < 2 or not sys.argv[1].strip():
         return 0
@@ -48,7 +75,17 @@ def main():
     if be == "kimi":
         name, tmpl, cont = "kimi", "{bin} -m {model} -c --yolo", ""
     elif be == "opencode":
-        name, tmpl, cont = "opencode", "{bin} -m {model}", opencode_resume_flag(folder)
+        port = opencode_port(folder)
+        try:
+            rw = os.path.join(D, "relay-work")
+            os.makedirs(rw, exist_ok=True)
+            key = "cr-" + hashlib.md5(os.path.abspath(folder).encode()).hexdigest()[:10] if folder else "cr-unknown"
+            open(os.path.join(rw, f"opencode-port-{key}.txt"), "w").write(str(port))
+        except Exception:
+            pass
+        name = "opencode"
+        tmpl = "{bin} -m {model} --port " + str(port) + " --hostname 127.0.0.1"
+        cont = opencode_resume_flag(folder)
     else:
         return 0
     binpath = shutil.which(name) or f"/opt/homebrew/bin/{name}"

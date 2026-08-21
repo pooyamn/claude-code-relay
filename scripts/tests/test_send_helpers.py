@@ -183,6 +183,20 @@ check("deliver() reports failure", m.deliver("anything") is False)
 m.tg_send = lambda text, silent=False: "12345"     # simulate success
 check("deliver() reports success", m.deliver("anything") is True)
 check("empty reply is not a success", m.deliver("") is False)
+
+# --- remote control on by default for opencode -------------------------------
+# opencode's TUI only serves an API when given --port; without it a session can
+# only be driven from its terminal. The port is derived from the folder so it
+# survives restarts, and bound to loopback so remote access goes via a tunnel.
+_oc = _alt("ox", "/tmp/some-project")
+check("opencode launches with a port", "--port " in _oc)
+check("opencode binds loopback only", "--hostname 127.0.0.1" in _oc)
+check("port is stable across calls", _alt("ox", "/tmp/some-project").split("--port")[1].split()[0]
+                                      == _oc.split("--port")[1].split()[0])
+check("different folders get different ports",
+      _alt("ox", "/tmp/aaa").split("--port")[1].split()[0]
+      != _alt("ox", "/tmp/bbb").split("--port")[1].split()[0])
+check("kimi is unaffected by the port logic", "--port" not in _alt("ik3", "/tmp"))
 m.tg_send = _real_send
 sent.clear()
 m.deliver("short")
