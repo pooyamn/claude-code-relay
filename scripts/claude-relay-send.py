@@ -385,6 +385,28 @@ class _Stream:
         except Exception:
             self.id = None
 
+    def update_text(self, text):
+        """Live bubble fed with the ANSWER ITSELF rather than a scraped pane.
+
+        The API path has no terminal, but opencode's message grows while the turn
+        runs (measured: 1761 chars readable at t+23s with status still busy), so the
+        bubble can show the real reply forming instead of terminal chrome. Trimmed
+        from the END: the interesting part of a partial answer is what just arrived.
+        """
+        # Render even with NO text yet. opencode emits nothing for the first ~20s of
+        # a turn (tool calls, reasoning), so bailing on an empty body left the bubble
+        # frozen at "thinking…" for the whole turn and then closed it -- which reads
+        # as "the live bubble doesn't work". A ticking elapsed counter is the signal
+        # that something is happening; the answer replaces it as soon as text exists.
+        body = (text or "").strip()
+        head = f"⏳ working… ({int(time.time() - self.started)}s)"
+        snap = f"{head}\n\n{body[-LIVE_WINDOW:]}" if body else head
+        if snap == self.sent:
+            return
+        self.sent = snap
+        if self.ws and self.id:
+            self.ws.edit(self.id, snap)
+
     def update(self, p):
         if not (self.id and self.ws):
             return
@@ -1542,6 +1564,29 @@ def restart_with_model(model):
     tmux("kill-session", "-t", SESSION)
     time.sleep(0.5)
     tmux("new-session", "-d", "-s", SESSION, "-x", "200", "-y", "50", "-c", folder, cmd)
+
+    # API mode has no TUI, so there is no chrome to wait for: the pane runs
+    # `opencode serve`, which prints a log line and nothing else. Readiness is the
+    # HTTP API answering. Waiting for READY chrome here is what produced
+    # "Relaunched on oxa, but the TUI didn't confirm ready in 45s" on a switch that
+    # had in fact worked. Also PIN the choice, or the next respawn silently reverts
+    # to whatever the folder's default was.
+    if kb and kb.get("backend") == "opencode-api":
+        try:
+            open(os.path.join(STATE_DIR, f"default-model-{SESSION}.txt"), "w").write(model)
+        except Exception:
+            pass
+        api = oc_api()
+        for _ in range(60):
+            time.sleep(1)
+            if api._alive(api.port_for(folder)):
+                deliver(f"🔄 Restarted on **{kb.get('label', model)}** "
+                        f"(opencode API, port {api.port_for(folder)}).")
+                return
+        deliver(f"⚠️ Relaunched on `{model}`, but the opencode server didn't answer "
+                f"on port {api.port_for(folder)} within 60s.")
+        return
+
     ready = False
     for _ in range(45):
         time.sleep(1)
@@ -1817,6 +1862,7 @@ def watch():
     hook_active = last_done_mt is not None
     last_done_mt = last_done_mt or 0
     stream, menu_sig, was_busy, idle_stable, overlay_stable = None, None, False, 0, 0
+    api_tick, stream_last_text = 0, ""
     while True:
         time.sleep(1.0)
         # API-backed opencode has no pane: turn state comes from /session/status
@@ -1833,11 +1879,33 @@ def watch():
             if not folder:
                 continue
             try:
-                busy = oc_api().is_busy(folder)
+                api = oc_api()
+                # The SSE reader belongs to the WATCHER: inject() is a per-message
+                # process that exits immediately, so a thread started there would die
+                # before a single delta arrived. Idempotent, and it reconnects itself.
+                api.start_live(folder)
+                busy = api.is_busy(folder)
             except Exception:
                 continue
             if busy:
+                # No explicit reset here: the reader already clears its buffer when a
+                # new messageID appears, which is the real turn boundary. Resetting on
+                # the first busy poll instead would race it and wipe deltas that had
+                # already arrived.
                 was_busy = True
+                if stream is None and STREAM:
+                    w = _WS(CHAT_ID, THREAD_ID)
+                    stream = _Stream(read_last_prompt(), w if w.ok else None)
+                if stream:
+                    # Live text comes from the SSE stream, not from polling messages.
+                    # Polling cannot work: on a measured 56s turn the message parts
+                    # stayed [] for 52s and then appeared complete, so a poll-driven
+                    # bubble could only ever show a counter. /event streams
+                    # message.part.delta while the answer is generated.
+                    try:
+                        stream.update_text(oc_api().live_text(folder))
+                    except Exception:
+                        pass
                 continue
             # Deliberately NOT gated on a busy->idle transition. A short turn can
             # finish inside one poll interval, so the busy window is never observed
@@ -1852,9 +1920,17 @@ def watch():
                 reply = ""
             h = dedup_key(reply) if reply else None
             if h and h != delivered:
+                # Freeze the progress bubble BEFORE sending, so the final answer can
+                # never be overtaken by a late edit landing under it.
+                if stream and stream.ws:
+                    stream.ws.close()
+                stream = None
                 if deliver(reply):
                     delivered = h
                     save_delivered(h)
+            elif stream and stream.ws:
+                stream.ws.close()
+                stream = None
             continue
         if not session_alive():
             return

@@ -74,6 +74,31 @@ def main():
     be = cfg.get("backend")
     if be == "kimi":
         name, tmpl, cont = "kimi", "{bin} -m {model} -c --yolo", ""
+    elif be == "opencode-api":
+        # No TUI is driven on this path -- the relay talks to opencode's HTTP API.
+        # What the pane runs instead is the SERVER for this folder, so the tmux
+        # session still exists (the relay keys state and liveness off it), the
+        # foreground process is not a shell, and relay-opencode-api.py finds a
+        # backend already listening on the derived port instead of spawning a second
+        # one. cwd is the folder, which is what scopes opencode's project.
+        port = opencode_port(folder)
+        try:
+            rw = os.path.join(D, "relay-work")
+            os.makedirs(rw, exist_ok=True)
+            key = "cr-" + hashlib.md5(os.path.abspath(folder).encode()).hexdigest()[:10] if folder else "cr-unknown"
+            open(os.path.join(rw, f"opencode-port-{key}.txt"), "w").write(str(port))
+        except Exception:
+            pass
+        binpath = shutil.which("opencode") or "/opt/homebrew/bin/opencode"
+        cmd = f"{binpath} serve --port {port} --hostname 127.0.0.1"
+        if folder:
+            key = "cr-" + hashlib.md5(os.path.abspath(folder).encode()).hexdigest()[:10]
+            log = os.path.join(D, "relay-work", f"opencode-stderr-{key}.log")
+            cmd += f" 2>>{shlex.quote(log)}"
+        sys.stdout.write(json.dumps({"backend": be,
+                                     "provider": cfg.get("provider") or "opencode",
+                                     "model": cfg.get("model") or "x-preview-f-free"}) + "\t" + cmd)
+        return 0
     elif be == "opencode":
         port = opencode_port(folder)
         try:

@@ -189,3 +189,109 @@ def last_reply(folder):
                 out.append(part["text"])
         return "\n".join(out).strip()
     return ""
+
+
+# --- live text over SSE ------------------------------------------------------
+# Polling /session/{id}/message CANNOT drive a progress bubble: measured on a 56s
+# turn, parts stayed [] for 52s and then appeared complete. The bubble could only
+# ever show a counter. /event does stream, as message.part.delta with
+# {field:"text", delta:"..."} per partID, so accumulate those instead.
+
+import threading
+
+_LIVE = {}          # folder -> {"parts": {partID: text}, "msg": id, "lock": Lock}
+_LIVE_THREADS = {}
+
+
+def _live_state(folder):
+    st = _LIVE.get(folder)
+    if st is None:
+        st = _LIVE[folder] = {"msgs": {}, "order": [], "role": {}, "lock": threading.Lock()}
+    return st
+
+
+def _live_reader(folder, sid, base):
+    """Accumulate streamed text per MESSAGE, never resetting a shared buffer.
+
+    The first version cleared everything on message.updated when the id changed --
+    but that event fires for the user's message AND the assistant's, so the buffer
+    was wiped mid-turn and live_text() stayed empty. Bucketing by messageID removes
+    the reset entirely: the newest bucket is the current answer, older ones are just
+    history that costs nothing to keep.
+    """
+    st = _live_state(folder)
+    while True:
+        try:
+            r = urllib.request.urlopen(base + "/event", timeout=None)
+            for raw in r:
+                line = raw.decode("utf8", "replace").strip()
+                if not line.startswith("data:"):
+                    continue
+                try:
+                    ev = json.loads(line[5:])
+                except Exception:
+                    continue
+                pr = ev.get("properties") or {}
+                if pr.get("sessionID") and pr["sessionID"] != sid:
+                    continue
+                t = ev.get("type", "")
+                with st["lock"]:
+                    if t == "message.part.delta" and pr.get("field") == "text":
+                        mid, pid = pr.get("messageID"), pr.get("partID")
+                        if mid and pid:
+                            bucket = st["msgs"].setdefault(mid, {})
+                            bucket[pid] = bucket.get(pid, "") + (pr.get("delta") or "")
+                            st["order"] = [m for m in st["order"] if m != mid] + [mid]
+                    elif t == "message.updated":
+                        # Record the role so live_text can skip the USER message.
+                        # Its text streams too, so without this the bubble opens by
+                        # echoing the prompt back before the answer starts.
+                        info = pr.get("info") or {}
+                        if info.get("id") and info.get("role"):
+                            st["role"][info["id"]] = info["role"]
+                    elif t == "message.part.updated":
+                        part = pr.get("part") or {}
+                        mid, pid = part.get("messageID"), part.get("id")
+                        if part.get("type") == "text" and mid and pid:
+                            bucket = st["msgs"].setdefault(mid, {})
+                            bucket[pid] = part.get("text") or bucket.get(pid, "")
+                            st["order"] = [m for m in st["order"] if m != mid] + [mid]
+        except Exception:
+            time.sleep(2)      # reconnect: the stream dies when the server restarts
+
+
+def start_live(folder):
+    """Begin accumulating streamed text for this folder (idempotent)."""
+    th = _LIVE_THREADS.get(folder)
+    if th and th.is_alive():
+        return
+    base = f"http://127.0.0.1:{port_for(folder)}"
+    try:
+        sid = open(_sid_path(folder)).read().strip()
+    except Exception:
+        return
+    if not sid:
+        return
+    th = threading.Thread(target=_live_reader, args=(folder, sid, base), daemon=True)
+    _LIVE_THREADS[folder] = th
+    th.start()
+
+
+def live_text(folder):
+    """Text of the most recently updated message -- the answer being written."""
+    st = _LIVE.get(folder)
+    if not st:
+        return ""
+    with st["lock"]:
+        for mid in reversed(st["order"]):
+            if st["role"].get(mid) == "user":
+                continue          # the prompt echo, not the answer
+            return "".join(st["msgs"].get(mid, {}).values()).strip()
+        return ""
+
+
+def reset_live(folder):
+    st = _LIVE.get(folder)
+    if st:
+        with st["lock"]:
+            st["msgs"], st["order"], st["role"] = {}, [], {}
