@@ -15,7 +15,7 @@ directory in its own SQLite db, so resolve the newest session FOR THIS FOLDER an
 pass -s <id>; with no match, start clean rather than inherit someone else's.
 kimi's -c is per-directory already, so it keeps using it.
 """
-import hashlib, json, os, shutil, socket, sqlite3, sys
+import hashlib, json, os, shlex, shutil, socket, sqlite3, sys
 
 D = "/Users/pouya/.openclaw/workspace/scripts"
 OC_DB = os.path.expanduser("~/.local/share/opencode/opencode.db")
@@ -92,6 +92,19 @@ def main():
     if not os.path.exists(binpath):
         return 0
     cmd = tmpl.format(bin=binpath, model=cfg.get("model", "")) + cont
+    # Send the TUI's STDERR to a log instead of the pane. This is the root cause of
+    # the "session keeps dying": opencode hit a MaxListenersExceededWarning
+    # (EventTarget leak, node:events overflowWarning) and node wrote the warning
+    # plus a full object dump to stderr -- which IS the pane. The text overwrote the
+    # UI, so the input box and the "▣ Build ·" footer vanished, the scraper found
+    # nothing to extract, and the session went silent while its process stayed alive.
+    # Proven by control experiment: identical program, stderr to the pane leaves the
+    # warning on screen; stderr to a file leaves the pane clean.
+    # The leak itself is opencode's bug; keeping its output off the terminal is ours.
+    if be == "opencode" and folder:
+        key = "cr-" + hashlib.md5(os.path.abspath(folder).encode()).hexdigest()[:10]
+        log = os.path.join(D, "relay-work", f"opencode-stderr-{key}.log")
+        cmd += f" 2>>{shlex.quote(log)}"
     sys.stdout.write(json.dumps({"backend": be}) + "\t" + cmd)
     return 0
 

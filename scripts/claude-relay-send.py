@@ -511,7 +511,15 @@ def kimi_reply_lines(color_pane, prompt):
 # Unlike kimi, the split is STRUCTURAL, so the plain pane is enough -- the answer and
 # the footer share a foreground colour (238;238;238), so a colour rule would have
 # swallowed the footer.
-OC_TURN_END = re.compile(r"▣\s+Build\s+·")
+# End-of-turn footer. The agent name varies (Build / General / any subagent), so
+# match the marker and the separator only.
+#
+# NOT keyed on the trailing duration ("· 4.2s"), though that would otherwise
+# distinguish a running subagent from a finished turn: _oc_content_width() clips
+# each line at the sidebar boundary, and on a wide pane that clip lands BEFORE the
+# duration. A completed turn then looks identical to a running one, so keying on it
+# made finished turns undeliverable. See the subagent limitation in the README.
+OC_TURN_END = re.compile(r"▣\s+\S+\s+·")
 OC_THOUGHT = re.compile(r"^\s*[+-]\s*Thought:")
 
 def _oc_content_width(lines):

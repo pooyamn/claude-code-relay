@@ -104,6 +104,37 @@ if ! ( tmux has-session -t "$KEY" 2>/dev/null && ready ); then
     fi
     if printf '%s' "$pane" | grep -qE "for agents|for shortcuts"; then break; fi
   done
+
+  # opencode only: a session RESUMED into an unfinished subagent turn accepts no
+  # keystrokes -- ever. opencode blocks TUI input while a subagent runs, and if the
+  # TUI dies mid-run (crash, restart) that state is stored in the session, so every
+  # `-s <id>` resume re-enters the block while the subagent process is long gone.
+  # It looks exactly like a hung session: process alive, chrome drawn, input ignored,
+  # nothing delivered. There is no flag in opencode's db to read (session_input is
+  # empty), so test the behaviour: type a token and see whether it echoes. If not,
+  # relaunch WITHOUT the resume flag -- a fresh session is worth more than a wedged
+  # one that can never answer again.
+  if printf '%s' "${ALT:-}" | grep -q '"opencode"'; then
+    PROBE="zzprobe$$"
+    tmux send-keys -t "$KEY" "$PROBE"; sleep 2
+    if tmux capture-pane -t "$KEY" -p 2>/dev/null | grep -q "$PROBE"; then
+      for _ in $(seq 1 ${#PROBE}); do tmux send-keys -t "$KEY" BSpace; done
+    else
+      echo "relay: opencode session wedged on resume; starting fresh" >&2
+      tmux kill-session -t "$KEY" 2>/dev/null || true
+      tmux new-session -d -s "$KEY" -x 200 -y 50
+      # STRIP the resume flag. Reusing the same command relaunched straight back
+      # into the wedged session -- "fresh" that resumes the broken session is not
+      # fresh at all, and the probe would just fire again next time.
+      FRESHCMD="$(printf '%s' "${ALT#*$'\t'}" | sed 's/ -s ses_[A-Za-z0-9]*//')"
+      tmux send-keys -t "$KEY" "cd $WORKDIR && $FRESHCMD" Enter
+      for i in $(seq 1 90); do
+        sleep 1
+        printf '%s' "$(tmux capture-pane -t "$KEY" -p 2>/dev/null || true)" \
+          | grep -qE "ctrl\+p commands|[0-9.]+K \([0-9]+%\)" && break
+      done
+    fi
+  fi
 fi
 
 export CLAUDE_RELAY_SESSION="$KEY"

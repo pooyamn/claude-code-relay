@@ -222,6 +222,8 @@ check("tool-heavy turn still extracts the answer",
 check("tool invocation lines are dropped", not any(x.startswith("\u2192") for x in _got))
 check("shell echo lines are dropped", not any(x.startswith("$") for x in _got))
 check("thinking header is dropped", not any("Thought" in x for x in _got))
+
+
 m.tg_send = _real_send
 sent.clear()
 m.deliver("short")
