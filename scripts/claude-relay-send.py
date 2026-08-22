@@ -447,6 +447,30 @@ def is_kimi():
 def is_opencode():
     return backend_name() == "opencode"
 
+def is_opencode_api():
+    """opencode driven over its HTTP API instead of its TUI.
+
+    Same agent, different transport. The TUI path has to parse a "▣ <agent> ·"
+    footer, clip every line at the sidebar, skip "+ Thought:" headers, survive
+    stderr writing over the screen, and live inside a 50-line pane with no
+    scrollback -- and none of that is opencode misbehaving, it is the cost of
+    reading a UI. The API reports turn state and returns whole messages."""
+    return backend_name() == "opencode-api"
+
+_OC_API = None
+
+def oc_api():
+    """Load the API helper lazily so a broken/absent module can never stop the
+    claude path from working."""
+    global _OC_API
+    if _OC_API is None:
+        import importlib.util
+        path = os.path.join(os.path.dirname(STATE_DIR), "relay-opencode-api.py")
+        spec = importlib.util.spec_from_file_location("relay_oc_api", path)
+        _OC_API = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(_OC_API)
+    return _OC_API
+
 # kimi TUI markers (empirically characterised, not guessed):
 #   thinking bullet ● rendered grey+italic  -> ESC[38;2;136;136;136 (drop)
 #   answer  bullet ●/• rendered bright        -> ESC[38;2;224;224;224 (keep)
@@ -1041,10 +1065,40 @@ def parse_selection(prompt):
 # nothing; the watcher owns all delivery. This removes the old gap where a slow
 # "I'll report back" reply was missed because nothing was watching anymore.
 
+def _bound_peer_for_session():
+    """(chat, thread) this session is BOUND to, straight from OpenClaw's config."""
+    try:
+        folder = folder_for_session()
+        if not folder:
+            return None
+        cfg = json.load(open(os.path.expanduser("~/.openclaw/openclaw.json")))
+        agents = {a.get("id"): a for a in cfg.get("agents", {}).get("list", []) if a.get("id")}
+        real = os.path.realpath(folder)
+        for b in cfg.get("bindings", []):
+            ws = (agents.get(b.get("agentId")) or {}).get("workspace")
+            if ws and os.path.realpath(ws) == real:
+                pid = b.get("match", {}).get("peer", {}).get("id", "")
+                chat, _, th = pid.partition(":topic:")
+                return chat, th
+    except Exception:
+        pass
+    return None
+
 def save_target(chat, thread):
-    """Persist where the watcher should deliver (it has no inbound message)."""
+    """Persist where the watcher should deliver (it has no inbound message).
+
+    Guarded against writing someone else's chat. RELAY_CHAT_ID/RELAY_THREAD_ID come
+    from the environment, so any process that inherits a DIFFERENT session's env and
+    calls this -- a script run by hand from inside another bound session, which is
+    exactly how it happened twice -- silently repoints this session's replies at that
+    chat. The bound peer in openclaw.json is the authority; when the two disagree,
+    keep the binding and drop the env value."""
     if not chat:
         return
+    bound = _bound_peer_for_session()
+    if bound and (str(chat), str(thread or "")) != (str(bound[0]), str(bound[1] or "")):
+        _oplog("TARGET-REFUSED", "", f"env={chat}:{thread} bound={bound[0]}:{bound[1]}")
+        chat, thread = bound[0], bound[1]
     try:
         os.makedirs(STATE_DIR, exist_ok=True)
         json.dump({"chat": chat, "thread": thread}, open(TARGET, "w"))
@@ -1387,6 +1441,14 @@ NATIVE_BACKENDS = {
     #   footer    "• OpenCode <version>"; input box drawn with ┃
     # Note "esc interrupt" has no "to": claude's r"esc to interrupt" does NOT match
     # it and vice versa, so the two backends' busy regexes cannot cross-fire.
+    # API transport: no binary is driven in the pane at all, so there is no cmd and
+    # no pane parser -- relay-opencode-api.py owns the whole conversation.
+    "opencode-api": {
+        "bin": _alt_bin("opencode", "/opt/homebrew/bin/opencode"),
+        "cmd": "",
+        "default_model": "x-preview-f-free",
+        "parser": "api",
+    },
     "opencode": {
         "bin": _alt_bin("opencode", "/opt/homebrew/bin/opencode"),
         "cmd": "{bin} -m {model} -c",
@@ -1420,9 +1482,12 @@ def backend_for_model(model):
         # Declared but not characterised: refuse rather than launch a TUI whose
         # replies we cannot read.
         return None
-    return {"backend": cfg["backend"],
-            "model": cfg.get("model") or spec["default_model"],
-            "label": cfg.get("label") or model}
+    out = {"backend": cfg["backend"],
+           "model": cfg.get("model") or spec["default_model"],
+           "label": cfg.get("label") or model}
+    if cfg.get("provider"):
+        out["provider"] = cfg["provider"]
+    return out
 
 def _write_backend(cfg):
     try:
@@ -1627,6 +1692,21 @@ def inject(prompt):
     menu tap) into the TUI and return '' immediately. The watcher delivers the
     result, so this never blocks on the turn."""
     save_target(CHAT_ID, THREAD_ID)
+    # API-backed opencode: POST the prompt and return. There is no pane to type
+    # into, and prompt_async does not block on the turn, so the contract the
+    # watcher expects ("" now, delivery later) is unchanged.
+    if is_opencode_api() and not prompt.strip().startswith("/"):
+        folder = folder_for_session()
+        cfg = _backend()
+        if folder:
+            write_last_prompt(prompt)
+            try:
+                oc_api().send(folder, prompt,
+                              cfg.get("provider") or "opencode",
+                              cfg.get("model") or "x-preview-f-free")
+            except Exception as e:
+                deliver(f"⚠️ Couldn't reach the opencode server for this folder: {e}")
+            return ""
     # /workflows (and /workflow) can't open their full-screen viewer over the relay
     # -> answer with a scraped text snapshot of live workflow progress instead of
     # opening (and then auto-dismissing) the overlay.
@@ -1723,12 +1803,59 @@ def watch():
     # start. hook_active flips on once we've ever seen one (the session's Claude
     # has the Stop hook); after that the pane-scrape path is only a slow safety
     # net for the rare 'silent tool stop' the Stop hook misses.
+    # API mode: seed the dedup hash from the session's current last reply, or a
+    # restarted watcher would immediately re-deliver the previous answer.
+    if is_opencode_api() and delivered is None:
+        try:
+            _f = folder_for_session()
+            _r = oc_api().last_reply(_f) if _f else ""
+            if _r:
+                delivered = dedup_key(_r)
+        except Exception:
+            pass
     last_done_mt, _seed = read_turndone()
     hook_active = last_done_mt is not None
     last_done_mt = last_done_mt or 0
     stream, menu_sig, was_busy, idle_stable, overlay_stable = None, None, False, 0, 0
     while True:
         time.sleep(1.0)
+        # API-backed opencode has no pane: turn state comes from /session/status
+        # (the id is present while the turn runs, gone when it ends) and the answer
+        # from /session/{id}/message -- whole, untruncated, no chrome to strip. This
+        # branch deliberately skips session_alive(), the busy/ready regexes, the
+        # menu and overlay guards and the Stop-hook marker: every one of those reads
+        # a terminal that does not exist here.
+        if is_opencode_api():
+            refresh_target()
+            if not CHAT_ID:
+                continue
+            folder = folder_for_session()
+            if not folder:
+                continue
+            try:
+                busy = oc_api().is_busy(folder)
+            except Exception:
+                continue
+            if busy:
+                was_busy = True
+                continue
+            # Deliberately NOT gated on a busy->idle transition. A short turn can
+            # finish inside one poll interval, so the busy window is never observed
+            # and the answer would be dropped for good (measured: a 2s turn was
+            # missed entirely). The API hands us the newest assistant message
+            # directly, so compare it to what we already sent -- the dedup hash is
+            # the real guard, and it is exact rather than a timing guess.
+            was_busy = False
+            try:
+                reply = oc_api().last_reply(folder)
+            except Exception:
+                reply = ""
+            h = dedup_key(reply) if reply else None
+            if h and h != delivered:
+                if deliver(reply):
+                    delivered = h
+                    save_delivered(h)
+            continue
         if not session_alive():
             return
         refresh_target()

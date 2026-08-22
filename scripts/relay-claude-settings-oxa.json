@@ -1,0 +1,6 @@
+{
+  "backend": "opencode-api",
+  "provider": "opencode",
+  "model": "x-preview-f-free",
+  "label": "Ox Alpha (API)"
+}
