@@ -616,7 +616,10 @@ BUSY = _TailRe(
 READY = _BackendRe(
     re.compile(r"for agents|for shortcuts"),
     re.compile(r"context:\s*[\d.]+%\s*\("),              # kimi idle/footer gauge
-    re.compile(r"ctrl\+p commands"))                       # opencode input bar
+    # Either form of opencode's input bar: the hint text, OR the context gauge that
+    # replaces it in agent modes ("General (3 of 3) 80.7K (8%)"). Matching only the
+    # hint made a healthy session in General mode read as not-ready.
+    re.compile(r"ctrl\+p commands|[\d.]+K \(\d+%\)"))       # opencode input bar
 SURVEY = re.compile(r"How is Claude doing")         # periodic satisfaction popup
 # The permission/hint footer is present whenever the normal input prompt is up
 # (idle OR mid-turn). A full-screen overlay (/workflows, /config, a stray dialog)
@@ -626,7 +629,7 @@ INPUTBAR = _BackendRe(
     re.compile(r"shift\+tab|bypass permissions|accept edits|plan mode|"
                r"for agents|for shortcuts|for commands", re.I),
     re.compile(r"context:\s*[\d.]+%\s*\("),           # kimi input-bar gauge
-    re.compile(r"ctrl\+p commands"))                    # opencode input bar
+    re.compile(r"ctrl\+p commands|[\d.]+K \(\d+%\)"))    # opencode input bar
 
 # --- menu detection ----------------------------------------------------------
 OPT = re.compile(r'^\s*(❯)?\s*(\d+)\.\s+(.*\S)\s*$')

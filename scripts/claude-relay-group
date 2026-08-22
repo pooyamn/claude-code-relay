@@ -36,13 +36,30 @@ ready(){
   # ("2.1.237"), opencode's is "opencode.exe" -- so any allowlist rots on the next
   # release. A shell in the foreground means the TUI exited; anything else means it
   # is running, whatever it renders on screen.
-  local fg
+  local fg strikes f
   fg="$(tmux display-message -p -t "$KEY" '#{pane_current_command}' 2>/dev/null)"
   case "$fg" in
-    ""|zsh|bash|sh|dash|fish|login|tmux) : ;;   # shell -> TUI is gone, fall through
-    *) return 0 ;;
+    ""|zsh|bash|sh|dash|fish|login|tmux) return 1 ;;   # shell in front: TUI exited
   esac
-  tmux capture-pane -t "$KEY" -p 2>/dev/null | grep -qE "for agents|for shortcuts|esc to interrupt|esc interrupt|Esc to cancel|to navigate|❯ +[0-9]+\.|context: *[0-9.]+% *\(|ctrl\+p commands|• OpenCode"
+  # NOTE: "• OpenCode <version>" is deliberately NOT in that list. It is a static
+  # footer that survives a crash -- it was still on screen under a bun stack trace
+  # with the input box gone, so treating it as chrome made a dead TUI look healthy
+  # forever. The input bar ("ctrl+p commands") is the signal that actually tracks
+  # whether the UI is functioning.
+  f="/Users/pouya/.openclaw/workspace/scripts/relay-work/nochrome-$KEY"
+  if tmux capture-pane -t "$KEY" -p 2>/dev/null | grep -qE "for agents|for shortcuts|esc to interrupt|esc interrupt|Esc to cancel|to navigate|❯ +[0-9]+\.|context: *[0-9.]+% *\(|ctrl\+p commands|[0-9.]+K \([0-9]+%\)"; then
+    rm -f "$f"; return 0
+  fi
+  # Process alive but NO chrome. Both states look like this and must be told apart:
+  # a transient frame (modal, redraw, agent view) -- killing on that is what churned
+  # live sessions -- and a CRASHED TUI, which opencode does: an EventEmitter
+  # listener overflow left a bun stack trace on screen, input box gone, process
+  # still running. Process-liveness alone would keep that forever, delivering
+  # nothing. So require the absence to PERSIST before declaring it dead.
+  strikes=$(( $(cat "$f" 2>/dev/null || echo 0) + 1 ))
+  printf '%s' "$strikes" > "$f" 2>/dev/null || true
+  [ "$strikes" -lt 3 ] && return 0
+  rm -f "$f"; return 1
 }
 
 if ! ( tmux has-session -t "$KEY" 2>/dev/null && ready ); then
