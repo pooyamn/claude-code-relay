@@ -111,6 +111,19 @@ def main():
         name = "opencode"
         tmpl = "{bin} -m {model} --port " + str(port) + " --hostname 127.0.0.1"
         cont = opencode_resume_flag(folder)
+    elif cfg.get("model") and cfg.get("env"):
+        # An ALT CLAUDE model, not a native CLI: the token has a settings file with
+        # its own ANTHROPIC_BASE_URL/AUTH_TOKEN (kimi, openrouter, a local server).
+        # Without this branch the resolver returned nothing, the folder pin fell
+        # through to the DEFAULT settings, and a folder pinned to `qwen` silently
+        # came back on opus -- looking like the pin had been ignored.
+        settings = os.path.join(D, f"relay-claude-settings-{tok}.json")
+        cont = " --continue" if os.path.isdir(os.path.expanduser(
+            "~/.claude/projects/" + (folder or "").replace("/", "-").replace(".", "-"))) else ""
+        cmd = (f"claude --model {shlex.quote(cfg['model'])}{cont} "
+               f"--settings {shlex.quote(settings)} --dangerously-skip-permissions")
+        sys.stdout.write(json.dumps({"backend": "claude"}) + "\t" + cmd)
+        return 0
     else:
         return 0
     binpath = shutil.which(name) or f"/opt/homebrew/bin/{name}"
