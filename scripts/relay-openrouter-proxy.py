@@ -25,6 +25,7 @@ import http.server
 import json
 import os
 import socketserver
+import subprocess
 import sys
 import threading
 import time
@@ -68,10 +69,38 @@ def available():
         return [k for k in load_keys() if _cool.get(k["name"], 0) <= now]
 
 
+# Where to tell you a key ran out. Silence is the wrong default here: a spent key
+# is invisible until a session fails, and the fix (add another key) is something
+# only you can do.
+NOTIFY_TO = os.environ.get("OR_NOTIFY_TO", "-1003550185469:topic:816")
+
+
+def notify(text):
+    try:
+        subprocess.Popen(
+            ["openclaw", "message", "send", "--channel", "telegram",
+             "--target", NOTIFY_TO.split(":topic:")[0],
+             *(["--thread-id", NOTIFY_TO.split(":topic:")[1]] if ":topic:" in NOTIFY_TO else []),
+             "--message", text],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except Exception as e:
+        log(f"NOTIFY FAILED: {e}")
+
+
 def cool(name, seconds):
     with _lock:
         _cool[name] = time.time() + seconds
+        live = [k for k in load_keys() if _cool.get(k["name"], 0) <= time.time()]
     log(f"COOLDOWN {name} for {int(seconds)}s")
+    hrs = max(1, int(seconds // 3600))
+    if live:
+        notify(f"🔑 OpenRouter key `{name}` hit its quota — failing over. "
+               f"{len(live)} key(s) still good. It frees up in ~{hrs}h.")
+    else:
+        notify(f"🚨 OpenRouter: ALL keys are rate-limited (`{name}` was the last). "
+               f"Sessions on `cox` will fail until ~{hrs}h from now.\n"
+               f"Add another key to relay-work/openrouter-keys.json — it is picked "
+               f"up per request, no restart needed.")
 
 
 def retry_after(body, headers):
@@ -96,6 +125,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def log_message(self, *a):
         pass
+
+    def handle_one_request(self):
+        """Claude Code cancels streams and reuses connections; both surface here as
+        a reset. Left unhandled they printed a traceback per event and killed the
+        handler mid-response -- 22 of them in one session."""
+        try:
+            super().handle_one_request()
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
 
     def _attempt(self, key, body):
         """One upstream try. Returns (status, headers, response) or raises."""
@@ -146,28 +184,44 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self._fail(code, err.decode("utf8", "replace")[:300])
 
     def _stream(self, r, name):
-        """Pass the response through unbuffered -- Claude Code streams SSE, and
-        buffering here would stall the whole answer until the turn ended."""
+        """Forward the response as it arrives.
+
+        Two faults here took down a live session (Claude Code reported "0 stream
+        events received" and named the proxy):
+
+        1. read(1024) BLOCKS until it has a full 1024 bytes. SSE events are small,
+           so a slow turn produced nothing on the wire until the buffer happened to
+           fill -- the client gave up first. read1() returns whatever one syscall
+           yields, so each event leaves immediately. A synthetic fast reply hid this
+           because it filled the buffer at once; a real turn does not.
+        2. Manual chunked framing. Re-encoding a body we do not need to touch is
+           pure risk, and a malformed frame is what made the client see "JSON but
+           not a Message" on its non-streaming retry. Connection: close ends the
+           body at EOF instead -- one extra TCP setup per request on loopback, in
+           exchange for no framing of our own to get wrong.
+        """
         self.send_response(r.status)
         for k, v in r.headers.items():
             if k.lower() in ("transfer-encoding", "connection", "content-length",
-                             "content-encoding"):
+                             "content-encoding", "keep-alive"):
                 continue
             self.send_header(k, v)
         self.send_header("X-Relay-Key", name)
-        self.send_header("Transfer-Encoding", "chunked")
+        self.send_header("Connection", "close")
         self.end_headers()
+        self.close_connection = True
+        read1 = getattr(r, "read1", None) or r.read
         try:
             while True:
-                chunk = r.read(1024)
+                chunk = read1(65536)
                 if not chunk:
                     break
-                self.wfile.write(b"%X\r\n" % len(chunk) + chunk + b"\r\n")
+                self.wfile.write(chunk)
                 self.wfile.flush()
-            self.wfile.write(b"0\r\n\r\n")
-            self.wfile.flush()
-        except Exception:
-            pass
+        except (BrokenPipeError, ConnectionResetError):
+            pass          # the client hung up mid-answer; nothing to salvage
+        except Exception as e:
+            log(f"STREAM ERROR on {name}: {e}")
 
     def _relay_error(self, e, body):
         self.send_response(e.code)

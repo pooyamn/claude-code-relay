@@ -118,8 +118,26 @@ def main():
         # through to the DEFAULT settings, and a folder pinned to `qwen` silently
         # came back on opus -- looking like the pin had been ignored.
         settings = os.path.join(D, f"relay-claude-settings-{tok}.json")
-        cont = " --continue" if os.path.isdir(os.path.expanduser(
-            "~/.claude/projects/" + (folder or "").replace("/", "-").replace(".", "-"))) else ""
+        # Prefer the PINNED conversation id over --continue. --continue follows
+        # ~/.claude.json's lastSessionId, which is global state anything can move --
+        # a stray `claude` in the folder, a fork, an interrupted launch. When it moved
+        # for ai-hil, --continue answered from a 35-message "Hi" while 6527 messages
+        # sat untouched on disk, which looks exactly like a wiped session. The pin
+        # makes the conversation a property of the BINDING. claude-relay-group already
+        # does this for plain-claude launches; without it here, every ALT-model topic
+        # (cox, qwen, k3) silently kept the old behaviour.
+        enc = (folder or "").replace("/", "-").replace(".", "-")
+        proj = os.path.expanduser("~/.claude/projects/" + enc)
+        cont = ""
+        try:
+            key = "cr-" + hashlib.md5(os.path.abspath(folder).encode()).hexdigest()[:10]
+            sid = open(os.path.join(D, "relay-work", f"claude-session-{key}.txt")).read().strip()
+            if sid and os.path.exists(os.path.join(proj, sid + ".jsonl")):
+                cont = f" --resume {sid}"
+        except Exception:
+            pass
+        if not cont and os.path.isdir(proj):
+            cont = " --continue"
         cmd = (f"claude --model {shlex.quote(cfg['model'])}{cont} "
                f"--settings {shlex.quote(settings)} --dangerously-skip-permissions")
         sys.stdout.write(json.dumps({"backend": "claude"}) + "\t" + cmd)
