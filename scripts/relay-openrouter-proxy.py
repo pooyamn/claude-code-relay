@@ -10,7 +10,10 @@ daily quota, not a higher rate, and only if something can move between them.
 This sits in front: Claude Code points at it, it holds the pool, and on a quota
 error it marks that key cooling-down and retries the SAME request on the next one.
 Failover happens before any bytes reach the client, so the client never sees a
-partial answer torn in half.
+partial answer torn in half -- and since 2026-08-23 "before any bytes" is enforced
+literally: the first body chunk is read and judged BEFORE the 200 is forwarded, so
+an upstream that accepts the request and then dies (or answers 200 with an error
+envelope) fails over instead of reaching the session as a corrupt reply.
 
   keys      relay-work/openrouter-keys.json  (0600, gitignored)
             [{"name": "cox", "key": "sk-or-..."}, ...]
@@ -18,10 +21,11 @@ partial answer torn in half.
   upstream  https://openrouter.ai/api
   log       relay-work/openrouter-proxy.log
 
-Requests are ROUND-ROBINED across healthy keys, so the per-key daily quotas are
-spent evenly instead of one at a time. On a quota error the request still walks the
-rest of the pool, so balancing and failover are independent.
+Each CONVERSATION sticks to one key so its prompt cache keeps working; new
+conversations are handed out round-robin so several sessions still spread across
+the pool. On a quota error the request walks the rest of the pool.
 """
+import hashlib
 import http.server
 import json
 import os
@@ -63,21 +67,49 @@ def load_keys():
         return []
 
 
-_rr = 0            # round-robin cursor
+DUD_COOLDOWN = 120   # a key that answered 200-then-died; brief, it is usually a blip
+
+_rr = 0            # cursor, used only when a NEW conversation needs a key
+_affinity = {}     # conversation fingerprint -> key name
 
 
-def available():
-    """Healthy keys, ROTATED so consecutive requests use different keys.
+def fingerprint(body):
+    """Stable id for a conversation, from the parts that do not change turn to turn.
 
-    First-available ordering meant every request rode the same key until it hit its
-    daily cap, then the next -- so quota burned strictly in series and one key was
-    always the bottleneck while the rest sat idle. Observed exactly that: cox3 spent
-    while cox and cox2 were fine. Rotating spreads the daily quotas evenly, which is
-    the only thing that actually multiplies capacity, since the limit is per-key and
-    per-day.
+    The system prompt plus the first user message are fixed for the life of a Claude
+    Code session, so they identify it without needing a header the client does not
+    send.
+    """
+    try:
+        d = json.loads(body or b"{}")
+    except Exception:
+        return "default"
+    sys_p = d.get("system")
+    if isinstance(sys_p, list):
+        sys_p = "".join(x.get("text", "") for x in sys_p if isinstance(x, dict))
+    first = ""
+    for m in d.get("messages") or []:
+        if m.get("role") == "user":
+            c = m.get("content")
+            first = c if isinstance(c, str) else "".join(
+                x.get("text", "") for x in c or [] if isinstance(x, dict))
+            break
+    return hashlib.sha1(((sys_p or "")[:4000] + first[:400]).encode()).hexdigest()[:16]
 
-    The rotation only picks the STARTING point; the caller still walks the whole
-    list, so failover is unchanged.
+
+def available(body=None):
+    """Keys for this request: the conversation's OWN key first, then the rest.
+
+    Round-robin per request was wrong. Prompt caches are per-key, so sending
+    consecutive turns of one conversation to different keys re-pays the entire
+    prefix every time -- measured 2427 input tokens against 59 for a cache hit, ~40x.
+    On a per-DAY quota that spends the allowance far faster, so balancing made the
+    limit arrive SOONER than not balancing at all.
+
+    Affinity instead: a conversation sticks to one key and keeps its cache, while
+    NEW conversations are handed out round-robin, so several sessions still spread
+    across the pool. The rest of the pool follows as failover, so a spent key still
+    moves the conversation on (losing its cache once, not every turn).
     """
     global _rr
     now = time.time()
@@ -85,8 +117,14 @@ def available():
         live = [k for k in load_keys() if _cool.get(k["name"], 0) <= now]
         if not live:
             return []
-        _rr = (_rr + 1) % len(live)
-        return live[_rr:] + live[:_rr]
+        fp = fingerprint(body)
+        name = _affinity.get(fp)
+        chosen = next((k for k in live if k["name"] == name), None)
+        if chosen is None:
+            _rr = (_rr + 1) % len(live)
+            chosen = live[_rr]
+            _affinity[fp] = chosen["name"]
+        return [chosen] + [k for k in live if k["name"] != chosen["name"]]
 
 
 # Where to tell you a key ran out. Silence is the wrong default here: a spent key
@@ -107,12 +145,16 @@ def notify(text):
         log(f"NOTIFY FAILED: {e}")
 
 
-def cool(name, seconds):
+def cool(name, seconds, quiet=False):
+    """Mark a key cooling. quiet=True for transient duds -- worth a log line and
+    nothing more; only quota exhaustion justifies pinging Telegram."""
     with _lock:
         _cool[name] = time.time() + seconds
         live = [k for k in load_keys() if _cool.get(k["name"], 0) <= time.time()]
     log(f"COOLDOWN {name} for {int(seconds)}s")
     hrs = max(1, int(seconds // 3600))
+    if quiet:
+        return
     if live:
         notify(f"🔑 OpenRouter key `{name}` hit its quota — failing over. "
                f"{len(live)} key(s) still good. It frees up in ~{hrs}h.")
@@ -138,6 +180,42 @@ def retry_after(body, headers):
     except Exception:
         pass
     return 300.0
+
+
+def _classify(r):
+    """Read the first body chunk and judge whether the response is real.
+
+    Returns (verdict, first_chunk). 'ok' means forwardable, with the first chunk
+    in tow so _stream need not re-read it. Anything else describes WHY the
+    response is a dud -- and because nothing has been sent downstream yet, the
+    caller can simply fail over to the next key.
+
+    This exists because OpenRouter sometimes ACCEPTS a request (HTTP 200) and
+    then hands back nothing: the connection closes before one body byte, or it
+    wraps a provider failure as 200 + {"error": ...}. Forwarding first and
+    reading after is what produced "API returned an empty or malformed response
+    (HTTP 200)" in the DUT session on 2026-08-23/24 -- its many background agents
+    just rolled these dice more often than lighter sessions.
+    """
+    ctype = (r.headers.get("content-type") or "").lower()
+    try:
+        read1 = getattr(r, "read1", None) or r.read
+        first = read1(65536) or b""
+    except Exception as e:
+        return f"connection died before body: {e}", b""
+    if not first:
+        return "connection closed before body (0 bytes)", b""
+    # A 200 carrying a JSON error envelope instead of a Message / SSE stream.
+    # Error envelopes are tiny so one chunk holds them whole; a large real body
+    # that merely STARTS with '{' fails json.loads here and falls through as fine.
+    if "event-stream" not in ctype and first.lstrip()[:1] == b"{":
+        try:
+            d = json.loads(first)
+        except Exception:
+            d = None
+        if isinstance(d, dict) and "error" in d:
+            return f"HTTP 200 carried an error body: {json.dumps(d['error'])[:200]}", b""
+    return "ok", first
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -170,7 +248,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def _proxy(self):
         length = int(self.headers.get("content-length") or 0)
         body = self.rfile.read(length) if length else None
-        pool = available()
+        pool = available(body)
         if not pool:
             with _lock:
                 soonest = min(_cool.values()) if _cool else 0
@@ -197,13 +275,30 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 last = (502, str(e).encode())
                 log(f"UPSTREAM ERROR on {k['name']}: {e}")
                 continue
-            self._stream(r, k["name"])
+            # Judge the response BEFORE forwarding anything. Nothing has reached
+            # the client yet, so a dud still fails over invisibly -- the same
+            # guarantee the 429 path already had.
+            verdict, first = _classify(r)
+            if verdict != "ok":
+                try:
+                    r.close()
+                except Exception:
+                    pass
+                cool(k["name"], DUD_COOLDOWN, quiet=True)
+                last = (502, verdict.encode())
+                log(f"DUD on {k['name']}: {verdict}, failing over")
+                continue
+            ctype = (r.headers.get("content-type") or "").split(";")[0]
+            log(f"OK {k['name']} {r.status} {ctype} {self.command} {self.path}")
+            with _lock:
+                _affinity[fingerprint(body)] = k["name"]   # stick to whoever served
+            self._stream(r, k["name"], first)
             return
 
         code, err = last or (502, b"no upstream")
         self._fail(code, err.decode("utf8", "replace")[:300])
 
-    def _stream(self, r, name):
+    def _stream(self, r, name, first=b""):
         """Forward the response as it arrives.
 
         Two faults here took down a live session (Claude Code reported "0 stream
@@ -219,6 +314,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
            not a Message" on its non-streaming retry. Connection: close ends the
            body at EOF instead -- one extra TCP setup per request on loopback, in
            exchange for no framing of our own to get wrong.
+
+        `first` is the chunk _classify already read; by the time we are called the
+        response has proven itself real, and re-reading would drop that data.
         """
         self.send_response(r.status)
         for k, v in r.headers.items():
@@ -232,12 +330,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.close_connection = True
         read1 = getattr(r, "read1", None) or r.read
         try:
-            while True:
-                chunk = read1(65536)
-                if not chunk:
-                    break
+            chunk = first
+            while chunk:
                 self.wfile.write(chunk)
                 self.wfile.flush()
+                chunk = read1(65536)
         except (BrokenPipeError, ConnectionResetError):
             pass          # the client hung up mid-answer; nothing to salvage
         except Exception as e:
