@@ -182,40 +182,86 @@ def retry_after(body, headers):
     return 300.0
 
 
-def _classify(r):
-    """Read the first body chunk and judge whether the response is real.
+def _classify(r, path=""):
+    """Judge whether an upstream response is real, BEFORE anything is forwarded.
 
-    Returns (verdict, first_chunk). 'ok' means forwardable, with the first chunk
-    in tow so _stream need not re-read it. Anything else describes WHY the
-    response is a dud -- and because nothing has been sent downstream yet, the
-    caller can simply fail over to the next key.
+    Returns (verdict, consumed_bytes). 'ok' means forwardable, with everything
+    read so far in tow so _stream need not re-read it. Anything else describes
+    WHY the response is a dud -- and because nothing has been sent downstream
+    yet, the caller can simply fail over to the next key.
 
-    This exists because OpenRouter sometimes ACCEPTS a request (HTTP 200) and
-    then hands back nothing: the connection closes before one body byte, or it
-    wraps a provider failure as 200 + {"error": ...}. Forwarding first and
-    reading after is what produced "API returned an empty or malformed response
-    (HTTP 200)" in the DUT session on 2026-08-23/24 -- its many background agents
-    just rolled these dice more often than lighter sessions.
+    History: forwarding first produced "API returned an empty or malformed
+    response (HTTP 200)" across the DUT session on 2026-08-23/24. The first cut
+    of this check rejected empty bodies and {"error": ...} envelopes, but two
+    shapes STILL slipped through and kept killing turns:
+
+    - 200 + JSON that is neither a Message nor an error envelope (OpenRouter
+      compat-layer junk; Claude Code: "body is JSON but not a Message"),
+    - SSE that carries only pings/comments and then dies (Claude Code:
+      "0 stream events received").
+
+    So for /v1/messages the test is now positive, not absence-of-error: a JSON
+    body must BE a Message (type == "message") and an SSE stream must produce a
+    real data event (not a ping/comment) before we commit. Both directions cap
+    out and pass through rather than stall a genuinely huge/slow body.
     """
     ctype = (r.headers.get("content-type") or "").lower()
+    read1 = getattr(r, "read1", None) or r.read
+    strict = "/v1/messages" in path
+    buf = b""
     try:
-        read1 = getattr(r, "read1", None) or r.read
-        first = read1(65536) or b""
+        while True:
+            chunk = read1(65536)
+            if not chunk:
+                break
+            buf += chunk
+            if len(buf) > 262144:
+                break                      # big real body: commit, forward as-is
+            if "event-stream" in ctype:
+                # Commit only when a data: line holds a real event. Pings and
+                # SSE comments are heartbeat chrome -- a stream of nothing but
+                # them, followed by EOF, is exactly "0 stream events received".
+                for line in buf.split(b"\n"):
+                    s = line.strip()
+                    if not s.startswith(b"data:"):
+                        continue
+                    try:
+                        ev = json.loads(s[5:].strip())
+                    except Exception:
+                        continue
+                    if isinstance(ev, dict):
+                        t = ev.get("type")
+                        if t == "error":
+                            return (f"SSE stream opened with an error event: "
+                                    f"{json.dumps(ev)[:200]}", b"")
+                        if t != "ping":
+                            return "ok", buf
+                continue                   # only pings/comments so far: keep reading
+            if buf.lstrip()[:1] in (b"{", b"["):
+                try:
+                    d = json.loads(buf)
+                except Exception:
+                    continue               # partial JSON: keep accumulating
+                if isinstance(d, list):
+                    return "ok", buf       # e.g. a models listing
+                if isinstance(d, dict):
+                    if strict and d.get("type") != "message":
+                        return (f"HTTP 200 carried a non-Message JSON body: "
+                                f"{json.dumps(d)[:200]}", b"")
+                    return "ok", buf
+                break
+            break                          # neither SSE nor JSON: forward as-is
+        else:
+            pass
     except Exception as e:
-        return f"connection died before body: {e}", b""
-    if not first:
+        return f"connection died mid-classification: {e}", b""
+    if not buf:
         return "connection closed before body (0 bytes)", b""
-    # A 200 carrying a JSON error envelope instead of a Message / SSE stream.
-    # Error envelopes are tiny so one chunk holds them whole; a large real body
-    # that merely STARTS with '{' fails json.loads here and falls through as fine.
-    if "event-stream" not in ctype and first.lstrip()[:1] == b"{":
-        try:
-            d = json.loads(first)
-        except Exception:
-            d = None
-        if isinstance(d, dict) and "error" in d:
-            return f"HTTP 200 carried an error body: {json.dumps(d['error'])[:200]}", b""
-    return "ok", first
+    if "event-stream" in ctype:
+        return "SSE stream carried no real event before EOF", b""
+    # JSON-ish body that never completed parsing within the cap: forward it --
+    # failing here would drop legitimate giant non-streaming replies.
+    return "ok", buf
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -278,7 +324,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             # Judge the response BEFORE forwarding anything. Nothing has reached
             # the client yet, so a dud still fails over invisibly -- the same
             # guarantee the 429 path already had.
-            verdict, first = _classify(r)
+            verdict, first = _classify(r, self.path)
             if verdict != "ok":
                 try:
                     r.close()
