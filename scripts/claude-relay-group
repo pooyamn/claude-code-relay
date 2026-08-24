@@ -46,6 +46,21 @@ ready(){
   # with the input box gone, so treating it as chrome made a dead TUI look healthy
   # forever. The input bar ("ctrl+p commands") is the signal that actually tracks
   # whether the UI is functioning.
+  # Claude Code LATCHES logged-out. Credentials are read ONCE at launch, so when the
+  # OAuth token is refreshed under a live process (anthropic-auth-sync rotates it a
+  # few times a day) the old one 401s, the TUI flips to "Please run /login", and from
+  # then on it answers EVERY turn with that -- instantly, without calling the API.
+  # Chrome is intact and the process is alive, so every other test here reports a
+  # healthy session while the topic is dead (hardware topic 18, 2026-08-24: three
+  # hours of "Login expired" while a fresh `claude -p` on the same credentials worked).
+  # A relaunch re-reads the refreshed credentials, so treat the latch as not-ready.
+  # Scoped to the tail of the pane: a session that has since recovered scrolls the
+  # message away, only a still-latched one keeps it as the most recent output.
+  if tmux capture-pane -t "$KEY" -p 2>/dev/null | tail -20 \
+       | grep -qE "(Login expired|Not logged in).*Please run /login"; then
+    rm -f "/Users/pouya/.openclaw/workspace/scripts/relay-work/nochrome-$KEY"
+    return 1
+  fi
   f="/Users/pouya/.openclaw/workspace/scripts/relay-work/nochrome-$KEY"
   if tmux capture-pane -t "$KEY" -p 2>/dev/null | grep -qE "for agents|for shortcuts|esc to interrupt|esc interrupt|Esc to cancel|to navigate|❯ +[0-9]+\.|context: *[0-9.]+% *\(|ctrl\+p commands|[0-9.]+K \([0-9]+%\)"; then
     rm -f "$f"; return 0

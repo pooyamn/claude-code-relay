@@ -28,6 +28,7 @@ the pool. On a quota error the request walks the rest of the pool.
 import hashlib
 import http.server
 import json
+import re
 import os
 import socketserver
 import subprocess
@@ -264,6 +265,68 @@ def _classify(r, path=""):
     return "ok", buf
 
 
+def _msg_id(raw):
+    """OpenRouter ids ("gen-...") are not Anthropic message ids."""
+    return "msg_or" + re.sub(r"[^A-Za-z0-9]", "", str(raw))[:40]
+
+
+def msgify_ids(buf, ctype):
+    """Rewrite upstream message ids into Anthropic's `msg_` shape.
+
+    Claude Code persists each assistant turn's `message.id` in the session
+    transcript and, on the NEXT request, sends the last one back as
+    `diagnostics.previous_message_id`. Anthropic rejects anything that is not
+    `msg_*`:
+
+        400 diagnostics.previous_message_id: must be the `id` from a prior
+        /v1/messages response (starts with `msg_`)
+
+    OpenRouter answers with its own `gen-...` id, so every turn served through
+    this proxy wrote a poison pill into the transcript. It stayed invisible
+    while the session kept talking to OpenRouter (which ignores the field) and
+    detonated the moment the session switched back to `claude` -- from then on
+    EVERY turn 400'd, with no way out but editing the transcript by hand
+    (the CC Relay and DUT topics died exactly this way on 2026-08-24).
+
+    Only the id is touched, and only when it is not already `msg_`-shaped, so a
+    genuine Anthropic passthrough is byte-identical. Both response shapes carry
+    one: a non-streaming Message at the top level, an SSE stream inside its
+    `message_start` event (always the first real event, hence always inside the
+    chunk _classify already consumed).
+    """
+    try:
+        if "event-stream" in ctype:
+            if b"message_start" not in buf:
+                return buf
+            out = []
+            for line in buf.split(b"\n"):
+                s = line.strip()
+                if s.startswith(b"data:"):
+                    try:
+                        ev = json.loads(s[5:].strip())
+                    except Exception:
+                        out.append(line); continue
+                    m = ev.get("message") if isinstance(ev, dict) else None
+                    if (isinstance(ev, dict) and ev.get("type") == "message_start"
+                            and isinstance(m, dict)
+                            and not str(m.get("id", "")).startswith("msg_")):
+                        m["id"] = _msg_id(m.get("id"))
+                        pre = line[:len(line) - len(line.lstrip())]
+                        out.append(pre + b"data: " + json.dumps(ev).encode())
+                        continue
+                out.append(line)
+            return b"\n".join(out)
+        if buf.lstrip()[:1] == b"{":
+            d = json.loads(buf)
+            if (isinstance(d, dict) and d.get("type") == "message"
+                    and not str(d.get("id", "")).startswith("msg_")):
+                d["id"] = _msg_id(d.get("id"))
+                return json.dumps(d).encode()
+    except Exception as e:
+        log(f"MSGID REWRITE SKIPPED: {e}")
+    return buf
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -376,7 +439,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.close_connection = True
         read1 = getattr(r, "read1", None) or r.read
         try:
-            chunk = first
+            chunk = msgify_ids(first, (r.headers.get("content-type") or "").lower())
             while chunk:
                 self.wfile.write(chunk)
                 self.wfile.flush()
