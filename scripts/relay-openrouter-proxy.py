@@ -18,8 +18,9 @@ partial answer torn in half.
   upstream  https://openrouter.ai/api
   log       relay-work/openrouter-proxy.log
 
-Order is preserved: the first key that is not cooling down wins, so adding a key
-to the end of the list makes it a spare rather than changing what you use today.
+Requests are ROUND-ROBINED across healthy keys, so the per-key daily quotas are
+spent evenly instead of one at a time. On a quota error the request still walks the
+rest of the pool, so balancing and failover are independent.
 """
 import http.server
 import json
@@ -62,11 +63,30 @@ def load_keys():
         return []
 
 
+_rr = 0            # round-robin cursor
+
+
 def available():
-    """Keys not currently cooling down, in file order."""
+    """Healthy keys, ROTATED so consecutive requests use different keys.
+
+    First-available ordering meant every request rode the same key until it hit its
+    daily cap, then the next -- so quota burned strictly in series and one key was
+    always the bottleneck while the rest sat idle. Observed exactly that: cox3 spent
+    while cox and cox2 were fine. Rotating spreads the daily quotas evenly, which is
+    the only thing that actually multiplies capacity, since the limit is per-key and
+    per-day.
+
+    The rotation only picks the STARTING point; the caller still walks the whole
+    list, so failover is unchanged.
+    """
+    global _rr
     now = time.time()
     with _lock:
-        return [k for k in load_keys() if _cool.get(k["name"], 0) <= now]
+        live = [k for k in load_keys() if _cool.get(k["name"], 0) <= now]
+        if not live:
+            return []
+        _rr = (_rr + 1) % len(live)
+        return live[_rr:] + live[:_rr]
 
 
 # Where to tell you a key ran out. Silence is the wrong default here: a spent key
