@@ -62,6 +62,26 @@ def main():
             "transcript": data.get("transcript_path", "") or "",
             "session_id": data.get("session_id", "") or "",
         }
+        # Record WHICH conversation this session is on, from ground truth, every
+        # turn. Previously nothing recorded it: the relay relaunched with --continue
+        # and inherited ~/.claude.json's lastSessionId, which is global and moves
+        # whenever anything else runs `claude` in the folder -- a fork, a stray
+        # launch, an interrupted start. When it moved, the session answered from an
+        # unrelated thread and looked wiped, and repairing it meant GUESSING which
+        # transcript on disk was the real one. That guess put a live DUT session on a
+        # three-week-old thread. The hook knows the answer with certainty, so write
+        # it down instead of reconstructing it later.
+        sid = (data.get("session_id") or "").strip()
+        if sid:
+            try:
+                pin = os.path.join(base, f"claude-session-{key}.txt")
+                if not os.path.exists(pin) or open(pin).read().strip() != sid:
+                    fd2, tmp2 = tempfile.mkstemp(dir=base)
+                    with os.fdopen(fd2, "w") as f2:
+                        f2.write(sid)
+                    os.replace(tmp2, pin)
+            except Exception:
+                pass
         fd, tmp = tempfile.mkstemp(dir=base)
         with os.fdopen(fd, "w") as f:
             json.dump(payload, f)
