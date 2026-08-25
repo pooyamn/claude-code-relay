@@ -45,9 +45,19 @@ LOG = os.path.join(STATE, "openrouter-proxy.log")
 UPSTREAM = os.environ.get("OR_UPSTREAM", "https://openrouter.ai/api")
 PORT = int(os.environ.get("OR_PROXY_PORT", "4599"))
 
-# A daily quota resets at 00:00 UTC. Without a hint from the server that is the
-# only honest guess; a shorter cooldown would just burn the key again immediately.
-DAILY_COOLDOWN = 24 * 3600
+# A daily quota resets at 00:00 UTC -- OpenRouter counts free-model usage per
+# "current UTC day" -- so the honest cooldown runs to that boundary, NOT for a
+# flat 24h from whenever we happened to trip it. Benching for 24h outlives the
+# thing it models: a key that 429s at 09:02 is usable again at 00:00 UTC but
+# stayed benched until 09:02 the next day. Measured 2026-08-23/24: cox3 was
+# re-benched on every proxy restart and served ZERO requests in two days while
+# authenticating fine, so the pool silently ran 3-wide instead of 4.
+def daily_cooldown():
+    """Seconds until the next 00:00 UTC, plus a minute of slack for clock skew.
+
+    Epoch seconds are UTC-aligned, so `now % 86400` is seconds since midnight
+    UTC with no timezone handling needed."""
+    return (86400 - (time.time() % 86400)) + 60
 _cool = {}                 # key name -> epoch when it may be retried
 _lock = threading.Lock()
 
@@ -167,20 +177,26 @@ def cool(name, seconds, quiet=False):
 
 
 def retry_after(body, headers):
-    """Seconds to wait, from the server if it says so, else a day."""
+    """Seconds to wait, and WHY -- returned as (seconds, reason).
+
+    The reason is logged because without it a cooldown is unattributable after
+    the fact: cox3 sat benched for two days on 86400s cooldowns and the log kept
+    no record of whether the server asked for that (Retry-After) or we inferred
+    it from a per-day message, so the question could only be answered by
+    guessing. Log the decision, not just its result."""
     try:
         ra = headers.get("retry-after")
         if ra:
-            return float(ra)
+            return float(ra), f"server Retry-After: {ra}"
     except Exception:
         pass
     try:
         msg = json.loads(body).get("error", {}).get("message", "")
         if "per-day" in msg or "daily" in msg:
-            return DAILY_COOLDOWN
+            return daily_cooldown(), f"per-day quota, until 00:00 UTC ({msg[:120]})"
     except Exception:
         pass
-    return 300.0
+    return 300.0, "transient, no server hint"
 
 
 def _classify(r, path=""):
@@ -374,9 +390,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 err = e.read()
                 # 429 quota / 402 out of credit: this KEY is spent, try the next.
                 if e.code in (429, 402):
-                    cool(k["name"], retry_after(err, e.headers))
+                    secs, why = retry_after(err, e.headers)
+                    cool(k["name"], secs)
                     last = (e.code, err)
-                    log(f"{e.code} on {k['name']}, failing over")
+                    log(f"{e.code} on {k['name']} [{why}], failing over")
                     continue
                 self._relay_error(e, err)          # a real error: pass it through
                 return
