@@ -9,6 +9,7 @@ options formatted for Telegram and remember a menu is open; the user's next
 message (a number) is sent back as an arrow+Enter selection into the TUI.
 """
 import subprocess, sys, time, hashlib, re, os, json, shutil, shlex
+import queue, threading
 
 SESSION = os.environ.get("CLAUDE_RELAY_SESSION", "clauderelay")
 CHAT_ID = os.environ.get("RELAY_CHAT_ID", "")     # telegram chat id (numeric)
@@ -202,6 +203,7 @@ class _WS:
     def __init__(self, target, thread):
         self.ok = False
         self._n = 0
+        self._q = queue.Queue()
         try:
             self.proc = subprocess.Popen(
                 ["node", EDIT_SERVER, str(target), str(thread or "")],
@@ -209,12 +211,48 @@ class _WS:
         except Exception:
             self.proc = None
             return
+        # Drain the helper's stdout on a thread so every read below can be bounded
+        # by a deadline. readline() on a pipe has no timeout of its own, so the
+        # `while time.time() < end` guards further down are decorative against the
+        # case that actually happens: the helper starts but never answers, because
+        # the gateway was mid-restart when it tried to connect. A direct readline
+        # then parks the WATCHER forever -- not just the bubble -- and the topic
+        # goes silent while its session keeps answering into the pane. Measured
+        # 2026-08-24 on topic 53: wedged here 10h35m on 0.05s of CPU, replies
+        # piling up on screen, nothing reaching Telegram.
+        self._reader = threading.Thread(target=self._drain, daemon=True)
+        self._reader.start()
         self.ok = self._ready()
+        if not self.ok:
+            self._kill()        # an unusable helper is a leak; the caller falls back
+
+    def _drain(self):
+        try:
+            for line in self.proc.stdout:
+                self._q.put(line)
+        except Exception:
+            pass
+        finally:
+            self._q.put(None)   # EOF sentinel, so a reader never waits on a dead pipe
+
+    def _line(self, end):
+        """Next line from the helper, or None on EOF/timeout. Never waits past
+        `end` -- that bound is the entire point of this indirection."""
+        try:
+            return self._q.get(timeout=max(0.0, end - time.time()))
+        except queue.Empty:
+            return None
+
+    def _kill(self):
+        try:
+            self.proc.kill()
+        except Exception:
+            pass
 
     def _ready(self, timeout=5):
         end = time.time() + timeout
         while time.time() < end:
-            line = self.proc.stdout.readline()
+            line = self._line(end)
             if not line:
                 return False
             try:
@@ -237,7 +275,7 @@ class _WS:
             self.proc.stdin.flush()
             end = time.time() + 8
             while time.time() < end:
-                line = self.proc.stdout.readline()
+                line = self._line(end)
                 if not line:
                     break
                 try:
