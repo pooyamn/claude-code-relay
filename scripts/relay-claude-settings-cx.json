@@ -1,5 +1,14 @@
 {
   "backend": "codex",
   "model": "gpt-5.6-sol",
-  "label": "Codex"
+  "label": "Codex",
+
+  "_comment": "Trust posture for the codex backend. Default is ALLOW EVERYTHING, matching --dangerously-skip-permissions on the claude path: these sessions run unattended over Telegram, so an approval prompt is just a hung turn nobody can answer. Set any flag false to tighten.",
+
+  "bypass_approvals": true,
+  "sandbox": "danger-full-access",
+  "bypass_hook_trust": true,
+  "inherit_env": true,
+  "add_dirs": [],
+  "extra_args": []
 }

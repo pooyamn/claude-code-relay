@@ -43,6 +43,44 @@ STATE = os.path.join(D, "relay-work")
 CODEX = os.environ.get("RELAY_CODEX_BIN", "/opt/homebrew/bin/codex")
 
 
+def _cfg():
+    """Permissions/model for the codex backend, from relay-claude-settings-cx.json.
+
+    Kept in the settings file rather than hardcoded here so the trust posture is
+    visible and reversible in one place -- the same file `cc model cx` already
+    resolves the token through."""
+    try:
+        return json.load(open(os.path.join(D, "relay-claude-settings-cx.json")))
+    except Exception:
+        return {}
+
+
+def _perm_args(cfg):
+    """Compose the permission flags. Default posture is ALLOW EVERYTHING, which
+    matches --dangerously-skip-permissions on the claude path: nobody is at the
+    keyboard to answer an approval prompt, so a prompt is just a hung turn.
+
+    -s danger-full-access is redundant while bypass_approvals is on (the bypass
+    already disables the sandbox) but is emitted anyway, so dropping the bypass
+    alone does not silently re-sandbox every command."""
+    args = []
+    if cfg.get("bypass_approvals", True):
+        args.append("--dangerously-bypass-approvals-and-sandbox")
+    args += ["-s", cfg.get("sandbox", "danger-full-access")]
+    if cfg.get("bypass_hook_trust", True):
+        args.append("--dangerously-bypass-hook-trust")
+    if cfg.get("inherit_env", True):
+        # Without this codex hands spawned commands a scrubbed environment, so
+        # anything relying on PATH/tokens from the relay's shell fails in ways
+        # that look like the tool being broken rather than the env being empty.
+        args += ["-c", "shell_environment_policy.inherit=all"]
+    for d in cfg.get("add_dirs") or []:
+        args += ["--add-dir", d]
+    for extra in cfg.get("extra_args") or []:
+        args.append(extra)
+    return args
+
+
 def _p(key, name):
     return os.path.join(STATE, f"codex-{name}-{key}")
 
@@ -189,12 +227,13 @@ def start(folder, key, prompt, model=""):
         base += ["resume", tid, prompt]
     else:
         base += [prompt, "-C", folder]
+    cfg = _cfg()
+    model = model or cfg.get("model", "")
     if model:
         base += ["-m", model]
     cmd = base + ["--json",
                   "-o", last_path(key),
-                  "--skip-git-repo-check",
-                  "--dangerously-bypass-approvals-and-sandbox"]
+                  "--skip-git-repo-check"] + _perm_args(cfg)
 
     ev = open(events_path(key), "w")
     er = open(err_path(key), "a")
