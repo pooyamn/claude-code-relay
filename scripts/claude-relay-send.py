@@ -1532,6 +1532,16 @@ NATIVE_BACKENDS = {
         "default_model": "x-preview-f-free",
         "parser": "api",
     },
+    # codex: no pane, no binary driven in tmux, no chrome. relay-codex.py owns the
+    # whole conversation via `codex exec` + thread_id, so like opencode-api there
+    # is no cmd and no pane parser -- but unlike it there is no server either, so
+    # nothing runs in a pane at all.
+    "codex": {
+        "bin": os.environ.get("RELAY_CODEX_BIN", "/opt/homebrew/bin/codex"),
+        "cmd": "",
+        "default_model": "gpt-5.6-sol",
+        "parser": "api",
+    },
     "opencode": {
         "bin": _alt_bin("opencode", "/opt/homebrew/bin/opencode"),
         "cmd": "{bin} -m {model} -c",
@@ -1622,6 +1632,28 @@ def restart_with_model(model):
         cmd = (f"claude --model {shlex.quote(alt_model)} --continue "
                f"--settings {shlex.quote(settings)} --dangerously-skip-permissions")
         expect = model
+    # codex switch: there is no TUI to relaunch. Tear down any pane this folder
+    # still has (it was a claude/opencode session a moment ago), pin the choice so
+    # the next respawn does not silently revert, and let the watcher take over.
+    # Creating a pane here would be worse than useless: claude-relay-group's
+    # ready() would find a bare shell and kill+relaunch on every single message.
+    if kb and kb.get("backend") == "codex":
+        tmux("kill-session", "-t", SESSION)
+        try:
+            open(os.path.join(STATE_DIR, f"default-model-{SESSION}.txt"), "w").write(model)
+        except Exception:
+            pass
+        tid = ""
+        try:
+            tid = cx().read_thread(SESSION)
+        except Exception:
+            pass
+        deliver(f"🔄 Switched to **{kb.get('label', model)}** "
+                f"(codex `{kb.get('model')}`, headless — no TUI).\n\n"
+                + (f"Continuing codex thread `{tid[:13]}…`."
+                   if tid else "A new codex thread starts on your next message."))
+        return
+
     tmux("kill-session", "-t", SESSION)
     time.sleep(0.5)
     tmux("new-session", "-d", "-s", SESSION, "-x", "200", "-y", "50", "-c", folder, cmd)
