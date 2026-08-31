@@ -12,6 +12,8 @@ DIR="/Users/pouya/.openclaw/workspace/scripts"
 RAW="${1:?usage: claude-relay-group <WORKDIR> \"<prompt>\"}"; shift
 WORKDIR="$(cd "$RAW" 2>/dev/null && pwd)" || { echo "claude-relay-group: no such folder: $RAW" >&2; exit 1; }
 KEY="cr-$(printf '%s' "$WORKDIR" | md5 | cut -c1-10)"   # stable per-folder tmux name
+DIR0="/Users/pouya/.openclaw/workspace/scripts"
+RW0="$DIR0/relay-work"
 
 # "Alive" = the claude TUI is running in ANY usable state: idle input box, busy
 # turn, OR an open selection menu. Crucially we must NOT treat an open menu as
@@ -76,6 +78,37 @@ ready(){
   [ "$strikes" -lt 3 ] && return 0
   rm -f "$f"; return 1
 }
+
+# --- codex: a backend with NO terminal ------------------------------------
+# Every other backend here is a TUI in a tmux pane, so the whole block below
+# (liveness probe, kill+relaunch, chrome wait) exists to keep a terminal alive.
+# codex has a real non-interactive mode: a turn is a detached `codex exec`
+# process and the conversation lives in its thread_id, so there is nothing to
+# keep alive between turns. Creating a pane anyway would be actively harmful --
+# ready() would find a bare shell in it, call the session dead, and kill+relaunch
+# on EVERY message.
+CX_PIN="$(cat "$RW0/default-model-$KEY.txt" 2>/dev/null | tr -d '[:space:]')"
+if [ "$CX_PIN" = "cx" ] || [ "$(python3 -c "
+import json,sys
+try: print(json.load(open('$RW0/backend-$KEY.json')).get('backend',''))
+except Exception: print('')" 2>/dev/null)" = "codex" ]; then
+  CXCFG="$DIR0/relay-claude-settings-cx.json"
+  python3 - "$CXCFG" "$RW0/backend-$KEY.json" <<'PY' 2>/dev/null || true
+import json, sys
+try:
+    cfg = json.load(open(sys.argv[1]))
+except Exception:
+    cfg = {}
+json.dump({"backend": "codex", "model": cfg.get("model", "")}, open(sys.argv[2], "w"))
+PY
+  export CLAUDE_RELAY_SESSION="$KEY"
+  WKEY="crw-${KEY#cr-}"
+  if ! tmux has-session -t "$WKEY" 2>/dev/null; then
+    tmux new-session -d -s "$WKEY" -c "$DIR0" \
+      "CLAUDE_RELAY_SESSION='$KEY' RELAY_STREAM='${RELAY_STREAM:-1}' exec python3 '$DIR0/claude-relay-send.py' --watch"
+  fi
+  exec python3 "$DIR0/claude-relay-send.py" "$@"
+fi
 
 if ! ( tmux has-session -t "$KEY" 2>/dev/null && ready ); then
   tmux kill-session -t "$KEY" 2>/dev/null || true

@@ -72,6 +72,16 @@ def main():
     except Exception:
         return 0
     be = cfg.get("backend")
+    if be == "codex":
+        # codex has no pane and no long-lived process, so there is no command to
+        # run in tmux. claude-relay-group short-circuits to the paneless path
+        # before it ever gets here; emitting the marker with an EMPTY command
+        # keeps `cc model cx` resolving through the same settings file as every
+        # other token, and makes a stray call here a no-op instead of sending an
+        # empty line into a pane.
+        sys.stdout.write(json.dumps({"backend": "codex",
+                                     "model": cfg.get("model", "")}) + "\t")
+        return 0
     if be == "kimi":
         name, tmpl, cont = "kimi", "{bin} -m {model} -c --yolo", ""
     elif be == "opencode-api":

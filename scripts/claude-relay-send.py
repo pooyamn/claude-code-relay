@@ -517,6 +517,29 @@ def is_opencode_api():
     reading a UI. The API reports turn state and returns whole messages."""
     return backend_name() == "opencode-api"
 
+def is_codex():
+    """codex driven headlessly via `codex exec`, with no terminal at all.
+
+    Same reasoning as opencode-api, taken further: codex has a real
+    non-interactive mode, so there is no pane to scrape and no TUI to keep
+    alive. A turn is a detached process; `thread_id` is the durable per-folder
+    conversation and the -o file is the finished answer."""
+    return backend_name() == "codex"
+
+_CODEX = None
+
+def cx():
+    """Lazy-load the codex helper so a broken/absent module can never stop the
+    claude path from working (same contract as oc_api())."""
+    global _CODEX
+    if _CODEX is None:
+        import importlib.util
+        path = os.path.join(os.path.dirname(STATE_DIR), "relay-codex.py")
+        spec = importlib.util.spec_from_file_location("relay_codex", path)
+        _CODEX = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(_CODEX)
+    return _CODEX
+
 _OC_API = None
 
 def oc_api():
@@ -1790,6 +1813,29 @@ def inject(prompt):
             except Exception as e:
                 deliver(f"⚠️ Couldn't reach the opencode server for this folder: {e}")
             return ""
+    # codex: no pane, no typing. Start the turn detached and return; the watcher
+    # polls is_busy()/last_reply() and delivers. `cc cancel` maps to killing the
+    # process group, which is the only interrupt codex exec has.
+    if is_codex():
+        folder = folder_for_session()
+        if not folder:
+            deliver("\u26a0\ufe0f No folder is bound to this codex session.")
+            return ""
+        if prompt.strip().lower() in ("/cancel", "/interrupt", "/esc"):
+            ok = cx().cancel(SESSION)
+            deliver("\u270b Interrupted the codex turn." if ok
+                    else "Nothing was running to interrupt.")
+            return ""
+        if cx().is_busy(SESSION):
+            deliver("\u23f3 codex is still working on the previous turn. "
+                    "`cc cancel` it, or wait for it to finish.")
+            return ""
+        write_last_prompt(prompt)
+        try:
+            cx().start(folder, SESSION, prompt, (_backend().get("model") or ""))
+        except Exception as e:
+            deliver(f"\u26a0\ufe0f Couldn't start codex for this folder: {e}")
+        return ""
     # /workflows (and /workflow) can't open their full-screen viewer over the relay
     # -> answer with a scraped text snapshot of live workflow progress instead of
     # opening (and then auto-dismissing) the overlay.
@@ -1909,6 +1955,47 @@ def watch():
         # branch deliberately skips session_alive(), the busy/ready regexes, the
         # menu and overlay guards and the Stop-hook marker: every one of those reads
         # a terminal that does not exist here.
+        # codex: paneless, like opencode-api. Poll the detached turn, keep the
+        # bubble fed from the event stream, deliver the -o answer once the
+        # process exits. Placed BEFORE session_alive(): there is no tmux pane to
+        # be alive, and reaching that check would end the watcher immediately.
+        if is_codex():
+            refresh_target()
+            if not CHAT_ID:
+                continue
+            if cx().is_busy(SESSION):
+                was_busy = True
+                if stream is None and STREAM:
+                    w = _WS(CHAT_ID, THREAD_ID)
+                    stream = _Stream(read_last_prompt(), w if w.ok else None)
+                if stream:
+                    try:
+                        stream.update_text(cx().live_text(SESSION))
+                    except Exception:
+                        pass
+                continue
+            if not was_busy:
+                continue          # idle between turns: nothing to deliver
+            reply = cx().last_reply(SESSION)
+            if not reply:
+                # A turn that produced no answer is a FAILURE, not silence. Say
+                # so with codex's own stderr -- the alternative is a topic that
+                # just goes quiet, which is the single most expensive failure
+                # mode this relay has had.
+                why = cx().turn_failed(SESSION)
+                reply = (f"\u26a0\ufe0f codex ended the turn without an answer.\n\n{why}"
+                         if why else
+                         "\u26a0\ufe0f codex ended the turn without an answer.")
+            cx().harvest_thread(SESSION)   # first turn's thread_id reaches disk here
+            h = dedup_key(reply)
+            if h and h != delivered:
+                if stream and stream.ws:
+                    stream.ws.close()
+                if deliver(reply):
+                    delivered = h
+                    save_delivered(h)
+            stream, was_busy = None, False
+            continue
         if is_opencode_api():
             refresh_target()
             if not CHAT_ID:
