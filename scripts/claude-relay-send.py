@@ -1625,6 +1625,17 @@ def restart_with_model(model):
         expect = kb.get("label", model)
     else:
         _write_backend({"backend": "claude"})   # reset if switching back from kimi
+        # ...and CLEAR the pin. Switching TO codex/opencode-api writes
+        # default-model-<KEY>.txt so a respawn does not revert; switching BACK
+        # never removed it, and claude-relay-group short-circuits to the codex
+        # path on `CX_PIN = cx` BEFORE looking at the backend marker. So `cc model
+        # opus` relaunched a claude pane, said it had switched, and the very next
+        # inbound message went to codex anyway -- with the pane now gone (topic
+        # 816, 2026-09-01). claude is the unpinned default, so leave no pin.
+        try:
+            os.remove(os.path.join(STATE_DIR, f"default-model-{SESSION}.txt"))
+        except OSError:
+            pass
         settings, alt_model = settings_for_model(model)
         # QUOTE the model: a 1M-context id carries brackets (`claude-opus-5[1m]`) and
         # tmux runs this through zsh, where an unquoted bracket is a glob -- it dies
@@ -1687,7 +1698,11 @@ def restart_with_model(model):
         if "trust this folder" in p:
             tmux("send-keys", "-t", SESSION, "Enter"); time.sleep(2); continue
         if "Resume from summary" in p:                       # big-session resume dialog
-            tmux("send-keys", "-t", SESSION, "Enter"); time.sleep(2); continue
+            # Option 2, FULL session -- not the highlighted default. Bare Enter took
+            # "Resume from summary", silently trading the pinned conversation for a
+            # summary on every relaunch; the pin exists to keep it whole.
+            tmux("send-keys", "-t", SESSION, "Down"); time.sleep(0.5)
+            tmux("send-keys", "-t", SESSION, "Enter"); time.sleep(3); continue
         if READY.search(p):
             ready = True; break
     if not ready:

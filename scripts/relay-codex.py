@@ -55,18 +55,29 @@ def _cfg():
         return {}
 
 
-def _perm_args(cfg):
+def _perm_args(cfg, resume=False):
     """Compose the permission flags. Default posture is ALLOW EVERYTHING, which
     matches --dangerously-skip-permissions on the claude path: nobody is at the
     keyboard to answer an approval prompt, so a prompt is just a hung turn.
 
     -s danger-full-access is redundant while bypass_approvals is on (the bypass
     already disables the sandbox) but is emitted anyway, so dropping the bypass
-    alone does not silently re-sandbox every command."""
+    alone does not silently re-sandbox every command.
+
+    `codex exec resume` accepts a STRICTLY SMALLER flag set than `codex exec`:
+    -s/--sandbox, --add-dir, -C, -p and --color are all rejected there with
+    "unexpected argument", which kills the turn before the model is reached (the
+    relay then delivers nothing and the topic looks dead -- codex-cli 0.152.1,
+    topic 816, 2026-09-01). Both survivors have a -c config-override spelling,
+    so on the resume path emit those instead of dropping the posture."""
     args = []
     if cfg.get("bypass_approvals", True):
         args.append("--dangerously-bypass-approvals-and-sandbox")
-    args += ["-s", cfg.get("sandbox", "danger-full-access")]
+    sandbox = cfg.get("sandbox", "danger-full-access")
+    if resume:
+        args += ["-c", 'sandbox_mode=%s' % json.dumps(sandbox)]
+    else:
+        args += ["-s", sandbox]
     if cfg.get("bypass_hook_trust", True):
         args.append("--dangerously-bypass-hook-trust")
     if cfg.get("inherit_env", True):
@@ -74,8 +85,13 @@ def _perm_args(cfg):
         # anything relying on PATH/tokens from the relay's shell fails in ways
         # that look like the tool being broken rather than the env being empty.
         args += ["-c", "shell_environment_policy.inherit=all"]
-    for d in cfg.get("add_dirs") or []:
-        args += ["--add-dir", d]
+    add_dirs = cfg.get("add_dirs") or []
+    if add_dirs:
+        if resume:
+            args += ["-c", "sandbox_workspace_write.writable_roots=" + json.dumps(add_dirs)]
+        else:
+            for d in add_dirs:
+                args += ["--add-dir", d]
     for extra in cfg.get("extra_args") or []:
         args.append(extra)
     return args
@@ -233,7 +249,7 @@ def start(folder, key, prompt, model=""):
         base += ["-m", model]
     cmd = base + ["--json",
                   "-o", last_path(key),
-                  "--skip-git-repo-check"] + _perm_args(cfg)
+                  "--skip-git-repo-check"] + _perm_args(cfg, resume=bool(tid))
 
     ev = open(events_path(key), "w")
     er = open(err_path(key), "a")
