@@ -263,6 +263,69 @@ def start(folder, key, prompt, model=""):
     return proc.pid
 
 
+def named_path(key):    return _p(key, "named") + ".txt"
+
+
+def name_thread(key, name):
+    """Give this folder's thread a human name via the app-server protocol.
+
+    Why it matters: codex auto-derives a thread name from the first prompt, so
+    relay threads show up in the ChatGPT app's agent list as things like
+    "Take a look at motherboard PCB under /hardware/..." with no hint of which
+    topic they belong to -- the same unrecognisable-name problem the Claude side
+    has with derived session names. `codex exec` has no flag for this; the name
+    only settles over the app-server JSON-RPC, spoken to a short-lived
+    `codex app-server` on stdio (the control socket refuses unpaired clients).
+
+    Once per thread: the marker file keeps a rename the user made in the app
+    from being overwritten on the next turn.
+    """
+    tid = read_thread(key)
+    if not tid or not name:
+        return False
+    try:
+        if open(named_path(key)).read().strip() == tid:
+            return True                      # already named this thread
+    except Exception:
+        pass
+    try:
+        proc = subprocess.Popen([CODEX, "app-server"], stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                text=True, bufsize=1)
+    except Exception:
+        return False
+    ok = False
+    try:
+        def send(o):
+            proc.stdin.write(json.dumps(o) + "\n"); proc.stdin.flush()
+        send({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+              "params": {"clientInfo": {"name": "claude-code-relay",
+                                        "version": "0.1", "title": "relay"}}})
+        send({"jsonrpc": "2.0", "id": 2, "method": "thread/name/set",
+              "params": {"threadId": tid, "name": name[:80]}})
+        end = time.time() + 15
+        while time.time() < end:
+            line = proc.stdout.readline()
+            if not line:
+                break
+            if '"id":2' in line.replace(" ", ""):
+                ok = '"error"' not in line
+                break
+    except Exception:
+        ok = False
+    finally:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+    if ok:
+        try:
+            open(named_path(key), "w").write(tid)
+        except Exception:
+            pass
+    return ok
+
+
 def last_reply(key):
     """The finished turn's answer, or '' if it has not landed yet."""
     try:

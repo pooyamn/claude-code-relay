@@ -2034,6 +2034,16 @@ def watch():
                          if why else
                          "\u26a0\ufe0f codex ended the turn without an answer.")
             cx().harvest_thread(SESSION)   # first turn's thread_id reaches disk here
+            # Name the thread after the topic. codex derives a name from the
+            # first prompt otherwise, which in the ChatGPT app's agent list
+            # reads as a stray sentence with no clue which topic it is.
+            try:
+                folder = folder_for_session() or ""
+                label = os.path.basename(folder.rstrip("/")) or SESSION
+                cx().name_thread(SESSION, f"{label} (topic {THREAD_ID})"
+                                 if THREAD_ID else label)
+            except Exception:
+                pass
             h = dedup_key(reply)
             if h and h != delivered:
                 if stream and stream.ws:
