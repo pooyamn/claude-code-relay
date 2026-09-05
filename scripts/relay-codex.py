@@ -336,9 +336,71 @@ def turn_failed(key):
     on every other backend here."""
     if is_busy(key) or last_reply(key):
         return ""
+    # Read the EVENT STREAM first. codex reports real failures there, not on
+    # stderr: a 400 "model requires a newer version of Codex" produced
+    # turn.failed + an error event on stdout while stderr held only the harmless
+    # "Reading additional input from stdin..." line. Reading stderr alone
+    # returned an EMPTY reason, so the relay would have posted "ended the turn
+    # without an answer" with nothing to act on -- the silent topic this
+    # function exists to prevent (measured 2026-09-04 on gpt-6-astra).
+    # Fatal events first, advisory ones only as a fallback. codex emits benign
+    # NOTICES as error items -- the hook-trust banner we ourselves trigger, and
+    # "Model metadata not found" -- and listing them first buried the real cause
+    # (a 400) past the 400-char cut, which is worse than useless in a topic.
+    fatal, advisory = [], []
+    try:
+        with open(events_path(key)) as f:
+            for line in f:
+                try:
+                    d = json.loads(line)
+                except Exception:
+                    continue
+                t = d.get("type")
+                if t == "turn.failed":
+                    m, bucket = (d.get("error") or {}).get("message") or "", fatal
+                elif t == "error":
+                    m, bucket = d.get("message") or "", fatal
+                elif t == "item.completed" and (d.get("item") or {}).get("type") == "error":
+                    m, bucket = (d.get("item") or {}).get("message") or "", advisory
+                else:
+                    continue
+                m = _unwrap(m)
+                if m and m not in bucket:
+                    bucket.append(m)
+    except Exception:
+        pass
+    advisory = [m for m in advisory if not _is_notice(m)]
+    msgs = fatal or advisory
+    if msgs:
+        return "\n".join(msgs)[:400]
     try:
         tail = open(err_path(key)).read().strip().splitlines()[-4:]
     except Exception:
         tail = []
     tail = [l for l in tail if l.strip() and "Reading additional input" not in l]
     return "\n".join(tail)[:400]
+
+
+_NOTICES = ("--dangerously-bypass-hook-trust` is enabled",
+            "Model metadata for",
+            "Defaulting to fallback metadata")
+
+
+def _is_notice(msg):
+    """Advisory banners codex prints as error items. Not failures -- the
+    hook-trust one is a direct consequence of our own trust posture."""
+    return any(n in (msg or "") for n in _NOTICES)
+
+
+def _unwrap(msg):
+    """codex nests the upstream error as a JSON string inside .message; show the
+    human sentence rather than a wall of escaped JSON."""
+    m = (msg or "").strip()
+    if m.startswith("{"):
+        try:
+            d = json.loads(m)
+            inner = d.get("error") or d
+            return inner.get("message") or m
+        except Exception:
+            return m
+    return m
