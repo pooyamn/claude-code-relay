@@ -163,6 +163,19 @@ if ! ( tmux has-session -t "$KEY" 2>/dev/null && ready ); then
     if printf '%s' "$pane" | grep -q "trust this folder"; then
       tmux send-keys -t "$KEY" Enter; sleep 2
     fi
+    # Big-session resume dialog ("Resume from summary / Resume full session as-is").
+    # Claude Code raises it on --resume once a conversation gets large, and nothing
+    # here answered it: the loop spun its full 90s on the menu, then the prompt was
+    # typed INTO the menu, so the topic went silent while the pane looked healthy --
+    # ready() deliberately treats an open menu as alive (topic 816, 2026-09-01).
+    # Pick option 2, FULL session: the SID pin exists precisely to keep this
+    # conversation whole, and answering with the default would quietly trade it for
+    # a summary on every respawn. Costs tokens; that is the intended trade.
+    if printf '%s' "$pane" | grep -q "Resume from summary"; then
+      tmux send-keys -t "$KEY" Down; sleep 0.5
+      tmux send-keys -t "$KEY" Enter; sleep 3
+      continue
+    fi
     if printf '%s' "$pane" | grep -qE "for agents|for shortcuts"; then break; fi
   done
 

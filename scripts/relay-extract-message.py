@@ -23,6 +23,22 @@ text = raw
 msg = None
 
 
+# OpenClaw appends this block to the USER MESSAGE when it truncates workspace
+# bootstrap files, so the model reads an operator notice as if the user had typed
+# it ("Go on" arrived with four bullet points about AGENTS.md attached). It is
+# addressed to whoever runs the gateway, not to the agent, and it is never part
+# of what the user said.
+_BOOTSTRAP_WARN = re.compile(
+    r"\n*\[Bootstrap truncation warning\].*?(?=\n{2,}\S|\Z)", re.S)
+
+
+def strip_bootstrap_warning(t):
+    t = _BOOTSTRAP_WARN.sub("", t or "")
+    # the bullets are emitted as lone "•" lines; drop any that survive
+    t = re.sub(r"(?m)^[ \t]*•[ \t]*$", "", t)
+    return re.sub(r"\n{3,}", "\n\n", t).strip()
+
+
 def strip_prefixes(t):
     """Strip a leading '[Replying to: "..."]' block, a '#N Sender (id):'
     conversation-line prefix, and a leading code fence from one message."""
@@ -76,8 +92,17 @@ def _hsize(n):
 
 def _link(name):
     """A compact on-disk pointer for an inbound file (already saved by OpenClaw),
-    so Claude opens it on demand instead of having content/descriptions inlined."""
-    p = os.path.join(INBOUND_DIR, os.path.basename(name))
+    so Claude opens it on demand instead of having content/descriptions inlined.
+
+    Accepts either a bare name (the media://inbound/ shape) or an ABSOLUTE path,
+    which is what OpenClaw emits now. Resolving an absolute path through
+    INBOUND_DIR would rebuild a path in the WRONG folder whenever the sender's
+    staging dir is not this session's, so an absolute path is used as given.
+    """
+    if name.startswith("/") and os.path.isfile(name):
+        p = name
+    else:
+        p = os.path.join(INBOUND_DIR, os.path.basename(name))
     try:
         return f"\U0001F4CE {p} ({_hsize(os.path.getsize(p))})"
     except OSError:
@@ -89,11 +114,20 @@ def rewrite_media(t):
     'Description:' blocks -- with a one-line link to the file saved under
     media/inbound. Keeps the prompt small (a 177KB hex no longer floods context)
     and hands Claude a path it can Read. No-op on plain text messages."""
-    if "media://inbound/" not in t and "<file name=" not in t:
+    # The guard must know every shape, or the whole rewrite silently no-ops.
+    # OpenClaw switched from "media://inbound/<name>" to an ABSOLUTE path inside
+    # the bound folder, so this bailed out early: the vision Description and the
+    # "[Image]" marker stayed, no 📎 link was produced, and the session answered
+    # "the image didn't arrive" while the file sat on disk (topic 18, 2026-09-12).
+    if ("media://inbound/" not in t and "<file name=" not in t
+            and "[media attached:" not in t):
         return t
     t = re.sub(r'<file name="([^"]+)"[^>]*>.*?</file>',
                lambda m: _link(m.group(1)), t, flags=re.S)
     t = re.sub(r'\[media attached:\s*media://inbound/(\S+?)\s*\([^)]*\)\]',
+               lambda m: _link(m.group(1)), t)
+    # ...and the absolute-path shape.
+    t = re.sub(r'\[media attached:\s*(/\S+?)\s*\([^)]*\)\]',
                lambda m: _link(m.group(1)), t)
     # Drop the vision description block (link replaces it), the send-back
     # boilerplate, bare media markers, and the transient /tmp image path.
@@ -116,4 +150,4 @@ def rewrite_media(t):
     return t.strip()
 
 
-sys.stdout.write(rewrite_media(msg if msg else raw.strip()))
+sys.stdout.write(strip_bootstrap_warning(rewrite_media(msg if msg else raw.strip())))

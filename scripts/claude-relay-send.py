@@ -175,6 +175,77 @@ def tg_send_media(path, caption="", document=True):
     _oplog("SENDMEDIA", mid, path, r)
     return mid
 
+_MD_IMG_RE = re.compile(r"!\[[^\]]*\]\([^)\s]+\)")
+_IMG_RE = re.compile(r"!\[[^\]]*\]\(([^)\s]+)\)|(?<![\w/])(/[^\s()<>\"']+\.(?:png|jpg|jpeg|gif|webp|pdf|svg))",
+                     re.I)
+
+
+def deliver_with_media(text, folder):
+    """Send a reply that references local files, with the FILES attached.
+
+    codex answers with markdown image links to real paths
+    ("![DUT-D 3D render](/tmp/dut-d-3d.../dut-d-overview.png)"), and delivering
+    that as plain text gives the user a path they cannot open from their phone --
+    the picture arrives in the ChatGPT app and not in Telegram, which is exactly
+    what a relay is supposed to prevent.
+
+    OpenClaw only sends outbound media from allowlisted directories, so anything
+    outside them (/tmp, a build dir) is COPIED into <folder>/media/outbound
+    first. Images go inline (document=False) so they render in the chat; other
+    files keep full fidelity as documents."""
+    paths, seen = [], set()
+    for m in _IMG_RE.finditer(text or ""):
+        cand = m.group(1) or m.group(2) or ""
+        if cand.startswith("file://"):
+            cand = cand[7:]
+        if cand.startswith("/") and cand not in seen and os.path.isfile(cand):
+            seen.add(cand)
+            # Keep the markdown ALT text -- it is the human label codex wrote
+            # ("DUT-D 3D render"), and it belongs on the photo as its caption
+            # rather than being thrown away with the link.
+            alt = ""
+            whole = m.group(0)
+            if whole.startswith("!["):
+                alt = whole[2:whole.index("]")].strip()
+            paths.append((cand, alt))
+    if not paths:
+        return deliver(text)
+
+    out = os.path.join(folder, "media", "outbound")
+    try:
+        os.makedirs(out, exist_ok=True)
+    except Exception:
+        out = None
+    # Prose minus the links. When the reply was ONLY a picture there is no prose
+    # left, and posting a bare "📎" ahead of it is noise -- the alt text rides
+    # along as the photo's caption instead, which is how a picture arrives in a
+    # chat normally.
+    # Strip only the MARKDOWN links; a bare path sits inside a sentence
+    # ("See /tmp/x.png for the layout") and deleting it leaves "See" dangling.
+    # Collapse the blank run the removed link leaves behind, or the reply arrives
+    # with a hole in the middle of it.
+    body = _MD_IMG_RE.sub("", text or "")
+    body = re.sub(r"\n{3,}", "\n\n", body).strip()
+    ok = deliver(body) if body else True
+    for src, alt in paths[:6]:                  # a cap: a runaway list is not a gallery
+        send_path = src
+        if out and not src.startswith(out):
+            try:
+                dst = os.path.join(out, os.path.basename(src))
+                shutil.copyfile(src, dst)
+                send_path = dst
+            except Exception:
+                send_path = src
+        try:
+            img = os.path.splitext(send_path)[1].lower() in (
+                ".png", ".jpg", ".jpeg", ".gif", ".webp")
+            caption = "" if body else (alt or os.path.basename(src))
+            tg_send_media(send_path, caption, document=not img)
+        except Exception as e:
+            deliver(f"⚠️ Couldn't attach {os.path.basename(src)}: {e}")
+    return ok
+
+
 def tg_delete(msg_id):
     """Best-effort delete of a message (the live progress bubble)."""
     if not (msg_id and CHAT_ID):
@@ -441,6 +512,15 @@ class _Stream:
         snap = f"{head}\n\n{body[-LIVE_WINDOW:]}" if body else head
         if snap == self.sent:
             return
+        # Same 5s cadence update() already uses, and for the same reason: the
+        # header ticks every second, so without a guard this edits on EVERY poll,
+        # trips Telegram's per-message edit flood limit, and the bubble freezes --
+        # the "counter keeps staling" symptom. Dedupe alone cannot prevent it,
+        # because the elapsed seconds make every snapshot different.
+        now = time.time()
+        if now - self.last < 5.0:
+            return
+        self.last = now
         self.sent = snap
         if self.ws and self.id:
             self.ws.edit(self.id, snap)
@@ -539,6 +619,19 @@ def cx():
         _CODEX = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(_CODEX)
     return _CODEX
+
+_CXP = None
+
+def cxp():
+    """Lazy-load the codex app-server client (same contract as cx()/oc_api())."""
+    global _CXP
+    if _CXP is None:
+        import importlib.util
+        path = os.path.join(os.path.dirname(STATE_DIR), "relay-codex-proto.py")
+        spec = importlib.util.spec_from_file_location("relay_codex_proto", path)
+        _CXP = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(_CXP)
+    return _CXP
 
 _OC_API = None
 
@@ -1589,6 +1682,31 @@ def _write_backend(cfg):
     except Exception:
         pass
 
+def restart_watcher():
+    """Respawn this session's watcher so it runs the CURRENT code.
+
+    A watcher is long-lived -- one was found still executing an 8-day-old copy of
+    this file -- and it holds its Python module in memory. Switching a topic's
+    backend therefore switches the FILES while the running watcher keeps the old
+    behaviour: topic 18 moved to `cx` and its watcher, started before the codex
+    backend existed, had no codex branch at all, so the queued message was never
+    picked up and the topic looked dead. A backend switch must bring the watcher
+    with it."""
+    wkey = "crw-" + SESSION[3:]
+    d = os.path.dirname(STATE_DIR)
+    try:
+        tmux("kill-session", "-t", wkey)
+        time.sleep(1)
+        subprocess.run(["tmux", "new-session", "-d", "-s", wkey, "-c", d,
+                        f"CLAUDE_RELAY_SESSION='{SESSION}' "
+                        f"RELAY_STREAM='{os.environ.get('RELAY_STREAM', '1')}' "
+                        f"exec python3 '{os.path.join(d, 'claude-relay-send.py')}' --watch"],
+                       capture_output=True, text=True, timeout=20)
+        return True
+    except Exception:
+        return False
+
+
 def restart_with_model(model):
     """Switch this session's model RELIABLY by relaunching `claude` with --model
     (+ --continue to keep context). The live /model command is gated on big cached
@@ -1625,6 +1743,7 @@ def restart_with_model(model):
         expect = kb.get("label", model)
     else:
         _write_backend({"backend": "claude"})   # reset if switching back from kimi
+        restart_watcher()                      # see restart_watcher(): stale code
         # ...and CLEAR the pin. Switching TO codex/opencode-api writes
         # default-model-<KEY>.txt so a respawn does not revert; switching BACK
         # never removed it, and claude-relay-group short-circuits to the codex
@@ -1650,6 +1769,7 @@ def restart_with_model(model):
     # ready() would find a bare shell and kill+relaunch on every single message.
     if kb and kb.get("backend") == "codex":
         tmux("kill-session", "-t", SESSION)
+        restart_watcher()          # the old watcher may predate codex entirely
         try:
             open(os.path.join(STATE_DIR, f"default-model-{SESSION}.txt"), "w").write(model)
         except Exception:
@@ -1868,20 +1988,37 @@ def inject(prompt):
         if not folder:
             deliver("\u26a0\ufe0f No folder is bound to this codex session.")
             return ""
-        if prompt.strip().lower() in ("/cancel", "/interrupt", "/esc"):
-            ok = cx().cancel(SESSION)
-            deliver("\u270b Interrupted the codex turn." if ok
-                    else "Nothing was running to interrupt.")
+        # The WATCHER owns the app-server connection (a thread exists only inside
+        # the connection that opened it), and this process exits as soon as the
+        # message is queued -- so everything here is a queue append.
+        # Accept the bare spellings too. claude-tui-backend-multi normally
+        # rewrites "cc cancel" -> "/cancel" before this point, but anything that
+        # calls the relay directly skips that hop, and a cancel that silently
+        # becomes a STEER ("cc cancel" fed into the running turn as text) is a
+        # nasty way to find out.
+        if re.fullmatch(r"(?:/|cc\s+)?(?:cancel|interrupt|esc|stop)",
+                        prompt.strip(), re.I):
+            cxp().enqueue(SESSION, cmd="interrupt")
             return ""
-        if cx().is_busy(SESSION):
-            deliver("\u23f3 codex is still working on the previous turn. "
-                    "`cc cancel` it, or wait for it to finish.")
+        # Relay-level commands must be handled BEFORE the text is queued, or they
+        # reach codex as a prompt and it answers "I can't switch this session to
+        # Opus from here" -- which is true, and useless: switching backends is
+        # the RELAY's job, not the model's. This branch sits ahead of the generic
+        # /model handler below, so it has to do the same job for codex sessions.
+        mm_cx = re.fullmatch(r"/model\s+([A-Za-z0-9._\[\]-]+)", prompt.strip(), re.I)
+        if mm_cx:
+            restart_with_model(mm_cx.group(1))
+            return ""
+        if re.fullmatch(r"/model", prompt.strip(), re.I):
+            deliver("Pick a backend explicitly, e.g. `cc model opus` or "
+                    "`cc model cx` — codex has no interactive model picker.")
             return ""
         write_last_prompt(prompt)
-        try:
-            cx().start(folder, SESSION, prompt, (_backend().get("model") or ""))
-        except Exception as e:
-            deliver(f"\u26a0\ufe0f Couldn't start codex for this folder: {e}")
+        # Deliberately NO busy check. A message arriving mid-turn is STEERED into
+        # the running turn by the watcher. The old busy-refusal was wrong twice
+        # over: it threw away what the user typed, and posting it under the live
+        # bubble left the bubble looking frozen while it was still updating.
+        cxp().enqueue(SESSION, text=prompt)
         return ""
     # /workflows (and /workflow) can't open their full-screen viewer over the relay
     # -> answer with a scraped text snapshot of live workflow progress instead of
@@ -1993,6 +2130,8 @@ def watch():
     hook_active = last_done_mt is not None
     last_done_mt = last_done_mt or 0
     stream, menu_sig, was_busy, idle_stable, overlay_stable = None, None, False, 0, 0
+    _cxconn = None                 # codex app-server connection, owned by this loop
+    _cxblocked_since, _cxblocked_told = None, False
     api_tick, stream_last_text = 0, ""
     while True:
         time.sleep(1.0)
@@ -2010,48 +2149,120 @@ def watch():
             refresh_target()
             if not CHAT_ID:
                 continue
-            if cx().is_busy(SESSION):
+            folder = folder_for_session()
+            if not folder:
+                continue
+            # Hold the thread's writer lock ONLY while there is work. A codex
+            # thread has exactly one writer, so a permanently-open connection
+            # locks the ChatGPT app out of the same thread -- it answers
+            # "Codex server returned an error." on every message. Connect when
+            # something is queued, release as soon as the turn is delivered, and
+            # the app owns the thread the rest of the time.
+            if _cxconn is None and not cxp().peek(SESSION):
+                continue
+            if _cxconn is None or not _cxconn.alive():
+                _cxconn = cxp().Conn(SESSION, folder, _backend())
+                if not _cxconn.open():
+                    # open() refuses to abandon a locked thread, so a failure
+                    # here means "try again", never "start a fresh thread". The
+                    # usual cause is legitimate: the ChatGPT app holds this
+                    # thread's single writer lock while IT works on the thread.
+                    # Say so in the live bubble -- a queued message with no
+                    # feedback is indistinguishable from a dead topic, which is
+                    # the failure mode that costs the most time here.
+                    _cxconn = None
+                    # Tell the user ONCE, in a real message. A bubble alone is
+                    # not enough: it can be missed or arrive before they look,
+                    # and a topic that answers nothing reads as broken.
+                    if cxp().peek(SESSION):
+                        if _cxblocked_since is None:
+                            _cxblocked_since = time.time()
+                        elif (time.time() - _cxblocked_since > 30
+                              and not _cxblocked_told):
+                            _cxblocked_told = True
+                            deliver("⏸ This thread is currently open in the Codex "
+                                    "app, which holds its single writer lock, so I "
+                                    "can't run your message here yet. It is queued "
+                                    "and will go through as soon as you leave that "
+                                    "thread in the app.")
+                    if cxp().peek(SESSION) and STREAM:
+                        if stream is None:
+                            w = _WS(CHAT_ID, THREAD_ID)
+                            stream = _Stream(read_last_prompt(), w if w.ok else None)
+                        if stream:
+                            try:
+                                stream.update_text(
+                                    "⏸ Waiting for this thread — it is open in the "
+                                    "Codex app, which holds the writer lock. Your "
+                                    "message is queued and goes through as soon as "
+                                    "the app is done.")
+                            except Exception:
+                                pass
+                    time.sleep(5)
+                    continue
+                try:
+                    # Only name a thread that has none. Naming unconditionally
+                    # RENAMED a thread the user had already titled in the app --
+                    # "DUT board design (topic 53)" became "duts (topic 53)" --
+                    # so the recognisable entry in their list was no longer the
+                    # one the relay writes to, which is worse than no name.
+                    _cxblocked_since, _cxblocked_told = None, False
+                    label = os.path.basename(folder.rstrip("/")) or SESSION
+                    _cxconn.set_name_if_unset(
+                        f"{label} (topic {THREAD_ID})" if THREAD_ID else label)
+                except Exception:
+                    pass
+            # peek/drop, never drain: a message must not be consumed until it
+            # has actually been handed to the connection.
+            for item in cxp().peek(SESSION):
+                if item.get("cmd") == "interrupt":
+                    cxp().drop(SESSION, 1)
+                    ok = _cxconn.interrupt()
+                    deliver("\u270b Interrupted the codex turn." if ok
+                            else "Nothing was running to interrupt.")
+                    if stream and stream.ws:
+                        stream.ws.close()
+                    stream, was_busy = None, False
+                    continue
+                text = item.get("text") or ""
+                if not text:
+                    continue
+                res = _cxconn.send(text)
+                if res == "steered":
+                    write_last_prompt(text)      # the bubble follows the newest ask
+                elif not res:
+                    deliver("\u26a0\ufe0f codex refused the turn: "
+                            f"{_cxconn.error or 'unknown error'}")
+                    break                        # leave it queued; retry next pass
+                cxp().drop(SESSION, 1)           # only now is it safely handed over
+            if _cxconn.busy:
                 was_busy = True
                 if stream is None and STREAM:
                     w = _WS(CHAT_ID, THREAD_ID)
                     stream = _Stream(read_last_prompt(), w if w.ok else None)
                 if stream:
                     try:
-                        stream.update_text(cx().live_text(SESSION))
+                        stream.update_text(_cxconn.live_text())
                     except Exception:
                         pass
                 continue
-            if not was_busy:
-                continue          # idle between turns: nothing to deliver
-            reply = cx().last_reply(SESSION)
-            if not reply:
-                # A turn that produced no answer is a FAILURE, not silence. Say
-                # so with codex's own stderr -- the alternative is a topic that
-                # just goes quiet, which is the single most expensive failure
-                # mode this relay has had.
-                why = cx().turn_failed(SESSION)
-                reply = (f"\u26a0\ufe0f codex ended the turn without an answer.\n\n{why}"
-                         if why else
-                         "\u26a0\ufe0f codex ended the turn without an answer.")
-            cx().harvest_thread(SESSION)   # first turn's thread_id reaches disk here
-            # Name the thread after the topic. codex derives a name from the
-            # first prompt otherwise, which in the ChatGPT app's agent list
-            # reads as a stray sentence with no clue which topic it is.
-            try:
-                folder = folder_for_session() or ""
-                label = os.path.basename(folder.rstrip("/")) or SESSION
-                cx().name_thread(SESSION, f"{label} (topic {THREAD_ID})"
-                                 if THREAD_ID else label)
-            except Exception:
-                pass
-            h = dedup_key(reply)
-            if h and h != delivered:
-                if stream and stream.ws:
-                    stream.ws.close()
-                if deliver(reply):
-                    delivered = h
-                    save_delivered(h)
-            stream, was_busy = None, False
+            reply = _cxconn.take_final()
+            if reply:
+                h = dedup_key(reply)
+                if h and h != delivered:
+                    if stream and stream.ws:
+                        stream.ws.close()
+                    if deliver_with_media(reply, folder):
+                        delivered = h
+                        save_delivered(h)
+                stream, was_busy = None, False
+            if not cxp().peek(SESSION):
+                # Turn done and nothing waiting: give the thread back to the app.
+                try:
+                    _cxconn.close()
+                except Exception:
+                    pass
+                _cxconn = None
             continue
         if is_opencode_api():
             refresh_target()
