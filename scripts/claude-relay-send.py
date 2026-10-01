@@ -205,7 +205,12 @@ def text_limit(text=None):
     plain cap, not the rich one -- sizing it by the rich cap sent a 4770-char
     table as ONE plain message and the table never arrived (2026-09-28, #1876).
     The margin covers OpenClaw's HTML escaping (<pre>, &amp; ...) growing it."""
-    if _bot() or (text is not None and "```" in text):
+    if _bot():
+        # relay_tg splits whatever it sends classic to fit 4096 itself, and a
+        # rich message holds 32768. Pre-chunking here at the plain cap cut long
+        # TABLES in half, and the second half (no header row) arrived as raw |s.
+        return TG_RICH_LIMIT - 2000
+    if text is not None and "```" in text:
         return TG_LIMIT - 300
     return TG_RICH_LIMIT if rich_enabled() else TG_LIMIT
 

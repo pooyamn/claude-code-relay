@@ -247,6 +247,36 @@ class Daemon:
         return out
 
     # --- the hand-off -----------------------------------------------------------
+    # --- voice ------------------------------------------------------------------
+    AUDIO = ("audio/", "video/")
+
+    def transcribe(self, path):
+        """Local whisper.cpp transcript of a voice/audio/video file, or "".
+        Same pipeline as the video-transcribe-respond skill: 16k mono wav, then
+        large-v3-turbo with language auto-detect (Persian and English both)."""
+        model = os.path.expanduser(self.cfg.get(
+            "whisper_model", "~/.openclaw/whisper-models/ggml-large-v3-turbo.bin"))
+        wcli = self.cfg.get("whisper_cli", "whisper-cli")
+        if not os.path.isfile(model):
+            log(f"no whisper model at {model}; voice sent as a file only")
+            return ""
+        base = os.path.join(os.path.dirname(path), "transcript")
+        try:
+            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", path, "-ar", "16000",
+                            "-ac", "1", "-c:a", "pcm_s16le", base + ".wav"],
+                           check=True, capture_output=True, timeout=300)
+            subprocess.run([wcli, "-m", model, "-f", base + ".wav", "-l", "auto",
+                            "-otxt", "-of", base], check=True, capture_output=True, timeout=900)
+            return open(base + ".txt").read().strip()
+        except Exception as e:
+            log(f"transcription failed for {path}: {e}")
+            return ""
+        finally:
+            try:
+                os.remove(base + ".wav")
+            except Exception:
+                pass
+
     def envelope(self, chat_obj, thread, frm, text, media, msg):
         """Same shape OpenClaw composed, so relay-extract-message.py and the
         backend's chat/topic parsing work unchanged."""
@@ -270,6 +300,10 @@ class Daemon:
                         f"[1. {rn} id:{rt.get('message_id')}]\n{rtxt}\n[/Reply chain]")
         for path, mime in media:
             body.append(f"[media attached: {path} ({mime})]")
+            if mime.startswith(self.AUDIO):
+                tr = self.transcribe(path)
+                if tr:
+                    body.append(f"[voice transcript]\n{tr}\n[/voice transcript]")
         if text:
             body.append(text)
         return head + "\n\n" + "\n\n".join(body)
@@ -286,8 +320,7 @@ class Daemon:
             with open(tp + ".tmp", "w") as f:
                 json.dump(rec, f)
             os.replace(tp + ".tmp", tp)
-        env_text = self.envelope(chat_obj, thread, frm, text, media, msg)
-        job = (peer, folder, chat, thread, env_text)
+        job = (peer, folder, chat, thread, (chat_obj, thread, frm, text, media, msg))
         if immediate:
             threading.Thread(target=self.run_backend, args=job, daemon=True).start()
             return
@@ -301,8 +334,9 @@ class Daemon:
         while True:
             self.run_backend(*q.get())
 
-    def run_backend(self, peer, folder, chat, thread, env_text):
+    def run_backend(self, peer, folder, chat, thread, env_args):
         t0 = time.time()
+        env_text = self.envelope(*env_args)     # here: transcription can take a while
         try:
             r = subprocess.run([BACKEND, folder, peer, env_text],
                                capture_output=True, text=True, timeout=900)

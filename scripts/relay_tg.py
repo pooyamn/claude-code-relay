@@ -296,6 +296,35 @@ def _rich_table_html(table_md):
     return f"<table bordered striped><thead><tr>{th}</tr></thead><tbody>{trs}</tbody></table>"
 
 
+RICH_HTML_BUDGET = 30000      # under TELEGRAM_RICH_TEXT_LIMIT (32768) with margin
+
+
+def _fit_rich(parts):
+    """Split [(kind, md)] into groups whose rich HTML fits one message. A table
+    too big for one message is cut by ROWS, each piece repeating the header, so
+    every message is still a real table rather than a fallback code block."""
+    groups, cur, size = [], [], 0
+    for k, t in parts:
+        pieces = [t]
+        if k == "table" and len(_rich_table_html(t)) > RICH_HTML_BUDGET:
+            lines = t.strip().split("\n")
+            head, rows, pieces, buf = lines[:2], lines[2:], [], []
+            for r in rows:
+                if buf and len(_rich_table_html("\n".join(head + buf + [r]))) > RICH_HTML_BUDGET:
+                    pieces.append("\n".join(head + buf)); buf = []
+                buf.append(r)
+            if buf:
+                pieces.append("\n".join(head + buf))
+        for piece in pieces:
+            h = len(_rich_table_html(piece) if k == "table" else _rich_text_html(piece))
+            if cur and size + h > RICH_HTML_BUDGET:
+                groups.append(cur); cur, size = [], 0
+            cur.append((k, piece)); size += h
+    if cur:
+        groups.append(cur)
+    return groups
+
+
 def send_rich(bot, chat, thread, parts, silent=False):
     """parts: [(table|text, md)] -> one native rich message."""
     h = "".join(_rich_table_html(t) if k == "table" else _rich_text_html(t) for k, t in parts)
@@ -321,7 +350,8 @@ def send_text(bot, chat, thread, md, silent=False, reply_markup=None):
                 return
             try:
                 if any(k == "table" for k, _ in group):
-                    mid = send_rich(bot, chat, thread, group, silent)
+                    for g in _fit_rich(group):
+                        mid = send_rich(bot, chat, thread, g, silent)
                 else:
                     mid = _send_classic(bot, chat, thread,
                                         "\n\n".join(t for _, t in group), silent)
