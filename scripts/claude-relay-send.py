@@ -9,6 +9,7 @@ options formatted for Telegram and remember a menu is open; the user's next
 message (a number) is sent back as an arrow+Enter selection into the TUI.
 """
 import subprocess, sys, time, hashlib, re, os, json, shutil, shlex
+import unicodedata
 import queue, threading
 
 SESSION = os.environ.get("CLAUDE_RELAY_SESSION", "clauderelay")
@@ -41,6 +42,56 @@ JSONL = (os.environ.get("RELAY_JSONL") == "1"
 
 def _thread_args():
     return ["--thread-id", THREAD_ID] if THREAD_ID else []
+
+# --- transport: OpenClaw CLI, or the Bot API directly (ccrelayd) ---------------
+# ccrelayd writes transport-<session>.json before it hands a message to the
+# backend. Its presence means this session's chat is served by ccrelayd's bot,
+# and every send/edit/delete below goes straight to the Bot API with that bot's
+# token. No file -> the OpenClaw path, unchanged. Per-session rather than an env
+# var because watchers are relaunched from several places (tmux, restart_watcher)
+# and an env var does not survive all of them.
+TRANSPORT = os.path.join(STATE_DIR, f"transport-{SESSION}.json")
+_BOT_CACHE = {"t": 0.0, "v": None, "cfg": None}
+
+
+def _transport():
+    now = time.time()
+    if now - _BOT_CACHE["t"] > 10:
+        try:
+            cfg = json.load(open(TRANSPORT))
+        except Exception:
+            cfg = None
+        if cfg != _BOT_CACHE["cfg"]:
+            bot = None
+            if cfg and cfg.get("env"):
+                try:
+                    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+                    import relay_tg
+                    bot = relay_tg.Bot(relay_tg.load_token(cfg["env"]))
+                except Exception:
+                    bot = None
+            _BOT_CACHE.update(v=bot, cfg=cfg)
+        _BOT_CACHE["t"] = now
+    return _BOT_CACHE["v"], (_BOT_CACHE["cfg"] or {})
+
+
+def _bot():
+    return _transport()[0]
+
+
+class _R:
+    """subprocess.run-shaped result, so _oplog records Bot API calls the same way."""
+    def __init__(self, ok, out="", err=""):
+        self.returncode, self.stdout, self.stderr = (0 if ok else 1), out, err
+
+
+def _botcall(fn, *a, **kw):
+    """(result, _R) -- never raises; a failed send must be reported, not crash the watcher."""
+    try:
+        res = fn(*a, **kw)
+        return res, _R(True, json.dumps({"ok": True, "messageId": res})[:200] if isinstance(res, str) else "ok")
+    except Exception as e:
+        return None, _R(False, "", f"{type(e).__name__}: {e}")
 
 MSG_OPS = os.path.join(STATE_DIR, "msg-ops.log")
 
@@ -77,6 +128,13 @@ def tg_buttons(question, options):
     # into rows of 3 (TELEGRAM_INTERACTIVE_ROW_SIZE). Emitting a separate block
     # per button forces a full-width, one-per-line layout, so longer labels fit
     # before Telegram truncates them.
+    bot = _bot()
+    if bot:
+        import relay_tg
+        mid, r = _botcall(relay_tg.send_text, bot, CHAT_ID, THREAD_ID, body[:TG_LIMIT],
+                          reply_markup=relay_tg.buttons_markup(options))
+        _oplog("SEND-BTNS", mid, body, r)
+        return mid or ""
     pres = {"blocks": [
         {"type": "buttons", "buttons": [{"label": f"{i+1}. {o}"[:60], "value": f"ccsel:{i+1}"}]}
         for i, o in enumerate(options)]}
@@ -96,6 +154,13 @@ def tg_remove_buttons(msg_id, note):
     """Edit the button message text; a text-only edit drops the inline keyboard
     (Telegram removes reply_markup when it isn't re-specified)."""
     if not (msg_id and CHAT_ID):
+        return
+    bot = _bot()
+    if bot:
+        import relay_tg
+        _, r = _botcall(relay_tg.edit_text, bot, CHAT_ID, msg_id, note,
+                        reply_markup={"inline_keyboard": []})
+        _oplog("EDIT-BTNS", msg_id, note, r)
         return
     r = subprocess.run(["openclaw", "message", "edit", "--channel", "telegram",
                         "--target", CHAT_ID, *_thread_args(), "--message-id", str(msg_id),
@@ -119,6 +184,8 @@ def rich_enabled():
     Re-read on a short TTL so toggling the flag doesn't need a watcher restart --
     the watcher is long-lived and would otherwise hold the startup value forever.
     """
+    if _bot():
+        return False        # ccrelayd sends classic HTML; see relay_tg docstring
     now = time.time()
     if _RICH_CACHE["v"] is None or now - _RICH_CACHE["t"] > 30:
         try:
@@ -130,9 +197,16 @@ def rich_enabled():
         _RICH_CACHE.update(t=now, v=v)
     return _RICH_CACHE["v"]
 
-def text_limit():
+def text_limit(text=None):
     """Per-message cap for TEXT. Captions are NOT rich (OpenClaw keeps them HTML,
-    1024) so tg_send_media deliberately keeps using TG_LIMIT."""
+    1024) so tg_send_media deliberately keeps using TG_LIMIT.
+
+    Text carrying a ``` block is sent with rich OFF (see tg_send), so it gets the
+    plain cap, not the rich one -- sizing it by the rich cap sent a 4770-char
+    table as ONE plain message and the table never arrived (2026-09-28, #1876).
+    The margin covers OpenClaw's HTML escaping (<pre>, &amp; ...) growing it."""
+    if _bot() or (text is not None and "```" in text):
+        return TG_LIMIT - 300
     return TG_RICH_LIMIT if rich_enabled() else TG_LIMIT
 
 def tg_send(text, silent=False):
@@ -141,9 +215,24 @@ def tg_send(text, silent=False):
     `silent=True` (Telegram --silent) delivers without a push notification --
     used for the live progress message so the user is pinged only once, by the
     final answer."""
+    bot = _bot()
+    if bot:
+        import relay_tg
+        mid, r = _botcall(relay_tg.send_text, bot, CHAT_ID, THREAD_ID,
+                          text[:text_limit(text)], silent=silent)
+        _oplog("SEND" + ("-SILENT" if silent else ""), mid, text, r)
+        return mid or ""
     cmd = ["openclaw", "message", "send", "--channel", "telegram",
            "--target", CHAT_ID, *_thread_args(),
-           "--message", text[:text_limit()], "--json"]
+           "--message", text[:text_limit(text)], "--json"]
+    # Rich mode DROPS a fenced code block on this Telegram client: the prose
+    # arrives and the block silently does not (measured 2026-09-22 -- the Stop
+    # hook captured the table, the send returned rc=0, and nothing rendered).
+    # With rich off the same block arrives and scrolls horizontally, which is
+    # the whole point of using one for tables. So opt out per MESSAGE, only when
+    # a block is present: everything else keeps native rich formatting.
+    if "```" in text:
+        cmd += ["--delivery", '{"richMessages":false}']
     if silent:
         cmd.append("--silent")
     r = subprocess.run(cmd, capture_output=True, text=True)
@@ -161,6 +250,13 @@ def tg_send_media(path, caption="", document=True):
     (a compressed Telegram photo blurs it). document=False sends an INLINE photo that
     renders in the chat and pinch-zooms -- used for rendered tables, whose larger font
     survives compression. Returns the message id."""
+    bot = _bot()
+    if bot:
+        import relay_tg
+        mid, r = _botcall(relay_tg.send_media, bot, CHAT_ID, THREAD_ID, path,
+                          caption, document=document)
+        _oplog("SENDMEDIA", mid, path, r)
+        return mid or ""
     cmd = ["openclaw", "message", "send", "--channel", "telegram",
            "--target", CHAT_ID, *_thread_args(), "--media", path, "--json"]
     if document:
@@ -175,12 +271,34 @@ def tg_send_media(path, caption="", document=True):
     _oplog("SENDMEDIA", mid, path, r)
     return mid
 
-_MD_IMG_RE = re.compile(r"!\[[^\]]*\]\([^)\s]+\)")
-_IMG_RE = re.compile(r"!\[[^\]]*\]\(([^)\s]+)\)|(?<![\w/])(/[^\s()<>\"']+\.(?:png|jpg|jpeg|gif|webp|pdf|svg))",
+# Markdown links, image (![...]) OR plain ([...]) -- codex writes a plain link
+# for anything that is not a picture ("[the report](/tmp/x.md)"), and matching
+# only the image form meant every non-image FILE was delivered as a path the
+# user cannot open from a phone. Same bug as images had, one syntax over.
+_MD_IMG_RE = re.compile(r"!?\[[^\]]*\]\([^)\s]+\)")
+# Bare paths need an extension allowlist (a regex for "any path" would swallow
+# half of normal prose), but it must cover what people actually send: documents,
+# data, archives and logs, not just pictures.
+_FILE_EXT = (r"png|jpg|jpeg|gif|webp|svg|bmp|heic"
+             r"|pdf|md|txt|log|csv|tsv|json|ya?ml|xml|html?"
+             r"|docx?|xlsx?|pptx?|rtf"
+             r"|zip|tar|gz|tgz|bz2|xz|7z"
+             r"|py|sh|c|h|cpp|rs|ts|js|patch|diff"
+             r"|kicad_pcb|kicad_sch|step|stp|stl|dxf|gbr|drl|bit|svf|elf|bin|hex")
+_IMG_RE = re.compile(r"!?\[[^\]]*\]\(([^)\s]+)\)"
+                     r"|(?<![\w/])(/[^\s()<>\"']+\.(?:" + _FILE_EXT + r"))",
                      re.I)
 
 
-def deliver_with_media(text, folder):
+# An explicit attach line: "📎 /abs/path" alone on a line. This is how a CLAUDE
+# session sends a file -- the send-file skill used to load ~4KB of instructions
+# and run a script through the OpenClaw gateway for every file, and broke
+# outright on a ccrelayd chat ("gateway refused"). Now the reply just names the
+# file and delivery attaches it, the same path codex replies already take.
+_ATTACH_LINE = re.compile(r"(?m)^[ \t]*\U0001F4CE[ \t]*(?:\[[^\]]*\]\()?(/[^\s)]+)\)?[^\n]*$")
+
+
+def deliver_with_media(text, folder, explicit_only=False):
     """Send a reply that references local files, with the FILES attached.
 
     codex answers with markdown image links to real paths
@@ -194,7 +312,14 @@ def deliver_with_media(text, folder):
     first. Images go inline (document=False) so they render in the chat; other
     files keep full fidelity as documents."""
     paths, seen = [], set()
-    for m in _IMG_RE.finditer(text or ""):
+    for m in _ATTACH_LINE.finditer(text or ""):
+        cand = m.group(1)
+        if cand not in seen and os.path.isfile(cand):
+            seen.add(cand)
+            paths.append((cand, ""))
+    # Claude names paths constantly in prose ("edited /x/y.py"); attaching every
+    # one would send source files nobody asked for. Only the explicit line counts.
+    for m in ([] if explicit_only else _IMG_RE.finditer(text or "")):
         cand = m.group(1) or m.group(2) or ""
         if cand.startswith("file://"):
             cand = cand[7:]
@@ -211,9 +336,10 @@ def deliver_with_media(text, folder):
     if not paths:
         return deliver(text)
 
-    out = os.path.join(folder, "media", "outbound")
+    out = os.path.join(folder, "media", "outbound") if folder else None
     try:
-        os.makedirs(out, exist_ok=True)
+        if out:
+            os.makedirs(out, exist_ok=True)
     except Exception:
         out = None
     # Prose minus the links. When the reply was ONLY a picture there is no prose
@@ -224,7 +350,23 @@ def deliver_with_media(text, folder):
     # ("See /tmp/x.png for the layout") and deleting it leaves "See" dangling.
     # Collapse the blank run the removed link leaves behind, or the reply arrives
     # with a hole in the middle of it.
-    body = _MD_IMG_RE.sub("", text or "")
+    # Strip ONLY the links whose target is a local file we are about to attach.
+    # Broadening the pattern to plain [label](target) so non-image files get sent
+    # also made this delete every ordinary web link in the reply -- the text
+    # silently lost its hyperlinks, which reads as "the output is not rich text".
+    # A link to a URL is content; a link to a file we are attaching is a
+    # duplicate of the attachment.
+    attached = {src for src, _ in paths}
+
+    def _drop_if_attached(m):
+        inner = m.group(0)
+        tgt = inner[inner.rindex("(") + 1:-1].strip()
+        if tgt.startswith("file://"):
+            tgt = tgt[7:]
+        return "" if tgt in attached else inner
+
+    body = _ATTACH_LINE.sub(lambda m: "" if m.group(1) in attached else m.group(0), text or "")
+    body = _MD_IMG_RE.sub(_drop_if_attached, body)
     body = re.sub(r"\n{3,}", "\n\n", body).strip()
     ok = deliver(body) if body else True
     for src, alt in paths[:6]:                  # a cap: a runaway list is not a gallery
@@ -250,6 +392,12 @@ def tg_delete(msg_id):
     """Best-effort delete of a message (the live progress bubble)."""
     if not (msg_id and CHAT_ID):
         return
+    bot = _bot()
+    if bot:
+        import relay_tg
+        _, r = _botcall(relay_tg.delete, bot, CHAT_ID, msg_id)
+        _oplog("DELETE", msg_id, "", r)
+        return
     r = subprocess.run(["openclaw", "message", "delete", "--channel", "telegram",
                         "--target", CHAT_ID, "--message-id", str(msg_id)],
                        capture_output=True, text=True)
@@ -257,6 +405,12 @@ def tg_delete(msg_id):
 
 def tg_edit(msg_id, text):
     if not (msg_id and CHAT_ID):
+        return
+    bot = _bot()
+    if bot:
+        import relay_tg
+        _, r = _botcall(relay_tg.edit_text, bot, CHAT_ID, msg_id, text)
+        _oplog("EDIT", msg_id, text, r)
         return
     r = subprocess.run(["openclaw", "message", "edit", "--channel", "telegram",
                         "--target", CHAT_ID, *_thread_args(), "--message-id", str(msg_id),
@@ -275,6 +429,18 @@ class _WS:
         self.ok = False
         self._n = 0
         self._q = queue.Queue()
+        # ccrelayd sessions: the Bot API is already a fast direct call, so no
+        # Node helper. Edits go through one ordered worker that keeps only the
+        # NEWEST text per message (a bubble only ever needs its latest state),
+        # and close() drains it -- the same ordering barrier the helper gave.
+        self.bot = _bot()
+        if self.bot:
+            self.target, self.thread = target, thread
+            self._eq = queue.Queue()
+            self._ew = threading.Thread(target=self._edit_loop, daemon=True)
+            self._ew.start()
+            self.ok = True
+            return
         try:
             self.proc = subprocess.Popen(
                 ["node", EDIT_SERVER, str(target), str(thread or "")],
@@ -336,9 +502,46 @@ class _WS:
                 return False
         return False
 
+    def _edit_loop(self):
+        import relay_tg
+        while True:
+            item = self._eq.get()
+            batch = [item]
+            while True:
+                try:
+                    batch.append(self._eq.get_nowait())
+                except queue.Empty:
+                    break
+            stop = any(b is None for b in batch)
+            latest, dels = {}, []
+            for b in batch:
+                if b is None:
+                    continue
+                op, mid, text = b
+                if op == "edit":
+                    latest[mid] = text
+                else:
+                    dels.append(mid)
+                    latest.pop(mid, None)
+            for mid, text in latest.items():
+                _, r = _botcall(relay_tg.edit_text, self.bot, self.target, mid, text)
+                if r.returncode:
+                    _oplog("EDIT", mid, text, r)
+            for mid in dels:
+                _, r = _botcall(relay_tg.delete, self.bot, self.target, mid)
+                _oplog("DELETE", mid, "", r)
+            if stop:
+                return
+
     def send(self, text, silent=False):
         if not self.ok:
             return ""
+        if self.bot:
+            import relay_tg
+            mid, r = _botcall(relay_tg.send_text, self.bot, self.target, self.thread,
+                              text[:text_limit()], silent=silent)
+            _oplog("SEND" + ("-SILENT" if silent else ""), mid, text, r)
+            return mid or ""
         self._n += 1; rid = f"s{self._n}"
         try:
             self.proc.stdin.write(json.dumps({"op": "send", "text": text[:text_limit()],
@@ -362,6 +565,9 @@ class _WS:
     def edit(self, mid, text):
         if not (self.ok and mid):
             return
+        if self.bot:
+            self._eq.put(("edit", str(mid), text))       # relay_tg.fit_tail sizes it
+            return
         try:
             self.proc.stdin.write(json.dumps({"op": "edit", "mid": str(mid),
                                               "text": text[:text_limit()]}) + "\n")
@@ -371,6 +577,9 @@ class _WS:
 
     def delete(self, mid):
         if not (self.ok and mid):
+            return
+        if self.bot:
+            self._eq.put(("delete", str(mid), ""))
             return
         try:
             self.proc.stdin.write(json.dumps({"op": "delete", "mid": str(mid)}) + "\n")
@@ -383,6 +592,10 @@ class _WS:
         # to die makes this a real ordering barrier: every bubble edit has landed before
         # we return, and the final answer (sent right after) can never be overtaken by a
         # late edit. Timeout must exceed the server's 2s drain cap.
+        if self.bot:
+            self._eq.put(None)
+            self._ew.join(timeout=15)
+            return
         try:
             self.proc.stdin.write(json.dumps({"op": "quit"}) + "\n")
             self.proc.stdin.flush()
@@ -1242,7 +1455,12 @@ def parse_selection(prompt):
 # "I'll report back" reply was missed because nothing was watching anymore.
 
 def _bound_peer_for_session():
-    """(chat, thread) this session is BOUND to, straight from OpenClaw's config."""
+    """(chat, thread) this session is BOUND to, straight from OpenClaw's config
+    -- or, for a ccrelayd session, from the peer ccrelayd recorded."""
+    peer = _transport()[1].get("peer")
+    if peer:
+        chat, _, th = peer.partition(":topic:")
+        return chat, th
     try:
         folder = folder_for_session()
         if not folder:
@@ -1472,6 +1690,67 @@ def _box_to_md(lines):
     out += ["| " + " | ".join(r) + " |" for r in rows[1:]]
     return out
 
+def _cellw(t):
+    """Display width of a cell, not its character count.
+
+    Padding with len() assumes every character occupies one monospace cell. CJK
+    and emoji occupy two, so a single such character in any cell shifts every
+    column to its right and the table stops lining up -- which is what a
+    "scrolls fine but the text is mangled" table looks like."""
+    w = 0
+    for ch in t:
+        if unicodedata.combining(ch):
+            continue
+        w += 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
+    return w
+
+
+# Typographic characters that survive markdown but are not reliably one cell
+# wide in a phone's monospace font. Inside a table they only cost alignment.
+_CELL_SUBS = {"\u2014": "-", "\u2013": "-", "\u2018": "'", "\u2019": "'",
+              "\u201c": '"', "\u201d": '"', "\u2026": "...", "\u00a0": " ",
+              "\u2192": "->", "\u2190": "<-", "\u00d7": "x", "\u2713": "y",
+              "\u2717": "n"}
+
+
+def _ascii_cell(t):
+    for k, v in _CELL_SUBS.items():
+        t = t.replace(k, v)
+    return t.replace("\t", " ").strip()
+
+
+def _pad_table(rows):
+    """Lay rows out in fixed-width columns for a monospace block.
+
+    A native Telegram table WRAPS every cell to the screen width, which turns a
+    wide table into unreadable confetti on a phone. A code block does not wrap --
+    it scrolls left/right -- so the columns stay lined up and a wide table stays
+    readable by scrolling, which is what Pouya asked for. Padding has to happen
+    here because the source markdown is not column-aligned."""
+    width = max(len(r) for r in rows)
+    rows = [[_ascii_cell(c) for c in r] + [""] * (width - len(r)) for r in rows]
+    w = [max(_cellw(r[i]) for r in rows) for i in range(width)]
+    out = []
+    for n, r in enumerate(rows):
+        out.append("  ".join(c + " " * (w[i] - _cellw(c))
+                             for i, c in enumerate(r)).rstrip())
+        if n == 0:                      # rule under the header only
+            out.append("  ".join("-" * w[i] for i in range(width)))
+    return out
+
+
+def _md_rows(lines):
+    """Split markdown table lines into cells, dropping the --- separator row."""
+    rows = []
+    for ln in lines:
+        if re.fullmatch(r"\s*\|?[\s:|-]+\|?\s*", ln):   # separator
+            continue
+        cells = [c.strip() for c in ln.strip().strip("|").split("|")]
+        if cells:
+            rows.append(cells)
+    return rows
+
+
 def render_reply(text):
     """Prepare a reply for delivery.
 
@@ -1486,16 +1765,29 @@ def render_reply(text):
     monospace. That is a degraded fallback, not a fix -- a wide one still wraps on a
     narrow screen. Prose, stray `|` and already-fenced content are untouched either way."""
     rich = rich_enabled()
+    bot = _bot()
     body = []
     for kind, payload in _table_segments(text):
         if kind == "text":
             body.append(payload)
             continue
-        md = None
-        if rich:
+        # ccrelayd: relay_tg sends a markdown table as a NATIVE rich table, so
+        # hand it over as markdown (a box table converted first), not fenced.
+        if bot:
             md = payload if _MDROW.match(payload[0]) else _box_to_md(payload)
-        body.append("\n".join(md) if md
-                    else "```\n" + "\n".join(payload) + "\n```")
+            body.append(md if md else "```\n" + "\n".join(payload) + "\n```")
+            continue
+        # Deliberately NOT a native RichBlockTable, even with rich mode on.
+        # Telegram wraps table cells to the screen, so a wide table arrives
+        # shredded; a code block scrolls horizontally instead and keeps the
+        # columns aligned. Pouya asked for scroll over wrap, so parse the table
+        # and re-lay it in fixed-width columns.
+        md = payload if _MDROW.match(payload[0]) else _box_to_md(payload)
+        rows = _md_rows(md) if md else None
+        if rows:
+            body.append("```\n" + "\n".join(_pad_table(rows)) + "\n```")
+        else:
+            body.append("```\n" + "\n".join(payload) + "\n```")
     return "\n".join(body).strip()
 
 def _fence_safe_chunks(text, limit):
@@ -1544,7 +1836,8 @@ def deliver(text):
     if not text:
         return False
     ok = True
-    for chunk in _fence_safe_chunks(render_reply(text), text_limit()):
+    rendered = render_reply(text)
+    for chunk in _fence_safe_chunks(rendered, text_limit(rendered)):
         if not tg_send(chunk):
             ok = False
     return ok
@@ -1682,6 +1975,24 @@ def _write_backend(cfg):
     except Exception:
         pass
 
+def _trust_folder(folder):
+    """Mark `folder` trusted in ~/.claude.json before launching claude there.
+
+    The trust dialog now defaults to "No, exit", so any launch that meets it and
+    answers with Enter dies on the spot. Pre-seeding means it never appears."""
+    p = os.path.expanduser("~/.claude.json")
+    try:
+        d = json.load(open(p))
+        e = d.setdefault("projects", {}).setdefault(folder, {})
+        if not e.get("hasTrustDialogAccepted"):
+            e["hasTrustDialogAccepted"] = True
+            tmp = p + ".relay-tmp"
+            open(tmp, "w").write(json.dumps(d, indent=2))
+            os.replace(tmp, p)
+    except Exception:
+        pass
+
+
 def restart_watcher():
     """Respawn this session's watcher so it runs the CURRENT code.
 
@@ -1785,6 +2096,7 @@ def restart_with_model(model):
                    if tid else "A new codex thread starts on your next message."))
         return
 
+    _trust_folder(folder)
     tmux("kill-session", "-t", SESSION)
     time.sleep(0.5)
     tmux("new-session", "-d", "-s", SESSION, "-x", "200", "-y", "50", "-c", folder, cmd)
@@ -1816,6 +2128,10 @@ def restart_with_model(model):
         time.sleep(1)
         p = pane()
         if "trust this folder" in p:
+            # The trust dialog defaults to "No, exit": a bare Enter kills the TUI.
+            # "2" selects "Yes, I trust this folder" (see claude-relay-group,
+            # which pre-seeds trust so this path is normally never reached).
+            tmux("send-keys", "-t", SESSION, "2"); time.sleep(0.5)
             tmux("send-keys", "-t", SESSION, "Enter"); time.sleep(2); continue
         if "Resume from summary" in p:                       # big-session resume dialog
             # Option 2, FULL session -- not the highlighted default. Bare Enter took
@@ -2342,7 +2658,7 @@ def watch():
             if h and h != delivered:
                 if stream and stream.ws:
                     stream.ws.close()
-                if deliver(msg):
+                if deliver_with_media(msg, folder_for_session() or "", explicit_only=True):
                     delivered = h
                     save_delivered(h)
             stream, was_busy, idle_stable = None, False, 0
@@ -2406,7 +2722,7 @@ def watch():
             # Leave the progress bubble in the chat as a frozen record of the
             # turn; deliver the clean answer as a separate, new message below it.
             # The next turn opens a fresh bubble.
-            if deliver(reply):
+            if deliver_with_media(reply, folder_for_session() or "", explicit_only=True):
                 delivered = h
                 save_delivered(h)
         if stream and stream.ws:
