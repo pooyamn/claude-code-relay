@@ -1,7 +1,7 @@
 # Agentic PC: design
 
-Status: v4 (2026-10-01): memory layers and the push-to-main rhythm. Owner: Pouya.
-Target: Windows PC, WSL2 Ubuntu 24.04, user `pouya` created with home `/Users/pouya` (`useradd -d`), so existing absolute paths keep working.
+Status: v5 (2026-10-01), after reviews by Claude Fable, Codex GPT-6-Astra and GPT-6.1-Sol (max effort). Owner: Pouya.
+Target: Windows PC, WSL2 Ubuntu 24.04. Sessions run as user `pouya` (home `/Users/pouya`, so existing absolute paths keep working); the router runs as a separate user `relay`.
 
 ## 1. Goals and constraints
 
@@ -18,156 +18,174 @@ Constraints
 - Phone access through the Telegram router (ccrelayd) and the Claude Code and Codex remote-control apps.
 - Migrate gradually, one agent at a time.
 
+Threat model: one owner. The risks are mistakes and prompt injection (from web pages, documents, other sessions), not a hostile user on the machine. Protection is real where an action leaves the machine or touches `main`; inside the machine, sessions trust each other.
+
 ## 2. Model
 
-- **Agent**: a role. Instructions, skills, role memory, the files it owns.
-- **Session**: one live conversation of an agent on one task, in Claude Code or Codex. Id `<agent>.<task>`, e.g. `pcb-routing.augur1`. An agent can have several.
+- **Agent**: a role. Instructions, skills, role memory, the paths it owns.
+- **Session**: one live conversation of an agent on one task, in Claude Code or Codex. Id `<agent>.<task>`. An agent can have several sessions.
 - Sessions talk to sessions. One Telegram bot carries all traffic.
-- Plain files are the source of truth; built-in memory is off in both tools (`autoMemoryEnabled: false`; Codex `memories` feature is already off, pin it with `codex features disable memories`).
+- Plain files are the source of truth. Built-in memory is off: Claude `autoMemoryEnabled: false`; Codex `memories` (already off; pin with `codex features disable memories`).
 
 ### Agents
 
-v1 starts with three: `ceo`, `cto`, `reviewer`. The rest are added one at a time.
+v1: `ceo`, `cto`, `reviewer`. Then one at a time: `researcher`, `firmware`, `backend`, `frontend`, `pcb-schematic`, `pcb-routing`, `art-director`.
 
-| Agent | Owns |
-|---|---|
-| `ceo` | direction for Fidior and Oracova, outreach, docs, pricing, COMPANY.md |
-| `cto` | architecture, task split, merges (via the router), bench/HIL |
-| `reviewer` | pass/fail on other sessions' work with evidence; runs on the other tool |
-| `researcher` | datasheets, parts, market, prior art; the search index |
-| `firmware` | supervisor C, FPGA, bench firmware |
-| `backend` | MCP/.NET, relay, APIs |
-| `frontend` | oracova.com, hil-viewer, landing prototypes |
-| `pcb-schematic` | `.kicad_sch`, BOM, part choice |
-| `pcb-routing` | `.kicad_pcb`, fab outputs, ordering |
-| `art-director` | brand, visuals, renders, design review |
+## 3. Memory
 
-## 2a. Memory layers
+Every memory is a directory of small files, one fact per file, plus a generated index. Separate files mean concurrent sessions never overwrite each other; only the index is regenerated (by a script, under a lock).
 
-| Layer | File | Holds | Written by |
+| Layer | Location | Holds | Writes |
 |---|---|---|---|
-| Company | `~/agents/shared/COMPANY.md`, `DECISIONS.md` | big picture, decisions | `ceo`, `cto` |
-| Agent | `~/agents/<agent>/memory/MEMORY.md` | role knowledge that travels across repos and sessions | that agent |
-| Repo | `~/agents/shared/repos/<repo>/MEMORY.md` | facts about the project, shared by every agent in it | any agent working in the repo |
-| Session handoff | `~/agents/shared/repos/<repo>/NOW-<agent>.md` | where this agent's work in this repo stands | the session, at handoff, end and before compaction |
+| Company | `~/agents/shared/COMPANY.md` | big picture, priorities, non-goals | `ceo` proposes, Pouya approves |
+| Decisions | `~/agents/shared/decisions/` + index | one decision per file: date, reason, scope | `ceo`, `cto` |
+| Agent | `~/agents/<agent>/memory/` + index | role knowledge across repos | sessions of that agent |
+| Repo | `~/agents/shared/repos/<repo>/memory/` + index | project facts, each tagged with the commit it holds for | any session in the repo |
+| Handoff | `~/agents/shared/repos/<repo>/now/<agent>.<task>.md` | where this session's work stands | that session only |
 
-Repo memory is outside the repo tree, so it does not diverge per branch or worktree.
+Rules
+- Every fact file has frontmatter: `date`, `session`, and for repo facts `commit`. A repo fact from an unmerged branch is marked `unmerged` and is promoted only after its PR merges.
+- Precedence when files disagree: decisions > company > repo > agent; newer beats older within a layer.
+- Loading: company and the decisions index load in every session. Agent and repo indexes load at session start (instructed in AGENTS.md); individual fact files are read on demand.
+- Handoffs are per session (`<agent>.<task>`), so two sessions of one agent never collide.
+- Handoffs are written at checkpoints during normal work (every publish, every hand-back, every tool switch), not only at the end. Hooks cannot make a model write a handoff, so this is an instruction plus a check: the launcher warns when a handoff is older than the session's last commit.
 
-## 3. Files
+## 4. Files
 
 ```
 ~/agents/shared/AGENTS.md          global rules
-~/agents/shared/COMPANY.md         big picture (<= ~2000 words), always loaded
-~/agents/shared/DECISIONS.md       dated one-line decisions with reasons, always loaded
-~/agents/shared/skills/            shared skills
-~/agents/shared/sessions.json      registry: id, agent, task, tool, cwd, tmux target,
-                                   Claude session id / Codex thread id, topic, state
-~/agents/shared/bus.jsonl          every inter-session message with its delivery result
-~/agents/shared/repos/<repo>/MEMORY.md, NOW-<agent>.md    project memory, outside the repo tree
-~/agents/<agent>/AGENTS.md         role, owned files, boundaries
+~/agents/shared/COMPANY.md
+~/agents/shared/decisions/
+~/agents/shared/skills/
+~/agents/shared/sessions.json      registry (desired + observed state, ids)
+~/agents/shared/repos/<repo>/memory/, now/
+~/agents/<agent>/AGENTS.md         role, owned paths, boundaries
 ~/agents/<agent>/CLAUDE.md         "@AGENTS.md"
-~/agents/<agent>/.claude/skills/   symlinks to chosen skills
-~/agents/<agent>/.agents/skills -> .claude/skills    (Codex reads .agents/skills)
-~/agents/<agent>/memory/MEMORY.md  role knowledge
-~/agents/<agent>/inbox/            long messages
-~/repos/<repo>/AGENTS.md           repo instructions (Claude reads AGENTS.md natively since 2.1.277)
-~/repos/<repo>/.worktrees/<agent>.<task>/   one worktree per session, branch <agent>/<task>
+~/agents/<agent>/skills/           the agent's chosen skills (symlinks into shared/skills)
+~/agents/<agent>/memory/
+~/agents/<agent>/inbox/
+~/repos/<repo>/                    main checkout (sessions never work in it)
+~/worktrees/<repo>/<agent>.<task>/ one worktree per session, outside the main checkout
 ```
 
-Project memory lives outside the repo so it does not diverge per branch or worktree.
+Worktrees live outside the main checkout so a session never picks up the main checkout's instruction files from a parent folder.
 
 Global wiring
-- `~/.claude/CLAUDE.md` imports `~/agents/shared/AGENTS.md`, `COMPANY.md`, `DECISIONS.md` (user-scope imports load without a dialog).
-- `~/.codex/AGENTS.md` is a generated concatenation of the same three, rebuilt on change.
-- Claude setting `instructionFiles: "claude-md-and-agents-md"` so repo AGENTS.md and the agent's CLAUDE.md both load.
-- Writes to `~/agents/shared/*.md` are blocked by hook for every agent except `ceo` and `cto`.
+- `~/.claude/CLAUDE.md` imports shared AGENTS.md, COMPANY.md and the decisions index.
+- `~/.codex/AGENTS.md` is a generated concatenation of the same, rebuilt on change.
+- Claude `instructionFiles: "claude-md-and-agents-md"`.
 
-## 4. Sessions
+## 5. Sessions
 
-- Start: `a <agent> <task> [claude|codex] [repo]`. The session starts **inside its own worktree** of that repo (or in `~/agents/<agent>` when there is no repo), because both tools load instructions only from the working directory and its parents.
-  - Claude: `CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1 claude --add-dir ~/agents/<agent>` so the role file loads next to the repo's.
-  - Codex: `codex --remote unix://$HOME/.codex/app-server-control/app-server-control.sock -C <worktree>`. The role comes from a generated `<worktree>/AGENTS.override.md` = the agent's AGENTS.md + a copy of the repo's AGENTS.md (an override replaces the AGENTS.md at its level, so the repo rules must be inside it). It is listed in the worktree's `.git/info/exclude` and regenerated by the launcher at every start. Claude does not read override files, so nothing loads twice. Tested 2026-10-01 through the daemon: role and repo rule both reach the session. `-c developer_instructions` does NOT work here: the daemon owns the config and ignores it.
-- The launcher records the Claude session id or Codex thread id in `sessions.json`.
-- Path ownership: each agent's AGENTS.md lists the paths it owns (e.g. `firmware/supervisor-c/**`, `web/**`). Agents read anything; changing another agent's paths goes through `agent-msg` to that agent or to `cto`. Unmergeable files (KiCad, binaries) rely on ownership alone: `pcb-schematic` owns `.kicad_sch`, `pcb-routing` owns `.kicad_pcb`.
-- Switching tool: the session rewrites `NOW-<agent>.md`, then the other tool starts in the same worktree and reads it. Only the handoff file transfers, not the conversation.
-- A `PreCompact` hook makes Claude rewrite `NOW-<agent>.md` before context compaction, so long-lived sessions do not lose their place.
-- Reboot and crash: on start, the router reconciles `sessions.json` against tmux, sockets and daemon threads, marks missing sessions dead, alerts, and resumes them by id (`claude --resume`, `codex resume`). WSL, the Codex daemon and ccrelayd start at boot (Task Scheduler + systemd user units).
+Start: `a <agent> <task> [claude|codex] [repo]`. The launcher:
+1. creates or reuses the worktree `~/worktrees/<repo>/<agent>.<task>` on branch `<agent>/<task>`;
+2. links the agent's skills into the worktree (`.claude/skills` and `.agents/skills`), both excluded via the path from `git rev-parse --git-path info/exclude`, since a worktree's `.git` is a file;
+3. for Codex, writes `AGENTS.override.md` = role + current repo AGENTS.md (tested: works through the daemon; `-c developer_instructions` does not);
+4. starts the tool inside the worktree:
+   - Claude: `CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1 claude --add-dir ~/agents/<agent>`
+   - Codex: `codex --remote unix://…/app-server-control.sock -C <worktree>`
+5. records the Claude session id or Codex thread id in `sessions.json`.
 
-## 5. Messaging
+Generated files (override, skill links) are regenerated after every merge into `main` and at every start.
 
-One command for every session: `agent-msg <session|agent> "<text>" [--urgent]`.
+Ownership
+- Each agent's AGENTS.md lists the paths it owns. Changing another agent's paths goes through that agent or `cto`.
+- Unmergeable artifacts (KiCad board, schematic, BOM of one hardware revision) are leased per session: `agent-msg lease <path> <minutes>`, checked by the router when the session publishes. Two sessions of the same agent cannot hold the same lease.
 
-| Target | Delivery |
-|---|---|
-| Claude Code | native cross-session inbox (per-session socket). Posting format from a script: open item; fallback is a bracketed paste into the tmux pane |
-| Codex | `codex queue --thread <id> --message <text>`; `--urgent` steers the running turn |
+Switching tool: stop the current session (it writes its handoff), the router marks it `stopped`, then start the other tool on the same worktree. Never two live sessions on one worktree.
 
-- Headers are written only by `agent-msg`: `[from <session> · hop N · id <msg-id>]`. A body containing a header-shaped line is rejected. Text from Pouya arrives only through Telegram from his user id.
-- A bare agent name goes to that agent's most recent live session. If none is live, the message is parked in `inbox/` and Pouya is alerted. Nothing auto-starts a session (usage budget).
-- Delivery semantics: `bus.jsonl` records `delivered` or `failed` by actual result; failures retry with backoff; receivers drop duplicate msg-ids.
-- Guards:
-  - hop limit 3 per thread, enforced by `agent-msg` (Claude throttles loops natively; Codex does not);
-  - `crossSessionInbound: "accept"` on agent sessions (they run with prompts skipped; without it, messages are held and dropped after 5 minutes).
-- Review loop: see section 6a.
+Recovery
+- `sessions.json` keeps desired state (running, paused, stopped) separate from observed state. On boot or router restart, only sessions whose desired state is `running` are resumed, by exact id (`claude --resume <id>`, `codex resume <id>`). A failed resume alerts; it never silently starts a fresh thread.
+- One Codex daemon. The router never deletes a thread lock held by a live process.
+- Boot order: WSL (Task Scheduler) → systemd user units: Codex daemon, router, then session resume.
 
-## 6. Enforcement (not prompts)
+## 6. Messaging
 
-Sessions run with permission prompts skipped, so rules in markdown are advice only. What is actually enforced:
-- **No credentials in sessions.** Worktrees push to a local bare mirror. Only the router holds GitHub, mail and payment credentials and performs those actions after Pouya taps Approve.
-- **Deny hooks** (Claude `PreToolUse`, Codex hooks) on `git push` to remote origins, mail clients and known payment CLIs.
-- **Branch protection** on `main` on GitHub.
-- **Shared file protection**: hook-enforced write restriction on `~/agents/shared/*.md`.
+`agent-msg <session> "<text>"` is the only sanctioned way to message another session. Claude's native `SendMessage` to other sessions is denied by permission rule for agent sessions (subagent messaging inside a session is unaffected), so nothing bypasses the router.
 
-## 6a. Branches and PRs: every push goes to main
+- `agent-msg` hands the message to the router over a local socket; the router assigns the id, the hop count and the header, stores it durably, then delivers.
+- Delivery: Claude via its native inbox socket (posting format still to verify; fallback bracketed paste into the tmux pane); Codex via `codex queue --thread <id>`, or `turn/steer` on the daemon when sent with `--urgent`.
+- States recorded per message: `stored`, `accepted` (target took it), `failed`. Retries only for `stored`/`failed`; the router drops duplicates it already delivered.
+- Action requests need the exact session id, not a bare agent name. If the target is not running, the message is parked in its inbox and Pouya is alerted. Nothing auto-starts.
+- Hop limit 3 per thread, counted by the router, not by the model.
+- Agent sessions set `crossSessionInbound: "accept"`, because script-posted messages carry no permission class and would otherwise be held.
 
-An agent can run several sessions; each session has its own branch `<agent>/<task>` and worktree. Every push becomes a PR and is merged into `main` once reviewed, so branches never drift far from `main`.
+## 7. Enforcement
 
-1. The session commits and pushes to a local mirror (it holds no GitHub credentials).
-2. The router pushes the branch to GitHub and opens a PR for it (no approval needed).
-3. `reviewer`, on the other tool, reviews the diff and test output and posts pass/fail on the PR.
-4. On pass, `cto` requests the merge and the router squash-merges. `cto`'s request is sufficient; no Pouya approval for merges. Branch protection on `main` allows only router merges.
-5. After the merge, the session's branch is reset onto the new `main` and work continues on the same branch.
-6. On fail, the PR goes back to the same session, which fixes and pushes again on the same PR.
+Real boundaries:
+- **Separate OS user.** The router runs as `relay` and alone holds the Telegram token, GitHub credentials and any mail/payment credentials, in files `pouya` cannot read. Sessions ask the router for actions over a socket; the router authenticates the peer by uid and checks the action against policy.
+- **No credentials in sessions.** Worktrees push only to a local mirror owned by `relay` (writable by group); publishing to GitHub is a router action.
+- **GitHub branch protection** on `main`: required status `review` on the exact head SHA, branch must be up to date with `main`, only the router's token may merge.
+- **Approvals** are single-use and bound to the exact action (recipient, amount, text hash). They cover email, payments, purchases, public posts. Merges follow `cto` policy, not Pouya's approval.
 
-Rules
-- Push only at a working checkpoint: it builds, tests pass, one coherent change. Each push costs a review turn.
-- One open PR per session at a time: no new push until the last PR is merged or failed.
-- Rebase on `main` before review and before merge; a conflict goes back to the owner of the file.
-- The bus topic shows PR opened, review pass/fail, merged.
+Guardrails, not boundaries: deny hooks on `git push` to other remotes, mail CLIs and curl to known APIs. They catch mistakes; they cannot stop a determined bypass.
 
-## 7. Knowledge
+Router authorisation fails closed: an empty allow list allows nobody.
 
-- Layer 1, always loaded: `COMPANY.md` and `DECISIONS.md`. `ceo` maintains COMPANY.md with Pouya's approval.
-- Layer 2, on demand (deferred until there is material): local hybrid search (QMD or picoqmd, local models, MCP) over repo docs, handoffs, MEMORY/NOW files, datasheets, `bus.jsonl`. Results carry source and date and are wrapped as quoted data. No mail in v1. Never indexed: transcripts, keys, env files, dependency and build folders.
+## 8. Branches and PRs
 
-## 8. Visibility
+Every published checkpoint goes to `main` after review.
+
+1. The session commits a coherent checkpoint (builds, tests pass) and runs `agent-msg publish`.
+2. The router pushes that exact commit to GitHub as `pub/<agent>.<task>/<n>` and opens a PR. Each publication is a fresh branch, so a squash merge never leaves a diverged branch behind.
+3. `reviewer` (other tool) reviews that head SHA and reports pass/fail to the router, which sets the commit status `review` on that SHA. Any new commit or rebase invalidates it.
+4. The router serialises merges per repository: rebase the publication onto current `main` if needed, re-run the review only if the rebase changed content, then squash-merge on `cto`'s request.
+5. After the merge, the session updates its own worktree: `git fetch`, then `git rebase --autostash --onto origin/main <published-sha>`. Work done after the checkpoint, committed or not, is replayed on top; nothing is reset away.
+6. On fail, the session fixes and publishes again (new publication branch, same thread on the bus).
+
+Rules: one open publication per session; the session keeps working meanwhile but does not publish again until it resolves. Routine low-risk changes (docs, formatting) may skip `reviewer` under a written `cto` policy; everything else is reviewed.
+
+## 9. Knowledge
+
+- Always loaded: COMPANY.md and the decisions index (one line per decision; full files on demand).
+- On demand, deferred: local hybrid search (QMD or picoqmd, local models, MCP) over repo docs, memory, handoffs, datasheets and the bus. Results carry source and date and are quoted as data. Never indexed: transcripts, keys, env files, build output.
+
+## 10. Visibility
+
+One outbound scheduler in the router owns every Telegram send, with priorities: approvals and alerts first, final replies next, bus and status last. It tracks the group's ~20 messages/minute budget, coalesces, and honours `retry_after` durably.
 
 | What | Where | Notifies |
 |---|---|---|
-| Inter-session messages, batched per thread: `A → B · hop · first line`, inbox files attached | Bus topic | no |
-| A session's replies and incoming messages in context; no live progress bubble for agent-to-agent turns | Session topic | final reply only |
-| Status board: per session state, task, queue, last activity, delivery failures, usage this window | Pinned message, edited on state change, at most every 30 s | no |
-| Approvals with Approve / Deny (outside effects: email, payments, purchases, public posts; not merges) | Approvals topic | yes |
-| Alerts: stuck, dead session, parked message, Codex lock conflict, failed delivery | Approvals topic | yes |
+| Inter-session messages, batched per thread, with delivery state | Bus topic | no |
+| Session replies and incoming messages in context; no progress bubble for agent-to-agent turns | Session topic | final reply only |
+| Status board: desired/observed state, task, open publication, queue, failures, usage this window | Pinned message, on change, at most every 30 s | no |
+| Approvals (Approve / Deny) | Approvals topic | yes |
+| Alerts: stuck, dead session, failed resume, parked message, delivery failure, stale handoff | Approvals topic | yes |
 
-Telegram allows about 20 messages per minute per group, shared by all topics. If traffic grows, bus and status move to a second group.
+Intervene: reply to a bus line; `/pause`, `/resume`, `/stop all`. Telegram keeps inbound updates for 24 hours, so a longer router outage loses phone messages; a watchdog alerts Pouya's DM when the router is down.
 
-Intervening: reply to a bus line to message its receiver as Pouya; `/pause`, `/resume`, `/stop all`; `agent-msg log <session>`. The remote-control apps show live sessions directly.
+## 11. Router (ccrelayd): work list
 
-## 9. Router (ccrelayd)
+Built: long-poll, topic routing, media, voice, rich tables, progress bubble, Codex via daemon, bind/unbind/cancel.
+Needed, in order:
+1. Run as `relay`; fail-closed authorisation; action socket with uid check.
+2. Durable inbound spool (persist before advancing the offset) and outbox.
+3. Fix the Codex queue append/drain race (file lock); treat a send timeout as unknown, not started.
+4. Message ids, states, router-owned hops; `agent-msg` client.
+5. Publication flow, SHA-bound review status, per-repo merge serialisation.
+6. Session registry with desired/observed state; resume by id; boot units.
+7. Scheduler, bus, status board, approvals.
 
-Built: long-poll, topic → session routing, media, voice transcription, rich tables, progress bubble, Codex via daemon, `newcc`/`unbind`/`cancel`.
-To add: inbound spool so a crash does not lose a message (today the offset advances before handling), session topics, bus topic, status board, approvals and the credentialed actions behind them, reconcile-on-start, `/pause` and `/stop all`.
+## 12. Migration order
 
-## 10. Migration order
-
-1. Shared folder, global wiring, enforcement hooks, COMPANY.md drafted and approved.
+1. `relay` user, router hardening (items 1–3), shared folders, COMPANY.md.
 2. `ceo`, `cto`, `reviewer`.
-3. `agent-msg`, bus topic, status board.
-4. Remaining agents one at a time, with their worktrees.
-5. Search index, digest, claims, once the basics are stable.
+3. Messaging and publication flow (items 4–5).
+4. Remaining agents one at a time.
+5. Search index once there is material.
 
-## 11. Open items
+## 13. Open items
 
-1. Message format for posting into a Claude session's inbox socket from a script.
-2. Build on the current Mac VM and migrate, or directly on the Windows PC.
+1. Posting format for a Claude session's inbox socket from a script.
+2. Build on the Mac VM and migrate, or directly on the Windows PC.
+
+## Appendix: verified facts (2026-10-01, Claude Code 2.1.287, Codex 0.159.3)
+
+- Claude reads AGENTS.md natively (≥2.1.277); loads instructions from cwd and parents; `--add-dir` with `CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1` loads that dir's CLAUDE.md; ignores `AGENTS.override.md`.
+- Claude cross-session inbox; bypass-to-bypass delivers by default; script posts without a permission class are held unless `crossSessionInbound: "accept"`.
+- `PreCompact` cannot run prompt or agent hooks.
+- Codex: `--remote unix://…` attaches the TUI to the daemon; `-C` needed; `-c developer_instructions` ignored through the daemon; `AGENTS.override.md` replaces AGENTS.md at its level; skills from `.agents/skills` and `.codex/skills` under the cwd tree and the user dir; `codex queue` exists without an urgent flag; `turn/steer` is the steer path; hooks on, memories off.
+- A linked worktree's `.git` is a file.
+- Telegram: ~20 messages/minute per group; updates kept 24 hours.
+
+Reviews: `docs/reviews/2026-10-01-gpt-6-astra.md`, `docs/reviews/2026-10-01-gpt-6.1-sol.md`.
