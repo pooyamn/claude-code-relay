@@ -130,6 +130,27 @@ if ! ( tmux has-session -t "$KEY" 2>/dev/null && ready ); then
   elif ls "$HOME/.claude/projects/$ENC"/*.jsonl >/dev/null 2>&1; then
     CONT="--continue"
   fi
+  # Pre-accept folder trust instead of answering the dialog. Claude Code's trust
+  # prompt now DEFAULTS TO "No, exit", and the loop below used to answer it with a
+  # bare Enter -- which exits the TUI and leaves a shell in the pane. That silently
+  # killed every topic whose folder had no trust entry (7 of 14 bound folders on
+  # 2026-09-24, including the web, base-board and DUT topics). Seeding
+  # hasTrustDialogAccepted before launch means the dialog never appears, so its
+  # default can never matter again. Atomic replace: ~/.claude.json is live state.
+  /usr/bin/python3 - "$WORKDIR" <<'TRUST' 2>/dev/null || true
+import json, os, sys
+p = os.path.expanduser("~/.claude.json")
+try:
+    d = json.load(open(p))
+except Exception:
+    sys.exit(0)
+e = d.setdefault("projects", {}).setdefault(sys.argv[1], {})
+if not e.get("hasTrustDialogAccepted"):
+    e["hasTrustDialogAccepted"] = True
+    tmp = p + ".relay-tmp"
+    open(tmp, "w").write(json.dumps(d, indent=2))
+    os.replace(tmp, p)
+TRUST
   tmux new-session -d -s "$KEY" -x 200 -y 50
   # Per-folder session, but global memory + global skills stay loaded (Pouya wants
   # them available in bound sessions). --settings pins auto-memory to the global
@@ -160,7 +181,11 @@ if ! ( tmux has-session -t "$KEY" 2>/dev/null && ready ); then
   for i in $(seq 1 90); do
     sleep 1
     pane="$(tmux capture-pane -t "$KEY" -p 2>/dev/null || true)"
+    # Belt and braces if the dialog still appears (e.g. trust was rejected by a
+    # concurrent ~/.claude.json writer). NEVER a bare Enter: the default is
+    # "No, exit". "2" selects "Yes, I trust this folder" directly.
     if printf '%s' "$pane" | grep -q "trust this folder"; then
+      tmux send-keys -t "$KEY" 2; sleep 0.5
       tmux send-keys -t "$KEY" Enter; sleep 2
     fi
     # Big-session resume dialog ("Resume from summary / Resume full session as-is").
