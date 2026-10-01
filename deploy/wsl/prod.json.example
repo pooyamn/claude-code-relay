@@ -1,0 +1,7 @@
+{
+  "env": "~/.config/ccrelay/env-prod",
+  "bindings": "~/.config/ccrelay/bindings-prod.json",
+  "state": "~/.config/ccrelay/state-prod",
+  "allow_users": [<your telegram user id>],
+  "allow_chats": ["<chat id where any member may use bound topics>"]
+}

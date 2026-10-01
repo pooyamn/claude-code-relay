@@ -11,7 +11,9 @@ set -uo pipefail
 DIR="/Users/pouya/.openclaw/workspace/scripts"
 RAW="${1:?usage: claude-relay-group <WORKDIR> \"<prompt>\"}"; shift
 WORKDIR="$(cd "$RAW" 2>/dev/null && pwd)" || { echo "claude-relay-group: no such folder: $RAW" >&2; exit 1; }
-KEY="cr-$(printf '%s' "$WORKDIR" | md5 | cut -c1-10)"   # stable per-folder tmux name
+# md5 hex of stdin: `md5` on macOS, `md5sum` on Linux (same hex, different framing).
+_md5() { if command -v md5 >/dev/null 2>&1; then md5; else md5sum | cut -d' ' -f1; fi; }
+KEY="cr-$(printf '%s' "$WORKDIR" | _md5 | cut -c1-10)"   # stable per-folder tmux name
 DIR0="/Users/pouya/.openclaw/workspace/scripts"
 RW0="$DIR0/relay-work"
 
@@ -137,7 +139,7 @@ if ! ( tmux has-session -t "$KEY" 2>/dev/null && ready ); then
   # 2026-09-24, including the web, base-board and DUT topics). Seeding
   # hasTrustDialogAccepted before launch means the dialog never appears, so its
   # default can never matter again. Atomic replace: ~/.claude.json is live state.
-  /usr/bin/python3 - "$WORKDIR" <<'TRUST' 2>/dev/null || true
+  python3 - "$WORKDIR" <<'TRUST' 2>/dev/null || true
 import json, os, sys
 p = os.path.expanduser("~/.claude.json")
 try:

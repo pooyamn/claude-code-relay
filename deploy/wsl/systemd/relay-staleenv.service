@@ -1,0 +1,6 @@
+[Unit]
+Description=Flag relay TUIs running on stale environment
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/.openclaw/workspace/scripts/relay-stale-env-check.py

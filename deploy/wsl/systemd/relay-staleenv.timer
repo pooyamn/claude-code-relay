@@ -1,0 +1,9 @@
+[Unit]
+Description=Stale-env check every 15 min
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+
+[Install]
+WantedBy=timers.target

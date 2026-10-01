@@ -1,0 +1,11 @@
+[Unit]
+Description=Relay OpenRouter key-pool proxy (alt-model backends)
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/python3 -u %h/.openclaw/workspace/scripts/relay-openrouter-proxy.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

@@ -34,13 +34,14 @@ is_busy()/last_reply() and delivers, exactly as it does for opencode-api.
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import time
 
 D = os.path.dirname(os.path.abspath(__file__))
 STATE = os.path.join(D, "relay-work")
-CODEX = os.environ.get("RELAY_CODEX_BIN", "/opt/homebrew/bin/codex")
+CODEX = os.environ.get("RELAY_CODEX_BIN") or shutil.which("codex") or "/opt/homebrew/bin/codex"
 
 
 def _cfg():

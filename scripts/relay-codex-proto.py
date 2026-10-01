@@ -28,6 +28,7 @@ watcher drains it. That split is forced by the protocol, not a design taste.
 """
 import json
 import os
+import shutil
 import subprocess
 import threading
 import time
@@ -38,7 +39,7 @@ from relay_ws import UnixWS, DAEMON_SOCK  # noqa: E402
 
 D = os.path.dirname(os.path.abspath(__file__))
 STATE = os.path.join(D, "relay-work")
-CODEX = os.environ.get("RELAY_CODEX_BIN", "/opt/homebrew/bin/codex")
+CODEX = os.environ.get("RELAY_CODEX_BIN") or shutil.which("codex") or "/opt/homebrew/bin/codex"
 
 
 def _p(key, name, ext):

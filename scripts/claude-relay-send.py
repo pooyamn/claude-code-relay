@@ -1928,7 +1928,7 @@ NATIVE_BACKENDS = {
     # is no cmd and no pane parser -- but unlike it there is no server either, so
     # nothing runs in a pane at all.
     "codex": {
-        "bin": os.environ.get("RELAY_CODEX_BIN", "/opt/homebrew/bin/codex"),
+        "bin": os.environ.get("RELAY_CODEX_BIN") or shutil.which("codex") or "/opt/homebrew/bin/codex",
         "cmd": "",
         "default_model": "gpt-5.6-sol",
         "parser": "api",

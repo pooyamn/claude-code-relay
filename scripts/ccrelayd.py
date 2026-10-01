@@ -19,7 +19,8 @@ What OpenClaw did that lives here now:
 
 Usage: ccrelayd.py --config ~/.config/ccrelay/test.json
 config: {"env": "<file with CCRELAY_BOT_TOKEN=>", "bindings": "<json>",
-         "state": "<dir>", "allow_users": [<your telegram user id>]}
+         "state": "<dir>", "allow_users": [<your telegram user id>],
+         "allow_chats": [<chat ids where any member may use bound topics>]}
 """
 import argparse
 import datetime
@@ -115,6 +116,9 @@ class Daemon:
         os.makedirs(self.state, exist_ok=True)
         self.bindings = Bindings(os.path.expanduser(cfg["bindings"]))
         self.allow = set(int(u) for u in cfg.get("allow_users") or [])
+        # chats where ANY member may talk to bound topics (OpenClaw's
+        # groups.<id>.allowFrom ["*"]); everywhere else only allow_users.
+        self.allow_chats = set(str(c) for c in cfg.get("allow_chats") or [])
         self.offset_path = os.path.join(self.state, "offset")
         self.queues = {}
         self.me = self.bot.call("getMe")
@@ -173,13 +177,16 @@ class Daemon:
                 else "1"
         return chat, thread
 
+    def allowed(self, uid, chat):
+        return not self.allow or uid in self.allow or str(chat) in self.allow_chats
+
     def on_callback(self, cq):
         try:
             self.bot.call("answerCallbackQuery", {"callback_query_id": cq["id"]})
         except Exception:
             pass
         msg = cq.get("message") or {}
-        if not msg or (self.allow and cq["from"]["id"] not in self.allow):
+        if not msg or not self.allowed(cq["from"]["id"], msg["chat"]["id"]):
             return
         data = cq.get("data") or ""
         chat, thread = self.where(msg)
@@ -192,7 +199,7 @@ class Daemon:
     def on_message(self, msg):
         if msg.get("from", {}).get("is_bot"):
             return
-        if self.allow and msg.get("from", {}).get("id") not in self.allow:
+        if not self.allowed(msg.get("from", {}).get("id"), msg["chat"]["id"]):
             return
         if msg.get("migrate_to_chat_id"):
             log(f"chat {msg['chat']['id']} migrated to {msg['migrate_to_chat_id']}; "
@@ -202,12 +209,13 @@ class Daemon:
         text = msg.get("text") or msg.get("caption") or ""
 
         # Admin commands work in ANY chat, bound or not.
-        m = NEWCC_RE.match(text)
+        admin = not self.allow or msg.get("from", {}).get("id") in self.allow
+        m = NEWCC_RE.match(text) if admin else None
         if m:
             return self.cmd_newcc(chat, thread, m.group(1))
-        if UNBIND_RE.match(text):
+        if admin and UNBIND_RE.match(text):
             return self.cmd_unbind(chat, thread)
-        if STATUS_RE.match(text):
+        if admin and STATUS_RE.match(text):
             return self.cmd_status(chat, thread)
 
         peer, folder = self.bindings.lookup(chat, thread)
