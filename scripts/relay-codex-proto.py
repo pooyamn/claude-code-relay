@@ -32,6 +32,10 @@ import subprocess
 import threading
 import time
 
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from relay_ws import UnixWS, DAEMON_SOCK  # noqa: E402
+
 D = os.path.dirname(os.path.abspath(__file__))
 STATE = os.path.join(D, "relay-work")
 CODEX = os.environ.get("RELAY_CODEX_BIN", "/opt/homebrew/bin/codex")
@@ -149,11 +153,25 @@ _AGENT_MSG = ("agentMessage", "agent_message")
 
 
 class Conn:
-    """One `codex app-server` process and one open thread."""
+    """One app-server connection and one open thread.
+
+    The connection goes to the remote-control DAEMON whenever it is up, so the
+    relay and the ChatGPT app are two clients of ONE server sharing one writer.
+    Spawning a private `codex app-server` instead made the relay a second writer
+    process: whichever side opened the thread first took the lock and the other
+    was refused -- the app showed "Another Codex session is using this task"
+    for the length of every relayed turn (2026-09-29, topic 427), and the relay
+    was blocked whenever the app merely had the thread open. Measured over the
+    daemon: two clients both thread/resume the same thread, one runs a turn,
+    the other streams it live, and the lock stays with the daemon throughout.
+
+    A private stdio app-server is used only when the daemon socket is not
+    reachable -- then no app session exists to conflict with."""
 
     def __init__(self, key, folder, cfg=None):
         self.key, self.folder, self.cfg = key, folder, (cfg or {})
         self.proc = None
+        self.ws = None             # set when attached through the daemon
         self.tid = ""
         self.turn_id = ""
         self.busy = False
@@ -183,8 +201,11 @@ class Conn:
         if want_id:
             msg["id"] = i
         try:
-            self.proc.stdin.write(json.dumps(msg) + "\n")
-            self.proc.stdin.flush()
+            if self.ws is not None:
+                self.ws.write(json.dumps(msg))
+            else:
+                self.proc.stdin.write(json.dumps(msg) + "\n")
+                self.proc.stdin.flush()
         except Exception as e:
             self._log(f"send failed {method}: {e}")
             return None
@@ -200,7 +221,7 @@ class Conn:
         return None
 
     def _reader(self):
-        for line in self.proc.stdout:
+        for line in (self.ws if self.ws is not None else self.proc.stdout):
             try:
                 d = json.loads(line)
             except Exception:
@@ -252,26 +273,44 @@ class Conn:
 
     # --- lifecycle --------------------------------------------------------
     def alive(self):
+        if self.ws is not None:
+            return not self.ws.closed
         return self.proc is not None and self.proc.poll() is None
 
     def open(self):
-        """Spawn, initialize, and attach to this folder's thread."""
+        """Connect (daemon first), initialize, and attach to this folder's thread."""
         if self.alive():
             return True
+        self.ws = self.proc = None
         try:
-            self.proc = subprocess.Popen(
-                [CODEX, "app-server"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL, text=True, bufsize=1)
+            self.ws = UnixWS(DAEMON_SOCK)
         except Exception as e:
-            self._log(f"spawn failed: {e}")
-            return False
+            self._log(f"daemon unreachable ({e}); using a private app-server")
+            self.ws = None
+        if self.ws is None:
+            try:
+                self.proc = subprocess.Popen(
+                    [CODEX, "app-server"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL, text=True, bufsize=1)
+            except Exception as e:
+                self._log(f"spawn failed: {e}")
+                return False
         threading.Thread(target=self._reader, daemon=True).start()
         rid = self._send("initialize", {"clientInfo": {
             "name": "claude-code-relay", "version": "0.1", "title": "relay"}})
         if not self._wait(rid, 30):
             self._log("initialize timed out")
+            self.close()
             return False
-        return self._attach()
+        if self._attach():
+            return True
+        # A FAILED open must not leave its app-server running. The caller drops
+        # the Conn reference on failure, so nothing else can ever reap it, and a
+        # watcher retrying a lock-blocked thread every 5s spawned one process per
+        # attempt: ~50 orphaned `codex app-server` processes accumulated in half
+        # an hour before this was noticed.
+        self.close()
+        return False
 
     def _policy(self):
         # Same allow-everything posture as the exec path. NOTE the spelling
@@ -300,7 +339,20 @@ class Conn:
                 if "active writer" not in why:
                     self._log(f"resume failed for {tid}: {why}")
                     break
-                self._log(f"resume blocked by a stale writer lock "
+                # Give a real handover a chance first: if the app is mid-turn the
+                # lock is doing its job and waiting is correct. From the third
+                # attempt on, an IDLE thread whose lock is held by the daemon is
+                # a lock that outlived its work, and waiting for the user to
+                # close a thread in an app is not a recovery strategy.
+                # Never on the daemon transport: there the daemon's lock IS our
+                # lock, and "active writer" means a private app-server elsewhere
+                # (an old-code watcher) is mid-turn -- waiting is correct.
+                if self.ws is None and attempt >= 2 and self._lock_holder_is_daemon(tid) \
+                        and self._thread_idle(tid):
+                    if self._reclaim_lock(tid):
+                        time.sleep(1)
+                        continue
+                self._log(f"resume blocked by a writer lock "
                           f"(attempt {attempt + 1}/6): {why}")
                 time.sleep(5)
             else:
@@ -315,6 +367,66 @@ class Conn:
         self.tid = r["result"]["thread"]["id"]
         save_thread(self.key, self.tid)
         return True
+
+    # --- writer-lock recovery ---------------------------------------------
+    LOCK_DIR = os.path.expanduser("~/.codex/thread-writer-locks")
+
+    def _lock_path(self, tid):
+        return os.path.join(self.LOCK_DIR, f"{tid}.lock")
+
+    def _lock_holder_is_daemon(self, tid):
+        """True when the remote-control daemon holds this thread's writer lock.
+
+        Only the daemon is reclaimable: it takes the lock for any thread the
+        ChatGPT app has merely OPEN and keeps it while the thread sits idle, so
+        "held" says nothing about whether work is happening. Another relay
+        connection holding it is a different matter and must be left alone."""
+        try:
+            out = subprocess.run(["lsof", "-t", self._lock_path(tid)],
+                                 capture_output=True, text=True, timeout=10).stdout.split()
+        except Exception:
+            return False
+        for pid in out:
+            try:
+                cmd = subprocess.run(["ps", "-o", "command=", "-p", pid],
+                                     capture_output=True, text=True, timeout=10).stdout
+            except Exception:
+                continue
+            if "app-server" in cmd and "--remote-control" in cmd:
+                return True
+        return False
+
+    def _thread_idle(self, tid):
+        """Ask the store whether a turn is actually running on this thread.
+
+        Reclaiming a lock while the app is mid-turn would put two writers on one
+        thread, so idleness is the precondition -- not a guess from the fact that
+        the lock is held."""
+        rid = self._send("thread/read", {"threadId": tid})
+        r = self._wait(rid, 25)
+        try:
+            st = (r["result"]["thread"].get("status") or {}).get("type", "")
+        except Exception:
+            return False
+        # notLoaded = not even open; idle = open, no turn running.
+        return st in ("notLoaded", "idle")
+
+    def _reclaim_lock(self, tid):
+        """Unlink the lock path so the next open() creates a fresh inode.
+
+        This is a RECLAIM, not a handshake: the daemon keeps its descriptor on
+        the old inode, so for as long as it holds that thread open both sides
+        believe they own the writer. It is done only when the thread is idle and
+        the holder is the daemon, which is the case where the lock outlived the
+        work it was protecting -- the alternative is a topic that stays silent
+        until the user happens to close a thread in the app."""
+        try:
+            os.unlink(self._lock_path(tid))
+            self._log(f"reclaimed idle writer lock for {tid} (held by the Codex app)")
+            return True
+        except Exception as e:
+            self._log(f"lock reclaim failed for {tid}: {e}")
+            return False
 
     def set_name(self, name):
         if not (self.tid and name):
@@ -348,7 +460,13 @@ class Conn:
         thread/start, and the topic silently continues in a NEW empty thread --
         history intact on disk but no longer the one the relay writes to. That
         is the same divergence that made DUT look idle in the app while a turn
-        ran in Telegram, so it is worth an orderly exit."""
+        ran in Telegram, so it is worth an orderly exit.
+
+        On the daemon transport this only drops our connection: the daemon keeps
+        the thread (and its lock) for the app, which is the point."""
+        if self.ws is not None:
+            self.ws.close()
+            return
         try:
             self.proc.stdin.close()
         except Exception:
