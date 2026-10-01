@@ -104,7 +104,7 @@ Recovery
 `agent-msg <session> "<text>"` is the only sanctioned way to message another session. Claude's native `SendMessage` to other sessions is denied by permission rule for agent sessions (subagent messaging inside a session is unaffected), so nothing bypasses the router.
 
 - `agent-msg` hands the message to the router over a local socket; the router assigns the id, the hop count and the header, stores it durably, then delivers.
-- Delivery: Claude via its native inbox socket (posting format still to verify; fallback bracketed paste into the tmux pane); Codex via `codex queue --thread <id>`, or `turn/steer` on the daemon when sent with `--urgent`.
+- Delivery: Claude via its native inbox socket: connect to `/tmp/cc-socks/<pid>.sock` (path also in the session registry) and write one line `{"type":"user","message":{"role":"user","content":"<header + text>"}}`, then close. Codex via `codex queue --thread <id>`, or `turn/steer` on the daemon when sent with `--urgent`.
 - States recorded per message: `stored`, `accepted` (target took it), `failed`. Retries only for `stored`/`failed`; the router drops duplicates it already delivered.
 - Action requests need the exact session id, not a bare agent name. If the target is not running, the message is parked in its inbox and Pouya is alerted. Nothing auto-starts.
 - Hop limit 3 per thread, counted by the router, not by the model.
@@ -176,14 +176,14 @@ Needed, in order:
 
 ## 13. Open items
 
-1. Posting format for a Claude session's inbox socket from a script.
-2. Build on the Mac VM and migrate, or directly on the Windows PC.
+1. Build on the Mac VM and migrate, or directly on the Windows PC.
 
 ## Appendix: verified facts (2026-10-01, Claude Code 2.1.287, Codex 0.159.3)
 
 - Claude reads AGENTS.md natively (≥2.1.277); loads instructions from cwd and parents; `--add-dir` with `CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1` loads that dir's CLAUDE.md; ignores `AGENTS.override.md`.
 - Claude cross-session inbox; bypass-to-bypass delivers by default; script posts without a permission class are held unless `crossSessionInbound: "accept"`.
 - `PreCompact` cannot run prompt or agent hooks.
+- Posting into a Claude session from an unrelated process (tested 2026-10-01): one JSON line `{"type":"user","message":{"role":"user","content":"..."}}` on `/tmp/cc-socks/<pid>.sock`, no auth line needed on macOS/Linux. Claude delivers it as a message from another session, with its built-in rule that a peer message is never the user's approval. With prompts skipped and no `crossSessionInbound: "accept"`, it is held for a human (Deny / Deliver). Extra envelope fields (`from`, `from_mode`) are ignored: sender identity and permission mode cannot be asserted by a script, so the router's header carries the sender.
 - Codex: `--remote unix://…` attaches the TUI to the daemon; `-C` needed; `-c developer_instructions` ignored through the daemon; `AGENTS.override.md` replaces AGENTS.md at its level; skills from `.agents/skills` and `.codex/skills` under the cwd tree and the user dir; `codex queue` exists without an urgent flag; `turn/steer` is the steer path; hooks on, memories off.
 - A linked worktree's `.git` is a file.
 - Telegram: ~20 messages/minute per group; updates kept 24 hours.
