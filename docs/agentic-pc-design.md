@@ -1,6 +1,6 @@
 # Agentic PC: design
 
-Status: v3, after an independent review (2026-10-01). Owner: Pouya.
+Status: v4 (2026-10-01): memory layers and the push-to-main rhythm. Owner: Pouya.
 Target: Windows PC, WSL2 Ubuntu 24.04, user `pouya` created with home `/Users/pouya` (`useradd -d`), so existing absolute paths keep working.
 
 ## 1. Goals and constraints
@@ -41,6 +41,17 @@ v1 starts with three: `ceo`, `cto`, `reviewer`. The rest are added one at a time
 | `pcb-schematic` | `.kicad_sch`, BOM, part choice |
 | `pcb-routing` | `.kicad_pcb`, fab outputs, ordering |
 | `art-director` | brand, visuals, renders, design review |
+
+## 2a. Memory layers
+
+| Layer | File | Holds | Written by |
+|---|---|---|---|
+| Company | `~/agents/shared/COMPANY.md`, `DECISIONS.md` | big picture, decisions | `ceo`, `cto` |
+| Agent | `~/agents/<agent>/memory/MEMORY.md` | role knowledge that travels across repos and sessions | that agent |
+| Repo | `~/agents/shared/repos/<repo>/MEMORY.md` | facts about the project, shared by every agent in it | any agent working in the repo |
+| Session handoff | `~/agents/shared/repos/<repo>/NOW-<agent>.md` | where this agent's work in this repo stands | the session, at handoff, end and before compaction |
+
+Repo memory is outside the repo tree, so it does not diverge per branch or worktree.
 
 ## 3. Files
 
@@ -107,15 +118,22 @@ Sessions run with permission prompts skipped, so rules in markdown are advice on
 - **Branch protection** on `main` on GitHub.
 - **Shared file protection**: hook-enforced write restriction on `~/agents/shared/*.md`.
 
-## 6a. Branches and PRs
+## 6a. Branches and PRs: every push goes to main
 
-1. One branch per session, `<agent>/<task>`, in its own worktree.
-2. The session commits and pushes to a local mirror; it holds no GitHub credentials.
-3. The router pushes the branch to GitHub and opens the PR (no approval needed).
-4. `reviewer`, on the other tool, reviews the diff and test output and posts pass/fail on the PR.
-5. On pass, `cto` requests the merge and the router squash-merges. `cto`'s request is sufficient; no Pouya approval for merges. Branch protection on `main` allows only router merges.
-6. Sessions rebase on `main` before review and before merge; a conflict goes back to the owner of the file.
-7. The bus topic shows PR opened, review pass/fail, merged.
+An agent can run several sessions; each session has its own branch `<agent>/<task>` and worktree. Every push becomes a PR and is merged into `main` once reviewed, so branches never drift far from `main`.
+
+1. The session commits and pushes to a local mirror (it holds no GitHub credentials).
+2. The router pushes the branch to GitHub and opens a PR for it (no approval needed).
+3. `reviewer`, on the other tool, reviews the diff and test output and posts pass/fail on the PR.
+4. On pass, `cto` requests the merge and the router squash-merges. `cto`'s request is sufficient; no Pouya approval for merges. Branch protection on `main` allows only router merges.
+5. After the merge, the session's branch is reset onto the new `main` and work continues on the same branch.
+6. On fail, the PR goes back to the same session, which fixes and pushes again on the same PR.
+
+Rules
+- Push only at a working checkpoint: it builds, tests pass, one coherent change. Each push costs a review turn.
+- One open PR per session at a time: no new push until the last PR is merged or failed.
+- Rebase on `main` before review and before merge; a conflict goes back to the owner of the file.
+- The bus topic shows PR opened, review pass/fail, merged.
 
 ## 7. Knowledge
 
