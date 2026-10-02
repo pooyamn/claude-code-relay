@@ -59,7 +59,8 @@ class SourceGrants:
 
     `current_check(body, binding)` must consult protected current native/root/
     route and human/company grants; JSON attribution or an old cached boolean
-    cannot supply it. The real split-UID broker bridge is still an activation gate.
+    cannot supply it. BindingReadClient supplies fresh broker registration without
+    sharing its DB; actual split-UID IPC and native/context remain activation gates.
     Already attested output can outlive its producer process; revocation and
     changed execution bindings still fence it. This never authorizes an action.
     """

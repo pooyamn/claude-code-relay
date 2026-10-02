@@ -22,6 +22,8 @@ class PlanTests(unittest.TestCase):
         self.assertFalse(result["services_enabled"])
         self.assertFalse(result["owner_ingress_enabled"])
         self.assertFalse(result["bootstrap_deployment_enabled"])
+        self.assertFalse(result["binding_read_enabled"])
+        self.assertIn(["relay", "ccrelay-clients"], result["memberships"])
         self.assertEqual(len(result["accounts"]), 11)
         self.assertEqual(len({row["uid"] for row in result["accounts"].values()}), 11)
         self.assertNotIn("/Users/pouya", {row["home"] for row in result["accounts"].values()})

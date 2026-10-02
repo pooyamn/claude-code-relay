@@ -15,13 +15,14 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from relay_core.bindings import BindingRegistry
+from relay_core.binding_reads import BindingReadPolicy, BrokerBindingReads, REQUEST_SCHEMA as BINDING_READ_SCHEMA
 from relay_core.identity import Authority, Denied, Policy, exact, identifier, protected_path
 from relay_core.broker_wire import receive_request, send_response
 from relay_core.messaging import BrokerMessages
 from relay_core.outbox import DeliveryLedger
 
 
-def dispatch(authority, peer, request, *, control=False, messages=None):
+def dispatch(authority, peer, request, *, control=False, messages=None, binding_reads=None):
     if control:
         exact(request, {"schema", "request_id", "method", "args"})
         if request["schema"] != "ccrelay.broker_control.v1":
@@ -33,6 +34,10 @@ def dispatch(authority, peer, request, *, control=False, messages=None):
             exact(request["args"], {"session_id"})
             return authority.revoke(peer, request["args"]["session_id"])
         raise Denied("unsupported launcher control operation")
+    if type(request) is dict and request.get("schema") == BINDING_READ_SCHEMA:
+        if binding_reads is None:
+            raise Denied("protected component binding reads are not enabled")
+        return binding_reads.dispatch(peer, request)
     actor = authority.authorize(peer, request)
     if request["method"] in {"send_message", "message_status", "message_log"} and messages is not None:
         return messages.dispatch(actor, request["method"], request["args"])
@@ -57,10 +62,12 @@ def main():
     parser.add_argument("--policy", required=True)
     parser.add_argument("--state-dir", required=True)
     parser.add_argument("--runtime-dir", required=True)
+    parser.add_argument("--binding-read-policy", help="Optional reviewed component-only read policy; no worker capability")
     args = parser.parse_args()
     if sys.platform != "linux" or not all(hasattr(socket, field) for field in ("SO_PEERCRED", "SO_PASSCRED", "SCM_CREDENTIALS")):
         raise Denied("Linux credential primitives required; broker is not portable by fallback")
     policy = Policy.load(args.policy)
+    read_policy = BindingReadPolicy.load(args.binding_read_policy, policy) if args.binding_read_policy else None
     if os.geteuid() != policy.broker_uid or os.getegid() != policy.client_gid:
         raise Denied("broker must use its configured protected UID and client socket group")
     os.umask(0o077)
@@ -73,6 +80,7 @@ def main():
     protected_path(lock_path, owners={0, policy.broker_uid}, private=True)
     fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     authority = Authority(policy, registry)
+    binding_reads = BrokerBindingReads(authority, read_policy, policy_path=args.binding_read_policy) if read_policy else None
     ledger = DeliveryLedger(args.state_dir, owner_uid=policy.broker_uid, policy_digest=policy.digest)
     messages = BrokerMessages(authority, ledger)
     with selectors.DefaultSelector() as selector:
@@ -99,7 +107,7 @@ def main():
                             peer, request = receive_request(connection)
                             if type(request) is dict:
                                 request_id = identifier(request.get("request_id"))
-                            result = dispatch(authority, peer, request, control=key.data, messages=messages)
+                            result = dispatch(authority, peer, request, control=key.data, messages=messages, binding_reads=binding_reads)
                         except (Denied, ValueError, OSError):
                             # Never log private arguments or proc/config paths.
                             result = {"ok": False, "error": "request denied; required identity or operation gate unavailable"}

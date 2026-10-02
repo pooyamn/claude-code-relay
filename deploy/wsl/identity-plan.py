@@ -15,6 +15,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 from relay_core.identity import Denied, Policy, strict_json
+from relay_core.binding_reads import BindingReadPolicy
 from relay_core.owner_gate import OwnerPolicy
 from relay_core.artifacts import DeploymentPolicy
 from relay_core.intake import IntakePolicy
@@ -26,6 +27,7 @@ def plan(folder, users=None, groups=None):
     folder = Path(folder)
     raw = strict_json((folder / "identities/broker-policy.json.example").read_bytes())
     policy = Policy(raw)
+    binding_read_policy = BindingReadPolicy(strict_json((folder / "identities/binding-read-policy.json.example").read_bytes()), policy)
     owner_policy = OwnerPolicy(strict_json((folder / "identities/owner-policy.json.example").read_bytes()), policy)
     deployment_policy = DeploymentPolicy(strict_json((folder / "identities/deployment-policy.json.example").read_bytes()))
     intake_policy = IntakePolicy(strict_json((folder / "identities/intake-policy.json.example").read_bytes()), owner_policy, policy)
@@ -67,6 +69,12 @@ def plan(folder, users=None, groups=None):
                     raise Denied("unexpected shared-group members")
     if accounts.get("ccrelay-broker", {}).get("uid") != policy.broker_uid or shared_groups.get("ccrelay-clients") != policy.client_gid:
         raise Denied("broker policy and OS identity templates differ")
+    for uid in binding_read_policy.readers:
+        if uid == 0:
+            continue
+        readers = [name for name, item in accounts.items() if item["uid"] == uid]
+        if len(readers) != 1 or [readers[0], "ccrelay-clients"] not in memberships:
+            raise Denied("binding reader is not a planned component with explicit socket access")
     if accounts.get("relay", {}).get("uid") != owner_policy.ingress_uid or \
             accounts.get("ccrelay-deployer", {}).get("uid") != owner_policy.gate_uid or \
             {user for user, group in memberships if group == "ccrelay-owner-ingress"} != {"relay", "ccrelay-deployer"}:
@@ -82,6 +90,7 @@ def plan(folder, users=None, groups=None):
     return {"schema": "ccrelay.identity_plan.v1", "mode": "dry-run-only", "policy_digest": policy.digest,
             "owner_policy_digest": owner_policy.digest, "deployment_policy_digest": deployment_policy.digest,
             "intake_policy_digest": intake_policy.digest,
+            "binding_read_policy_digest": binding_read_policy.digest, "binding_read_enabled": binding_read_policy.enabled,
             "owner_ingress_enabled": owner_policy.enabled, "bootstrap_deployment_enabled": deployment_policy.bootstrap_enabled,
             "accounts": accounts, "shared_groups": shared_groups, "memberships": memberships,
             "changes_applied": False, "services_enabled": False,

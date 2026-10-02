@@ -27,6 +27,7 @@ DEPLOY_SOURCES = (
     "identity-plan.py", "setup-wsl.sh", "pull-from-mac.sh",
     "identities/ccrelay.sysusers.conf", "identities/ccrelay.tmpfiles.conf",
     "identities/broker-policy.json.example", "identities/session.service.in",
+    "identities/binding-read-policy.json.example",
     "systemd/ccrelay-broker.service",
     "identities/owner-policy.json.example", "identities/deployment-policy.json.example",
     "systemd/ccrelay-owner-gate.service",

@@ -145,6 +145,18 @@ The disabled config is v2 with a separate source directory. Real kernel-native,
 root/company/context and split-UID bridges, exclusive Khadang/WSL acceptance and
 full-component recovery remain pending; this does not complete PR 6.
 
+Protected registry-read preparation: `binding_reads.py` gives the outbound source
+checker fresh, exact session reads over the existing kernel-authenticated broker
+channel without sharing the broker's private database. A separate root-owned,
+disabled-by-default policy limits non-worker component UIDs and readable roles;
+each read binds a new nonce and policy digests, with no cached fallback. The
+broker reloads reader permission before and after observation. Worker/launcher
+actions remain unavailable to readers. Joined registry/grant/dispatch tests cover
+revocation, outages and an independent writer's commit/death; the copied-source
+suite passes 397 core tests and four legacy suites. The socket-group template and
+optional broker flag are preparation only, not live changes. Actual WSL UID/IPC,
+native-source and current root/company checks remain required; PR 6 is not done.
+
 ## PR 7 Native session registry and role launcher
 
 Depends on: PRs 2, 5 and 6.

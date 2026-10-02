@@ -1,0 +1,6 @@
+{
+  "schema": "ccrelay.binding_read_policy.v1",
+  "enabled": false,
+  "broker_policy_digest": "sha256:687de472215d54969654126fb58ced0691e5cd66a4adaf71b648d76d40606b51",
+  "readers": [{"uid": 23000, "roles": ["builder", "reviewer", "cto", "support", "ceo"]}]
+}

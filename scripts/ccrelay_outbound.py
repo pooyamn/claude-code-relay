@@ -12,7 +12,8 @@ import sys
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from relay_core.identity import Denied, exact, strict_json
+from relay_core.identity import Denied, Policy, exact, strict_json
+from relay_core.binding_reads import BindingReadPolicy
 from relay_core.telegram_outbound import OutboundPolicy, LANES, METHODS
 
 
@@ -36,11 +37,15 @@ def plan():
     folder = Path(__file__).resolve().parents[1] / "deploy" / "wsl" / "identities"
     cfg = configuration(strict_json((folder / "outbound-config.json.example").read_bytes()))
     policy = OutboundPolicy(strict_json((folder / "outbound-policy.json.example").read_bytes()))
+    broker_policy = Policy(strict_json((folder / "broker-policy.json.example").read_bytes()))
+    read_policy = BindingReadPolicy(strict_json((folder / "binding-read-policy.json.example").read_bytes()), broker_policy)
     return {"schema": "ccrelay.telegram_outbound_plan.v1", "mode": "read-only-examples", "enabled": False,
             "test_bot": cfg["test_bot"], "identity_and_timing_are_placeholders": True,
             "network_calls": False, "state_changes": False, "policy_digest": policy.digest,
             "send_owner_registry": SEND_OWNER_ROOT, "priority_lanes": LANES, "method_ceiling": sorted(METHODS),
             "source_grant_directory": cfg["source_grant_dir"], "dispatch_contract": "ccrelay.guarded_telegram_request.v1",
+            "binding_read_policy_digest": read_policy.digest, "binding_reads_enabled": read_policy.enabled,
+            "binding_read_socket": "/run/ccrelay-broker/actions.sock",
             "restore_components": ["consistent outbound SQLite snapshot", "sealed response bodies and attempt envelopes",
                                   "immutable assets and original names/MIME metadata", "pinned policy/adapter artifact",
                                   "trusted watcher stream mappings and externally reconciled offsets",

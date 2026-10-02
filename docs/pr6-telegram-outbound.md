@@ -66,9 +66,10 @@ provenance. It binds the full source, native IDs, operations, alternatives,
 destination and registered role/session/root/execution. The mandatory current
 context callback must consult protected authoritative state; source IDs,
 model prose, decoded JSON and an old cached permission cannot supply it.
-The real callback and split-UID broker/native bridge are still integration gates.
-Do not solve access to the broker's private registry by sharing a worker-readable
-database or credential home.
+The real callback and native-source bridge are still integration gates. The
+broker registry read channel below is prepared separately; it is not native,
+human/company/root permission. Do not solve access to the broker's private
+registry by sharing a worker-readable database or credential home.
 
 The grant database retains issuance, revocation and explicit renewal revisions.
 Revocation persists across reopening/snapshot; ordinary issuance cannot extend
@@ -102,6 +103,41 @@ now v2 and names that directory; older configs are rejected for reviewed migrati
 The guarded plan uses adapter `telegram-outbound.v2`. Existing attempted records
 remain inspectable/reconcilable, never converted into eligible fresh sends.
 No legacy live sender, controller RPC, service or bot wiring was enabled.
+
+## Prepared protected registry reads
+
+`binding_reads.py` supplies `BindingReadClient.session` to the source checker
+without opening the broker's private SQLite registry from the outbound UID.
+The broker's optional `--binding-read-policy` flag adds only exact session reads
+on the existing bounded Unix channel. Kernel peer and per-fragment credentials
+identify the caller; the client pins the serving broker UID. Each fresh request
+binds its nonce, session, component UID, installed broker/read policy digests and
+returned binding. Reader role ceilings apply at both ends. A disconnected,
+denied, stale or malformed response cannot fall back to a cached registration.
+
+The separate root-owned read policy admits explicit non-worker component UIDs,
+not role headers or working directories. The broker reloads that policy before
+and after each registry observation, so a changed permission during a slow read
+fails closed. The broker's main policy remains pinned at startup; changing it
+still requires the reviewed migration/reload path. This channel cannot register,
+revoke, list all bindings or authorize worker actions. Revoked rows remain
+inspectable but cannot supply source permission.
+
+The example policy is disabled and tied to the example broker policy digest.
+The sysusers template proposes adding `relay` to the existing socket-access
+group, without exposing the private broker home/database or launcher socket.
+No group membership was applied. The inert broker service has not been changed
+to enable the flag, and no runtime service or outbound controller was activated.
+The read request/result/policy contracts are v1; existing registry, grant,
+queue/bundle and outbound configuration schemas are unchanged by this addition.
+
+A protected controller can compose `Authority(broker_policy,
+BindingReadClient(socket_path, read_policy))` with `SourceGrants`, but must still
+supply its protected current native/root/company/route checker. Registered
+identity does not establish source provenance or task admission. Attested output
+may outlive its producer; do not invent process-liveness permission. Actual WSL
+UIDs, socket permissions, installed artifacts and native-context integration
+remain acceptance gates, not properties proved by Mac fixtures.
 
 ## Prepared format/media repair
 
@@ -248,6 +284,21 @@ preparation command passed; the latter remains disabled with no runtime I/O.
 Kernel identities, context checks and provider are fixtures, not WSL/company or
 live Khadang acceptance. No paid/model or live bot calls were made.
 
+Protected-registry-read verification on 2026-10-02: the copied working-tree
+sandbox passed all four legacy suites and 397 core tests, including 21 new
+read-channel checks. Joined tests use actual registry/grant/queue transactions
+and a non-idempotent fake provider. They cover fresh reads, role/UID ceilings,
+forged or stale replies, outages, hot read-policy revocation, preserved holds and
+post-claim uncertainty without replay. A separate scratch registry writer commits
+revocation and exits abruptly; an existing client observes it without reopening
+its grant ledger. This is actual SQLite/process-death evidence, not a Linux
+daemon/IPC crash test. Socket/kernel/ancestor observations are substituted;
+company/native provenance remains fixture-only. Both read-only planners report
+the read policy disabled and perform no runtime changes or network calls.
+The final clean staged-source run also passed all 397 core tests and four legacy
+suites, excluding the user-owned protocol edits. The strict staged secret scan
+passed. No paid/model calls, live bot traffic or runtime activation occurred.
+
 Telegram documents global, group and chat flood limits and returns a wait in
 `retry_after`. This supports persisted scheduling, not unrestricted paid
 broadcasts or a universal exactly-once guarantee. [Telegram flood guidance](https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this)
@@ -271,8 +322,9 @@ PR 12 must capture a consistent outbound SQLite snapshot including streams,
 bundles, original sources, repair recipes/links/authorizations, attempts, receipts,
 cooldowns and shared retry counters; the sealed response bodies/envelopes;
 immutable assets and their metadata; a consistent source-grant database snapshot
-with its complete issuance/revocation/renewal history; pinned policy,
-adapter artifact and trusted stream/registry evidence. Keep incomplete spool
+with its complete issuance/revocation/renewal history; pinned policy, including
+the broker binding-read policy/client/server artifacts; adapter artifact and
+trusted stream/registry evidence. Keep incomplete spool
 files for inspection. The base outbox's database-only snapshot is not a complete
 Telegram component backup. Restore paused, revalidate identity/versions and
 reconcile external evidence before permitting execution. Runtime lock metadata
@@ -285,7 +337,9 @@ permission: restore paused and revalidate through current protected checks befor
 explicit release/reauthorization. Missing grant components, unsupported schemas,
 old boot/execution mappings or unavailable current context must hold output, not
 reconstruct permission from the bundle or an old boolean. Database-only source
-snapshots do not establish full-system/clean-machine recovery.
+snapshots do not establish full-system/clean-machine recovery. A backed-up
+binding/read-policy tuple is not a fresh broker observation or current source
+permission; restore paused and revalidate it through the protected channel.
 
 Unknown schemas or policy changes require explicit reviewed migration. Do not
 delete ledgers, clear offsets/cooldowns, replace uncertain intents or reclaim a
@@ -310,6 +364,9 @@ sender beside the new owner is not a rollback.
    checks through real split-UID channels. Prove revocation/expiry and the final
    transport guard against real protected policy and company membership; the
    prepared checker interface and synthetic grants do not prove those bindings.
+   The component-only broker read implementation is prepared, but real WSL
+   socket/group/UID enforcement and protected source-controller integration
+   remain unverified. Do not substitute it for native or company authority.
    Cut every send/edit/upload/bus/status/callback
    path over to the one owner together. The old scripts still use direct sends;
    this gateway does not itself establish their cutover or a phone-control loop.
