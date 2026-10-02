@@ -15,7 +15,7 @@ Goals
 - Everything works from a phone.
 
 Constraints
-- Claude and ChatGPT subscriptions only. No API keys.
+- Claude and ChatGPT subscriptions for all agent work. No paid API keys; free-tier keys are fine (held by `relay`, never in a session).
 - Agents are interactive sessions in tmux, not `claude -p` or one-shot runs.
 - Phone access through the Telegram router (ccrelayd) and the Claude Code and Codex remote-control apps.
 - Migrate gradually, one agent at a time.
@@ -146,7 +146,7 @@ Real boundaries:
 - **GitHub branch protection** on `main`: required status `review` on the exact head SHA, up to date with `main`, only the router's token may merge.
 - **Approvals** are single-use and bound to the exact action. They cover email, payments, purchases, public posts. Merges follow `cto` policy.
 
-Guardrails, not boundaries: deny hooks on `git push` to other remotes, mail CLIs and curl to known APIs.
+Guardrails, not boundaries: deny hooks on `git push` to other remotes, mail CLIs and curl to known APIs. Later, optionally, a Jev-backed pre-tool gate (allow / ask / deny per command, ~0.4 s). Its own published injection test let 10% of polite "the owner approved this" claims through, so it stays a guardrail; approvals remain in the router.
 
 Router authorisation fails closed: an empty allow list allows nobody.
 
@@ -169,6 +169,7 @@ Intake
 - Each new issue posts to the **issues** topic.
 
 Triage
+- A cheap classifier sorts each report and each health-check finding before any agent wakes: TypeSafe's Jev (a fast decision model) through Vercel AI Gateway's free tier (`typesafe-ai/jev`, $0.04/1M input tokens, covered by the monthly free credit; about $0.00002 per call). It returns kind, priority and the target agent. It only ever sees masked text. When it is rate-limited or down, plain rules decide instead.
 - `bug` → `support`.
 - `improvement`, `feature` → `cto`'s backlog.
 - P1 (relay down, messages lost, a topic dead) → the alerts path; notifies Pouya.
@@ -237,7 +238,7 @@ Built and tested: Telegram long-poll and routing, media, voice, rich tables, pro
 Needed, in order:
 1. Router as `relay`; fail-closed authorisation; action socket with uid check.
 2. Durable inbound spool and outbox; Codex queue race fix; send timeout treated as unknown.
-3. `report_issue`, `list_issues`, `comment_issue`; issues topic; health-check script and timer.
+3. `report_issue`, `list_issues`, `comment_issue`; issues topic; health-check script and timer; Jev triage with rule fallback.
 4. Publication flow, SHA-bound review status, per-repo merge serialisation.
 5. Session registry with desired/observed state; resume by id; boot units.
 6. Scheduler, status board, approvals, `cto` weekly proposals.
