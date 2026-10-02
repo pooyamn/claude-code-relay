@@ -237,6 +237,16 @@ writer fencing and native loading/readiness/admission remain gates. All 31 focus
 setup/launch/planner checks pass, including six actual installation-worker deaths;
 the full suite is deferred to the next milestone, not claimed for this slice.
 
+Exact-resume preparation: `native_resume.py` binds one Codex resume attempt to the
+current protected native mapping and existing durable outbox. Control commits
+invalidate old readiness/probes before RPC; a matched exact-ID reply needs a fresh
+independent registry observation. Unknown outcomes block both replay and a new
+action ID for the same session until trusted reconciliation. There is no start,
+fork, profile substitution or hidden retry. All 65 focused adapter/registry/planner/
+outbox checks pass, including eight new resume-worker deaths. Real initialized
+transport/observer, admission, Claude controls, app visibility and target-PC
+acceptance remain required; no live session was resumed.
+
 ## PR 8 Root tasks and atomic work ownership
 
 Depends on: PRs 1, 2 and 7.

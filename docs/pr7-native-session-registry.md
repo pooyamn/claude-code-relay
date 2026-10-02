@@ -64,6 +64,37 @@ Neither these normalized fixtures nor the separate legacy Mac goal/menu rollout
 establish isolated native transports, provider entitlement, app visibility or
 pre-turn enforcement on the PC.
 
+## Durable exact ID resume adapter
+
+`native_resume.py` extends the existing protected delivery outbox rather than
+creating a retry queue. A resume intent fixes the native mapping, root, binding,
+enrollment digest and current registry revision. The required protected gate must
+cover current source/context, reviewed runtime/setup, writer fencing and admission,
+including possible native goal continuations. Unsupported or unadmitted requests
+remain held without a native call. Controller identity must come from kernel
+ingress, never a supplied role/UID header.
+
+Before RPC, the attempt is committed and `prepare_resume()` invalidates cached
+readiness and earlier probes while preserving the exact conversation/last turn.
+Submission and fresh control checks precede one `thread/resume` call with the
+recorded thread ID and worktree, without model/profile overrides or start/fork
+fallback. A matching RPC ID/thread acknowledgment then requires the registry's
+independent fresh runtime/worktree/permission observation; owner pause, changed
+revision or revoked binding cannot be replaced by that reply.
+
+Errors, lost replies and interrupted commits retain the attempt as unknown, not
+failed/retryable. A replacement action ID cannot bypass an unreconciled resume for
+the same session in the authoritative outbox. Only trusted outcome reconciliation
+can release that predecessor fence. Confirmation records observed resume, not
+task completion or permission for another turn. Recovery requires both native
+registry and outbox/evidence cohorts, plus the pinned runtime/workspace artifacts.
+
+No initialized native transport, real observer/admission gate, Claude adapter or
+live driver is enabled by this slice. The existing registry schema is unchanged;
+control invalidation adds history events, not an automatic state migration. Native
+app visibility, complete task/approval continuity and actual target behavior still
+need their acceptance evidence.
+
 ## Read only target preparation
 
 Run `/usr/bin/python3 scripts/ccrelay_native.py --plan` to inspect inert examples.
@@ -317,6 +348,13 @@ real files, symlinks, Git and SQLite, but substitute target ancestors and writer
 guards; they do not run either native agent. The full suite was not rerun for this
 slice: 486 core checks and four legacy suites are the preceding milestone's
 evidence, not a claim about this candidate.
+
+The resume slice passed 65 focused sandbox checks across the adapter, registry,
+planner and existing outbox, including 12 new resume checks and eight actual
+process-death boundaries. The provider is deliberately non-idempotent; recovery
+does not call it twice. Runtime/controller observations and admission are synthetic,
+not real provider/UID/WSL proof. Strict staged secret screening passes without
+repository allowlists. The full suite remains deferred to the next milestone.
 
 Before PR 7 acceptance:
 

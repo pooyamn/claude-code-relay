@@ -203,6 +203,23 @@ class NativeSessionRegistry(DeliveryLedger):
         self.checkpoint("after_native_desired_commit")
         return updated
 
+    def prepare_resume(self, peer, session_id, *, expected_revision):
+        """Persist control intent/invalidate probes; never perform a native call."""
+        self._controller(peer, session_id)
+        with self._transaction():
+            row = self._row(session_id)
+            if row is None or row["record"].revision != integer(expected_revision, 0) or \
+                    self._controller(peer, session_id) != row["binding"] or \
+                    row["record"].fields["desired_state"] != "running" or "exact_resume" not in row["enrollment"]["capabilities"]:
+                raise Denied("resume revision/binding/desired state/capability changed")
+            value = row["record"].to_dict()
+            value.update(observed_state="unknown", observation_id=None, ready=False, revision=row["record"].revision + 1)
+            pending = decode(value)
+            self._save(pending, "resume_requested")
+            self.checkpoint("before_native_resume_control_commit")
+        self.checkpoint("after_native_resume_control_commit")
+        return pending
+
     def refresh(self, peer, session_id, *, expected_revision):
         self._controller(peer, session_id)
         probe_id = "native-probe-" + uuid.uuid4().hex
