@@ -8,13 +8,13 @@
 #
 # The folder IS the durable key: same folder -> same Claude conversation, forever.
 set -uo pipefail
-DIR="/Users/pouya/.openclaw/workspace/scripts"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"   # release-local helpers
 RAW="${1:?usage: claude-relay-group <WORKDIR> \"<prompt>\"}"; shift
 WORKDIR="$(cd "$RAW" 2>/dev/null && pwd)" || { echo "claude-relay-group: no such folder: $RAW" >&2; exit 1; }
 # md5 hex of stdin: `md5` on macOS, `md5sum` on Linux (same hex, different framing).
 _md5() { if command -v md5 >/dev/null 2>&1; then md5; else md5sum | cut -d' ' -f1; fi; }
 KEY="cr-$(printf '%s' "$WORKDIR" | _md5 | cut -c1-10)"   # stable per-folder tmux name
-DIR0="/Users/pouya/.openclaw/workspace/scripts"
+DIR0="$DIR"
 RW0="$DIR0/relay-work"
 
 # "Alive" = the claude TUI is running in ANY usable state: idle input box, busy
@@ -62,10 +62,10 @@ ready(){
   # message away, only a still-latched one keeps it as the most recent output.
   if tmux capture-pane -t "$KEY" -p 2>/dev/null | tail -20 \
        | grep -qE "(Login expired|Not logged in).*Please run /login"; then
-    rm -f "/Users/pouya/.openclaw/workspace/scripts/relay-work/nochrome-$KEY"
+    rm -f "$RW0/nochrome-$KEY"
     return 1
   fi
-  f="/Users/pouya/.openclaw/workspace/scripts/relay-work/nochrome-$KEY"
+  f="$RW0/nochrome-$KEY"
   if tmux capture-pane -t "$KEY" -p 2>/dev/null | grep -qE "for agents|for shortcuts|esc to interrupt|esc interrupt|Esc to cancel|to navigate|❯ +[0-9]+\.|context: *[0-9.]+% *\(|ctrl\+p commands|[0-9.]+K \([0-9]+%\)"; then
     rm -f "$f"; return 0
   fi
@@ -115,7 +115,7 @@ fi
 if ! ( tmux has-session -t "$KEY" 2>/dev/null && ready ); then
   tmux kill-session -t "$KEY" 2>/dev/null || true
   # resume the folder's existing conversation if one exists, else start fresh
-  RW="/Users/pouya/.openclaw/workspace/scripts/relay-work"
+  RW="$RW0"
   ENC="$(printf '%s' "$WORKDIR" | sed 's#[/.]#-#g')"
   CONT=""
   # Resume a PINNED conversation id when one is recorded, not "whatever ran last".
@@ -158,7 +158,7 @@ TRUST
   # them available in bound sessions). --settings pins auto-memory to the global
   # memory dir so it loads regardless of the folder's own git root; skills load by
   # default. Isolation is just the separate folder/session.
-  SETTINGS="/Users/pouya/.openclaw/workspace/scripts/relay-claude-settings.json"
+  SETTINGS="$DIR/relay-claude-settings.json"
   # This path ALWAYS (re)launches claude, so the session's backend marker must be
   # reset to claude. Leaving a stale `kimi` marker here makes the watcher parse a
   # claude pane with the kimi parser -> extracts nothing -> replies never delivered.
@@ -168,7 +168,7 @@ TRUST
   # until the next respawn: the pin appeared to work, then silently reverted.
   # relay-alt-launch resolves the token through the SAME relay-claude-settings-
   # <token>.json the `cc model` path uses, so a token means one thing either way.
-  ALT="$(python3 /Users/pouya/.openclaw/workspace/scripts/relay-alt-launch \
+  ALT="$(python3 "$DIR/relay-alt-launch" \
         "$(cat "$RW/default-model-$KEY.txt" 2>/dev/null)" "$WORKDIR" 2>/dev/null || true)"
   if [ -n "$ALT" ]; then
     printf '%s' "${ALT%%$'\t'*}" > "$RW/backend-$KEY.json" 2>/dev/null || true

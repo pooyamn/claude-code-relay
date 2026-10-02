@@ -20,7 +20,7 @@ import tempfile
 
 LEGACY_SOURCES = (
     "claude-relay-send.py", "relay-extract-message.py", "relay-turn-done",
-    "claude-tui-backend-multi", "relay-alt-launch",
+    "claude-tui-backend-multi", "relay-alt-launch", "claude-relay-group",
 )
 BROKER_SOURCES = ("ccrelay_broker.py", "ccrelay_broker_mcp.py", "ccrelay_owner_gate.py", "ccrelay_intake.py", "ccrelay_outbound.py", "ccrelayd.py", "relay_tg.py", "relay_bot_commands.py", "relay_codex_bubble.py", "relay_codex_goal.py", "relay-codex-proto.py", "relay_ws.py", "relay-ws-edit-server.mjs")
 DEPLOY_SOURCES = (
