@@ -204,11 +204,12 @@ to this gate rejects an uncredentialed channel instead of falling back to reads
 without sender evidence. Unsupported platforms have no UID fallback.
 [Linux Unix socket credentials](https://man7.org/linux/man-pages/man7/unix.7.html).
 
-The peer digest records sender identity only. It does not prove executable bytes,
-effective native settings/context, provider entitlement, admission or native-app
-visibility. The controller must use the production kernel/proc observer and
-reviewed launch inputs, not a worker-supplied `Authority` or normalized fixture.
-Executable/configuration observation, launcher/event integration and target
+Without the executable option below, the peer digest records sender identity
+only. Neither mode proves effective native settings/context, provider entitlement,
+admission or native-app visibility. The controller must use the production
+kernel/proc observer and reviewed launch inputs, not a worker-supplied `Authority`
+or normalized fixture.
+Configuration observation, launcher/event integration and target
 acceptance remain required. The read-only plan keeps this gate inactive; no
 native process, daemon, bot or service was changed.
 
@@ -220,6 +221,83 @@ because its PID belonged to another builder execution; a child inside the intend
 unit now represents the valid path, and the foreign execution remains a rejection
 case. These tests validate integration and refusal, not real distinct-UID Linux
 isolation. The full suite and native target acceptance were not run for this slice.
+
+## Prepared native executable observation
+
+`native_image.py` checks the actual file opened through Linux `/proc/PID/exe`
+against an explicit reviewed binary under `/opt/ccrelay/native`. Both that file
+and the installed path must have the same inode and metadata, root ownership,
+non-writable protected ancestors, executable permission, no set-ID bits and a
+bounded size. The initial read checks ELF magic and the complete SHA-256 byte
+digest; a version string, argv or matching filename cannot replace that evidence.
+Changed/deleted paths, interpreter wrappers, another inode with identical bytes
+and unavailable proc access are refused. The observer follows only the fixed
+kernel executable link; it does not discover sockets or run a program.
+[Linux executable link semantics](https://man7.org/linux/man-pages/man5/proc_pid_exe.5.html).
+
+The protected controller can provide `executable` and `executable_digest` together
+to `KernelUnixPeer`. Its transport pin then includes the measured image pin.
+Current checks reopen and compare the exact file metadata without hashing a
+large binary for every frame. The existing process-generation/role/binding gate
+brackets image observation; credentialed reads check again before returning
+bytes. Replacement during a receive therefore cannot become a captured native
+event, and a stale pin cannot authorize the next RPC. No image FD is retained.
+Sender-only mode remains explicit preparation, not executable evidence; the
+future protected launcher must require reviewed image inputs before readiness.
+
+This is file observation, not continuous execution or memory attestation. Shared
+libraries, executable mappings, injection/ptrace, same-PID exec changes between
+observations, namespace isolation and native configuration/context require the
+remaining protected launch and target acceptance gates. In particular, procfs's
+executable link can be changed through a Linux process-control operation; the
+target capability/isolation policy must prevent untrusted use of it.
+[Executable link modification](https://man7.org/linux/man-pages/man2/PR_SET_MM_EXE_FILE.2const.html).
+The existing launch/registry schemas and their expected runtime digests are not
+silently redefined as a binary hash. The image pin is a separate transport input.
+No native settings, admission, app visibility or Claude adapter is activated.
+
+All 104 focused clean-staged copied-source sandbox checks pass: 12 image checks, three added
+joined peer checks and the preceding 89 checks. Real files, byte hashing, atomic
+replacement, sockets and SQLite are exercised; Linux proc routing, root metadata
+and credentials are substituted on this Mac. Its scratch filesystem stripped
+set-ID bits, so those negative cases explicitly supply Linux mode metadata rather
+than weakening production checks. An earlier repeated-file fixture also correctly
+failed to overwrite its own read-only file; the second candidate now uses fresh
+scratch storage. These are fixture corrections, not native readiness evidence.
+The full suite remains deferred to the next milestone.
+The clean staged export excludes unrelated protocol edits; strict staged secret
+screening passes without repository allowlists.
+
+Recovery requires the reviewed installation path and bytes in the full-system
+inventory, not just a version label. A replacement is a reviewed launch change;
+the old connection cannot accept it as an automatic upgrade. After restart or
+restore, construct a fresh image/peer pin and repeat observation before readiness.
+Refusal closes the prepared client channel, not the native process or descendants,
+and does not release uncertain actions for retry. No persistent component schema
+was added. The read-only plan keeps executable checking inactive; no live daemon,
+watcher, bot, installed native binary or service was changed.
+
+### Loaded settings evidence remains pending
+
+Official documentation describes `config/read` as layered configuration on disk,
+not the effective permissions of a loaded thread. Disk contents cannot satisfy
+the registry's independent native permission/context observation.
+[App server configuration contract](https://learn.chatgpt.com/docs/app-server).
+
+Read-only schema generation from the installed Codex 0.160.0 binary, with and
+without `--experimental`, found no `thread/settings/get` or `thread/settings/read`.
+`thread/read` reports current model/effort when loaded and persisted values
+otherwise; its cwd and CLI version describe recorded thread state. Its schema
+does not return loaded sandbox/approval settings. The generated
+`thread/settings/updated` notification does include sandbox, approval, cwd and
+model settings; only the experimental schema exposes `thread/settings/update`.
+This is local compatibility evidence, not a live settings/control acceptance test.
+
+The next observer integration must establish a fresh exact-thread settings
+baseline and durable connection/control epochs before relying on notifications.
+Neither requested resume overrides, a stale notification nor disk configuration
+can stand in for that evidence. No settings mutation, live resume or inference
+was performed during this inspection.
 
 ## Read only target preparation
 

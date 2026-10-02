@@ -279,6 +279,18 @@ facts. This establishes no target identity, binary/settings proof or admission.
 The gate remains inactive; protected native observation/launcher integration and
 actual target acceptance are still required.
 
+Executable preparation: `native_image.py` independently hashes the root-owned
+installed binary and matches its inode/metadata to Linux `/proc/PID/exe`.
+The optional reviewed image pin joins the credentialed transport gate, rejecting
+replacement before RPC and during receive without repeatedly hashing large
+images. All 104 focused image/peer/identity/transport/resume/planner checks pass
+with real files/sockets/SQLite and substituted Linux facts. This is executable
+file observation, not memory integrity, loaded settings or admission. Read-only
+Codex 0.160.0 schema inspection also establishes that disk `config/read` and
+`thread/read` cannot supply loaded sandbox/approval evidence; fresh settings
+baseline/event integration remains pending. The plan stays inactive and no live
+process/bot changed. [Evidence and remaining gates](pr7-native-session-registry.md#prepared-native-executable-observation).
+
 ## PR 8 Root tasks and atomic work ownership
 
 Depends on: PRs 1, 2 and 7.

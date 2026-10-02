@@ -10,6 +10,7 @@ import unittest
 from unittest import mock
 
 from native_session_fixtures import native_fixture
+from native_image_fixtures import executable_fixture
 from native_ws_fixtures import WSRPCFixture
 from relay_core import native_peer
 from relay_core.contracts import fingerprint
@@ -109,6 +110,45 @@ class PeerTests(unittest.TestCase):
         self.assertEqual(self.raw_calls, [])
         self.wire.peer.assert_quiet()
         os.fstat(self.fd)  # A borrowed socket view does not close the owned handle.
+
+    def test_native_image_pin_joins_kernel_verification_and_denies_replacement_before_rpc(self):
+        with executable_fixture(self.tmp.name) as image:
+            guard = self.guard(executable=image.executable, executable_digest=image.byte_digest)
+            channel = self.wire.peer.channel
+            channel.kernel_peer = guard
+            self.wire.rpc.verify_transport = guard.verify
+            self.wire.rpc.transport_digest = guard.digest
+            self.wire.initialize()
+            os.replace(image.other, image.path)
+            with self.assertRaises(Denied):
+                self.wire.rpc.rpc("thread/read", {"threadId": "native-1"}, request_id=9)
+            self.wire.peer.assert_quiet()
+            self.assertTrue(channel.closed)
+
+    def test_image_replacement_during_receive_cannot_supply_a_native_event(self):
+        with executable_fixture(self.tmp.name) as image:
+            guard = self.guard(executable=image.executable, executable_digest=image.byte_digest)
+            channel = self.wire.peer.channel
+            channel.kernel_peer = guard
+            self.wire.rpc.verify_transport = guard.verify
+            self.wire.rpc.transport_digest = guard.digest
+            self.wire.initialize()
+            self.after_receive = lambda: os.replace(image.other, image.path)
+            self.wire.peer.write({"method": "warning", "params": {"message": "unverified image"}})
+            with self.assertRaises(Denied):
+                self.wire.rpc.poll(timeout_ms=100)
+            self.assertEqual(len(self.wire.events), 1)
+            self.assertTrue(channel.closed)
+
+    def test_partial_image_pin_and_revoked_binding_during_hashing_deny_without_native_send(self):
+        for changes in ({"executable": "/opt/ccrelay/native/v1/codex"}, {"executable_digest": "sha256:" + "a" * 64}):
+            with self.assertRaises(Denied):
+                self.guard(**changes)
+        with executable_fixture(self.tmp.name) as image:
+            image.after_read = lambda: self.authority.registry.revoke("builder.task")
+            with self.assertRaises(Denied):
+                self.guard(executable=image.executable, executable_digest=image.byte_digest)
+        self.wire.peer.assert_quiet()
 
     def test_no_nonlinux_or_missing_credential_primitive_uid_fallback(self):
         with mock.patch.object(native_peer.sys, "platform", "darwin"):

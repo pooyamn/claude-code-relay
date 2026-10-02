@@ -1,4 +1,4 @@
-"""Linux native Unix sender identity, not binary/settings/admission evidence.
+"""Linux native Unix sender identity, optionally joined to executable evidence.
 
 The protected controller supplies the current binding and expected process epoch.
 Reuse the broker's kernel sender and Authority checks; no header/folder identity,
@@ -22,7 +22,8 @@ SCHEMA = "ccrelay.native_unix_peer.v1"
 
 class KernelUnixPeer:
     """Borrow one explicit owned FD; credentials accompany every received chunk."""
-    def __init__(self, fd, *, authority, session_id, binding_digest, process_start):
+    def __init__(self, fd, *, authority, session_id, binding_digest, process_start,
+                 executable=None, executable_digest=None):
         if sys.platform != "linux" or not all(hasattr(socket, name) for name in ("SO_PEERCRED", "SO_PASSCRED", "SCM_CREDENTIALS")):
             raise Denied("Linux native sender credentials required; no UID fallback")
         integer(fd, 0)
@@ -36,15 +37,24 @@ class KernelUnixPeer:
         self.authority, self.session_id = authority, identifier(session_id)
         self.policy_digest, self.binding_digest = authority.policy.digest, binding_digest
         self.process_start = process_start
+        self.image = None
+        if (executable is None) != (executable_digest is None):
+            raise Denied("native executable path and byte digest must be supplied together")
         with self._borrow() as stream:
             self.peer = peer_credentials(stream)
         self._actor()
+        if executable is not None:
+            from .native_image import NativeExecutable
+            self.image = NativeExecutable(self.peer.pid, executable, executable_digest)
         with self._borrow() as stream:
             stream.setsockopt(socket.SOL_SOCKET, socket.SO_PASSCRED, 1)
         self.current()
-        self.digest = fingerprint({"schema": SCHEMA, "policy_digest": self.policy_digest,
-                                   "session_id": self.session_id, "binding_digest": self.binding_digest,
-                                   "peer": asdict(self.peer), "process_start": self.process_start})
+        evidence = {"schema": SCHEMA, "policy_digest": self.policy_digest,
+                    "session_id": self.session_id, "binding_digest": self.binding_digest,
+                    "peer": asdict(self.peer), "process_start": self.process_start}
+        if self.image is not None:
+            evidence["executable_digest"] = self.image.digest
+        self.digest = fingerprint(evidence)
 
     @contextmanager
     def _borrow(self):
@@ -74,7 +84,11 @@ class KernelUnixPeer:
         with self._borrow() as stream:
             if peer_credentials(stream) != self.peer or stream.getsockopt(socket.SOL_SOCKET, socket.SO_PASSCRED) != 1:
                 raise Denied("native peer or kernel message credential mode changed")
-        return self._actor()
+        actor = self._actor()
+        if self.image is not None:
+            self.image.current()
+            actor = self._actor()  # Bind image observation to the same current process epoch.
+        return actor
 
     def receive(self, max_bytes):
         self.current()
