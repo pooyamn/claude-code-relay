@@ -1,5 +1,47 @@
 # Native Telegram command menus
 
+## Model controls and retired providers — 2026-10-02 follow-up
+
+Pouya requested new commands, proper Codex model selection, and retirement of
+Kimi Code and Ox Alpha on both Khadang and the Jamshid/HamalAIBot installation.
+This supersedes the earlier deployment's shared-script preservation restriction
+for these specific model controls and retired profiles.
+
+`/model` now opens native Telegram model buttons. In Codex topics, the catalog
+comes from `model/list` and current settings from the exact bound native thread.
+`/model <id> [effort]` and `/effort <level>` use `thread/settings/update`, then
+read back the model and reasoning level before confirming. They neither restart
+the tool nor create a replacement conversation or inference turn. `/effort`
+lists the selected model's supported reasoning levels. `/backend` explicitly
+switches between Claude Code and Codex. Existing `cc model …` / `cc effort …`
+aliases reach the same control on Jamshid, whose bare `/model` is an OpenClaw
+command. Claude model changes retain their existing native relaunch path.
+
+Picker receipts are bound to the native thread, destination, session, nonce and
+expiry. Foreign/stale buttons fail closed; Khadang verifies owner authority for
+button taps and text-shaped callbacks. An ambiguous settings acknowledgment is
+reported as unconfirmed and never automatically replayed.
+
+Both live sender installations include these logical edits. Khadang's router
+was replaced after confirming its old poller stopped; native daemons and session
+watchers were retained. Telegram readback confirmed all twelve member commands,
+including the new `backend` and `effort` entries. Kimi's three OpenClaw model
+entries and CLI backend were removed with schema validation. Kimi/Ox settings
+and obsolete launch pins were archived privately; native histories remain.
+Recovery copies are under `~/.config/ccrelay/model-controls-backup-20261002`.
+Do not commit that directory: it contains private pre-change configuration.
+
+The reviewed source passed 409 isolated core tests and all four legacy suites.
+A disposable unbound ephemeral native thread verified model/effort mutation and
+readback without inference, and was unsubscribed afterward. An additional run
+against the concurrently edited working tree encountered unrelated untracked
+snapshot-test failures; those files were excluded from this release. OpenClaw's
+`models list` also fails in `applyAnthropicSonnet5Cost` with the original and
+updated configs; this pre-existing catalog bug is independent of the native
+Codex picker. Phone rendering still requires a human observation.
+
+## Earlier activation
+
 Activated on the legacy Mac Khadang test router on 2026-10-02, after Pouya
 authorized testing and deployment. Telegram confirmed registration and readback
 of the implemented controls, with discovery adapted to the bound session types.

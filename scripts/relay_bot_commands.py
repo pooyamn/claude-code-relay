@@ -12,19 +12,21 @@ import re
 
 
 SLASH = re.compile(r"^\s*(?:/?cc\s+|/)(?P<name>[A-Za-z][A-Za-z0-9_-]*)(?:@(?P<bot>[A-Za-z0-9_]+))?(?:\s+(?P<args>[\s\S]*))?\s*$", re.I)
-ALIASES = {"interrupt": "cancel", "esc": "cancel", "stop": "cancel", "unqueue": "unq", "commands": "help",
+ALIASES = {"interrupt": "cancel", "esc": "cancel", "stop": "cancel", "unqueue": "unq", "commands": "help", "models": "model",
            "new-cc": "newcc", "new-claude-code": "newcc", "unbind-claude-code": "unbind",
            "cc-status": "ccstatus", "claude-code-status": "ccstatus"}
 COMMON = (
     ("help", "Commands available in this topic"),
-    ("model", "Select model/backend: /model <name>"),
+    ("model", "Choose a model; show current native model"),
+    ("backend", "Switch this topic between Claude Code and Codex"),
     ("cancel", "Interrupt this topic's current turn"),
 )
 TOOLS = {
     "claude": (("clear", "Start a fresh Claude conversation"),
                ("compact", "Compact Claude context"),
                ("unq", "Remove pending Claude messages")),
-    "codex": (("goal", "Goal: <objective>, status, pause, resume, clear"),),
+    "codex": (("goal", "Goal: <objective>, status, pause, resume, clear"),
+              ("effort", "Choose Codex reasoning depth")),
 }
 ADMIN = (("newcc", "Bind this topic: /newcc <6-digit code>"),
          ("unbind", "Unbind this topic"),
@@ -102,7 +104,7 @@ def command_error(text, backend):
         return "Session type is unverified; no native control or model prompt was sent. Use /help."
     if name == "goal" and backend != "codex":
         return "Native goal controls require the Codex backend. No model prompt was sent."
-    if backend == "codex" and name not in {"goal", "model", "cancel", "help"}:
+    if backend == "codex" and name not in {"goal", "model", "backend", "effort", "cancel", "help"}:
         return (f"/{name} is not supported by this Codex relay adapter. "
                 "No model prompt was sent; /help lists supported controls. "
                 "/goal clear removes only a goal, not the conversation.")

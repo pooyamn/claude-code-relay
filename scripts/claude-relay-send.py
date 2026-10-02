@@ -116,7 +116,7 @@ def _oplog(op, mid, text, r=None):
     except Exception:
         pass
 
-def tg_buttons(question, options):
+def tg_buttons(question, options, values=None):
     """Send native Telegram inline buttons for a menu. Returns the message id.
 
     The full option text ALSO goes in the message body: Telegram truncates long
@@ -132,11 +132,13 @@ def tg_buttons(question, options):
     if bot:
         import relay_tg
         mid, r = _botcall(relay_tg.send_text, bot, CHAT_ID, THREAD_ID, body[:TG_LIMIT],
-                          reply_markup=relay_tg.buttons_markup(options))
+                          reply_markup=({"inline_keyboard": [[{"text": o[:60], "callback_data": v}]
+                                                              for o, v in zip(options, values)]}
+                                        if values is not None else relay_tg.buttons_markup(options)))
         _oplog("SEND-BTNS", mid, body, r)
         return mid or ""
     pres = {"blocks": [
-        {"type": "buttons", "buttons": [{"label": f"{i+1}. {o}"[:60], "value": f"ccsel:{i+1}"}]}
+        {"type": "buttons", "buttons": [{"label": f"{i+1}. {o}"[:60], "value": values[i] if values is not None else f"ccsel:{i+1}"}]}
         for i, o in enumerate(options)]}
     r = subprocess.run(["openclaw", "message", "send", "--channel", "telegram",
                         "--target", CHAT_ID, *_thread_args(),
@@ -2365,6 +2367,10 @@ def inject(prompt):
     menu tap) into the TUI and return '' immediately. The watcher delivers the
     result, so this never blocks on the turn."""
     save_target(CHAT_ID, THREAD_ID)
+    from relay_model_controls import handle as model_control
+    from types import SimpleNamespace
+    if model_control(SimpleNamespace(**globals()), prompt):
+        return ""
     from relay_bot_commands import command_error, help_text, slash_command
     command = slash_command(prompt)
     if command:
@@ -2996,7 +3002,7 @@ def main():
         watch(); return
     prompt = " ".join(args)
     from relay_bot_commands import slash_command
-    if slash_command(prompt):
+    if slash_command(prompt) or prompt.strip().startswith("callback_data: ccmodel:"):
         print(inject(prompt))
         return  # Slash controls cannot enter synchronous/JSONL model paths.
     from relay_codex_goal import COMMAND as GOAL_RE

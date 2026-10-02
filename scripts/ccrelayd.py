@@ -232,11 +232,13 @@ class Daemon:
             return
         data = cq.get("data") or ""
         chat, thread = self.where(msg)
+        if data.startswith("ccmodel:") and cq["from"]["id"] not in self.allow:
+            return self.say(chat, thread, "Model controls require the authorized owner.")
         peer, folder = self.bindings.lookup(chat, thread)
         if not folder:
             return
         self.dispatch(peer, folder, chat, thread, msg["chat"], cq["from"],
-                      f"callback_data: {data}", [], msg, immediate=False)
+                      f"callback_data: {data}", [], msg, immediate=data.startswith("ccmodel:"))
 
     def on_message(self, msg):
         if msg.get("from", {}).get("is_bot"):
@@ -257,7 +259,7 @@ class Daemon:
 
         # Admin commands work in ANY chat, bound or not.
         admin = msg.get("from", {}).get("id") in self.allow
-        is_control = bool(command and command["name"] != "help") or any(
+        is_control = text.strip().startswith("callback_data: ccmodel:") or bool(command and command["name"] != "help") or any(
             pattern.match(text) for pattern in (NEWCC_RE, UNBIND_RE, STATUS_RE, CANCEL_RE))
         if is_control and (
                 not admin or any(key in msg for key in ("forward_origin", "forward_from", "forward_from_chat", "via_bot", "sender_chat"))):

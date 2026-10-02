@@ -205,6 +205,15 @@ class RoutingTests(unittest.TestCase):
         self.daemon.on_message({**self.message, "text": "/clear@SyntheticKhadang"})
         self.assertEqual(self.daemon.dispatch.call_args.args[6], "/clear")
 
+    def test_model_buttons_require_owner_and_bypass_prompt_queue(self):
+        self.daemon.bot = SimpleNamespace(call=mock.Mock())
+        callback = {"id": "fixture", "from": {"id": 999}, "message": self.message,
+                    "data": "ccmodel:abcdef123456:0"}
+        self.daemon.on_callback(callback)
+        self.daemon.dispatch.assert_not_called()
+        self.daemon.on_callback({**callback, "from": {"id": 1001}})
+        self.assertTrue(self.daemon.dispatch.call_args.kwargs["immediate"])
+
     def test_foreign_bot_all_command_types_are_ignored_before_admin_or_prompt(self):
         self.daemon.cmd_unbind = mock.Mock()
         for text in ("/unbind@OtherBot", "/newcc@OtherBot 123456", "/clear@OtherBot", "/unknown@OtherBot",
@@ -215,7 +224,8 @@ class RoutingTests(unittest.TestCase):
         self.daemon.say.assert_not_called()
 
     def test_wildcard_member_and_forwarded_owner_cannot_use_controls(self):
-        for text in ("/clear", "/compact", "/goal pause", "/model cx", "cc goal pause", "/cc model cx"):
+        for text in ("/clear", "/compact", "/goal pause", "/model cx", "cc goal pause", "/cc model cx",
+                     "callback_data: ccmodel:abcdef123456:0"):
             self.daemon.on_message({**self.message, "from": {"id": 999}, "text": text})
             for field in ("forward_origin", "forward_from_chat", "via_bot"):
                 self.daemon.on_message({**self.message, "text": text, field: {"id": 1001}})
