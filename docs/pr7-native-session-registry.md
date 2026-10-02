@@ -472,9 +472,9 @@ Before every native control mutation, the protected driver must invalidate the
 old epoch durably and bind any resulting baseline to that exact control attempt.
 This helper does not submit controls or reconcile an uncertain native action;
 the existing outbox still owns those outcomes. The prepared observer below now
-consumes epoch tickets, but the exact-resume adapter does not establish them
-automatically. Real protected driver integration remains a gate; the planner
-reports epochs inactive.
+consumes epoch tickets. The controlled-resume composition below connects their
+baseline to the existing exact-resume adapter; v3 alone has no epoch proof.
+Real protected driver integration remains a gate; the planner reports epochs inactive.
 
 Include the new private ledger, its SQLite WAL/consistent backup and complete
 epoch/frame history in the encrypted recovery inventory alongside native-frame
@@ -541,6 +541,55 @@ clean-machine encrypted restore remain gates. Live sessions and bots are unchang
 The clean staged-source candidate passed all 247 focused native, registry,
 artifact, identity and outbox checks in 62 serial sandbox batches. The full suite
 remains deferred to the next milestone; earlier milestone counts are historical.
+
+### Joined controlled resume
+
+`native_controlled_resume.py` prepares
+`codex-app-server-controlled-resume.v1` by composing the existing exact-resume
+outbox adapter, control ledger and joined observer. It requires the same captured
+RPC, observer instance, protected policy and exact enrolled thread/worktree/settings
+cohort. A missing verifier, foreign cohort or changed observer cannot fall back
+to a normalized observation or another transport. The existing protected
+authorization callback remains mandatory; these consistency checks do not supply
+kernel identity, writer quiescence or admission.
+
+The outbox persists its attempt/submitted state and clears old registry readiness
+before the composition invalidates the control epoch. It rechecks owner control
+after that invalidation, before sending the sole exact `thread/resume`. The actual
+matched sealed response and reviewed permissions establish the new epoch baseline;
+only then can the observer perform an independent captured `thread/read` and
+loaded-context verification. Confirmation retains the captured reply, permissions,
+observation/revision and current epoch ticket in the existing receipt payload.
+
+Settings events during resume or read, missing context evidence and controls after
+observation prevent confirmation. Unknown outcomes also clear any stale cached
+readiness when current authority permits it; newer pause/revocation is never
+overwritten. The same action, a replacement action ID or restoration cannot
+re-submit an unreconciled resume. The earlier v3 adapter and its normalized fixtures
+remain compatible, without acquiring epoch proof or a new runtime entry point.
+
+Eleven new sandbox checks cover real JSONL and anonymous UnixWS, exact-cohort/policy
+denials, independent context refusal, owner pause and post-observation control
+changes. Four actual synthetic-driver deaths cover epoch invalidation, baseline
+establishment and receipt commit. A non-idempotent fake provider records zero or
+one resume across recovery, never another. The fixture's native context/source,
+kernel and admission facts remain synthetic, not target acceptance.
+
+Recovery must retain both existing ledgers, registry history and complete captured
+frame/payload/context artifacts as one consistent cohort. Receipt schema and
+component schemas are unchanged; adapter identity distinguishes this composition
+from v3. Unknown attempts remain unknown and restart invalidates baseline/readiness;
+a historical confirmed receipt does not authorize current continuation. No live
+state is migrated or enabled. The actual protected launcher/context verifier,
+subscription/control mediation, Claude path, WSL enforcement and encrypted restore
+remain gates. Admission must cover possible native goal continuations triggered by
+resume, not only explicit model-turn starts. The planner reports this path inactive.
+The [native resume contract](https://learn.chatgpt.com/docs/app-server) distinguishes
+resuming a stored thread from starting a turn; it does not establish those security gates.
+
+All 258 focused native/transport/registry/artifact/identity/outbox checks passed
+from a clean staged-source export in 65 serial sandbox batches. Full-suite evidence
+remains the earlier milestone's; no current full-suite pass is claimed.
 
 ## Read only target preparation
 

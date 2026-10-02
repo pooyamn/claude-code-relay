@@ -29,7 +29,7 @@ def resume_action(row, action_id, *, settings_digest):
                   attempt_id=None, receipt_id=None, outcome_evidence_id=None, authorization_id=None)
 
 
-def resume_plan(action, row, authorization_id):
+def resume_plan(action, row, authorization_id, *, adapter_id=ADAPTER):
     identifier(authorization_id)
     if action.kind != "external_action" or action.fields["action_kind"] != "native_resume":
         raise Denied("exact native-resume action required")
@@ -45,7 +45,7 @@ def resume_plan(action, row, authorization_id):
             native["provider"] != "codex" or "exact_resume" not in native["capabilities"] or session.fields["desired_state"] != "running":
         raise Denied("resume action differs from current exact native mapping/control")
     return {"schema": "ccrelay.delivery_plan.v1", "intent_id": action.id, "intent_digest": action.fields["intent_digest"],
-            "adapter_id": ADAPTER, "authorization_id": authorization_id,
+            "adapter_id": identifier(adapter_id), "authorization_id": authorization_id,
             "target": {"session_id": session.id, "binding_digest": row["binding_digest"],
                        "enrollment_digest": fingerprint(native), "expected_revision": session.revision,
                        "provider_session_id": native["provider_session_id"], "worktree": native["worktree"],
@@ -54,11 +54,25 @@ def resume_plan(action, row, authorization_id):
 
 
 class CodexExactResume:
+    adapter_id = ADAPTER
+
     def __init__(self, rpc, *, response_evidence, authorize, resume_supported):
         if not all(callable(value) for value in (rpc, response_evidence, authorize)) or type(resume_supported) is not bool:
             raise Denied("initialized pinned RPC, durable capture, protected admission gate and compatibility proof required")
         self.rpc, self.authorize, self.resume_supported = rpc, authorize, resume_supported
         self.response_evidence = response_evidence
+
+    def _admit_control(self, action, row, ledger, registry):
+        pass  # Historical normalized adapter; no native epoch proof.
+
+    def _begin_control(self, plan):
+        return None
+
+    def _accept_control(self, plan, attempt_id, response, captured, pending):
+        return None
+
+    def _validate_control(self, ticket):
+        return None
 
     def deliver(self, ledger, intent_id, attempt_id, registry, controller):
         current = ledger.load(intent_id)
@@ -88,8 +102,9 @@ class CodexExactResume:
                 prior = ledger.load(prior_id)["record"]
                 if prior.fields["action_kind"] == "native_resume" and prior.fields["parameters"].get("session_id") == session_id:
                     raise Denied("prior resume for this session remains unreconciled")
+            self._admit_control(action, row, ledger, registry)
             authorization = self.authorize(action, row)
-            plan = resume_plan(action, row, authorization)
+            plan = resume_plan(action, row, authorization, adapter_id=self.adapter_id)
         except (Denied, ValueError, TypeError):
             ledger.hold(intent_id, "resume_target_or_admission_unavailable")
             return {"state": "held", "submitted_now": False}
@@ -106,6 +121,10 @@ class CodexExactResume:
             ledger.submitted(intent_id, attempt_id)
             if registry._row(session_id)["record"] != pending or registry._controller(controller, session_id) != binding:
                 raise Denied("resume control changed before RPC")
+            control = self._begin_control(plan)
+            ledger.checkpoint("after_resume_epoch_invalidation")
+            if registry._row(session_id)["record"] != pending or registry._controller(controller, session_id) != binding:
+                raise Denied("resume control changed during epoch invalidation")
             response = self.rpc("thread/resume", plan["parameters"], request_id=attempt_id)
             ledger.checkpoint("after_resume_rpc")
             captured = self.response_evidence("thread/resume", plan["parameters"], request_id=attempt_id, response=response)
@@ -120,6 +139,8 @@ class CodexExactResume:
             settings = verify_resume_permissions(response["result"], thread_id=plan["parameters"]["threadId"],
                                                  worktree=plan["parameters"]["cwd"], expected_digest=plan["target"]["settings_digest"])
             ledger.checkpoint("after_resume_settings_verified")
+            control = self._accept_control(plan, attempt_id, response, captured, control)
+            ledger.checkpoint("after_resume_epoch_baseline")
             # ACK alone is insufficient; the existing observer must independently
             # verify fresh identity, worktree, runtime/tool/permission hashes.
             observed = registry.refresh(controller, session_id, expected_revision=pending.revision)
@@ -127,10 +148,13 @@ class CodexExactResume:
             if not observed.fields["ready"] or registry._row(session_id)["record"] != observed or \
                     registry._controller(controller, session_id) != binding:
                 raise Denied("resume remains unavailable or its fresh observation changed")
+            epoch_evidence = self._validate_control(control)
+            payload = {"native_response": captured, "resume_permissions": settings,
+                       "observation_id": observed.fields["observation_id"], "observed_revision": observed.revision}
+            if epoch_evidence is not None:
+                payload["native_control_epoch"] = epoch_evidence
             evidence = evidence_for(action, attempt_id, plan, outcome="accepted", provider_reference=plan["parameters"]["threadId"],
-                                    payload={"native_response": captured, "resume_permissions": settings,
-                                             "observation_id": observed.fields["observation_id"],
-                                             "observed_revision": observed.revision})
+                                    payload=payload)
             ledger.reconcile(evidence)
         except Exception:
             state = ledger.load(intent_id)["record"].fields["state"]

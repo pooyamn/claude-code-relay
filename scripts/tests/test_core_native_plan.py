@@ -32,6 +32,8 @@ class NativePlanTests(unittest.TestCase):
         self.assertEqual(plan["native_observer_schema"], "ccrelay.codex_observation.v1")
         self.assertFalse(plan["native_observer_activated"])
         self.assertFalse(plan["native_loaded_context_verifier_available"])
+        self.assertEqual(plan["controlled_resume_adapter"], "codex-app-server-controlled-resume.v1")
+        self.assertFalse(plan["controlled_resume_activated"])
         self.assertEqual(plan["rpc_transport"], "codex-app-server-jsonl.v1")
         self.assertEqual(plan["websocket_transport"], "codex-app-server-unix-websocket.v1")
         self.assertEqual(plan["kernel_peer_schema"], "ccrelay.native_unix_peer.v1")

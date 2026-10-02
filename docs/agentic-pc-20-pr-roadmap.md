@@ -334,10 +334,22 @@ probes; idle/unloaded/error status never proves stopped writers. Compact evidenc
 is retained in registry history and restoration clears readiness. Nineteen new
 pipe/UnixWS/state checks use synthetic context/source facts, not native target
 proof; all 247 focused clean-staged checks pass in 62 serial sandbox batches.
-The actual context verifier, protected control baseline integration,
+The actual context verifier, real protected control baseline integration,
 subscription/mediation, Claude, admission and encrypted restore remain pending.
 The planner explicitly reports the verifier unavailable and observer inactive;
 no live bot/model changed. [Observation and recovery contract](pr7-native-session-registry.md#joined-exact-native-observation).
+
+Controlled-resume preparation joins the exact-resume outbox to the epoch ledger
+and captured independent observer under one policy/cohort. Invalidation precedes
+the mutating RPC; only its matched verified reply establishes a baseline for the
+fresh read. Eleven new sandbox cases include four actual driver deaths, preserving
+zero or one fake-provider resume without replay. Unknown outcomes cannot restore
+cached readiness or bypass reconciliation with a new action ID. Actual context,
+kernel/source, subscription, all-source admission and restore acceptance remain
+pending; the protected driver is not activated. [Joined control and recovery](pr7-native-session-registry.md#joined-controlled-resume).
+
+All 258 focused clean-staged checks pass in 65 serial sandbox batches; the full
+suite remains deferred to the next milestone. Live bots/sessions are unchanged.
 
 ## PR 8 Root tasks and atomic work ownership
 
