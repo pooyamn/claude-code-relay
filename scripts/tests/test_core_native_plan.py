@@ -34,6 +34,9 @@ class NativePlanTests(unittest.TestCase):
         self.assertFalse(plan["native_loaded_context_verifier_available"])
         self.assertEqual(plan["controlled_resume_adapter"], "codex-app-server-controlled-resume.v1")
         self.assertFalse(plan["controlled_resume_activated"])
+        self.assertEqual(plan["worktree_checkpoint_schema"], "ccrelay.worktree_checkpoint.v1")
+        for key in ("checkpoint_capture_activated", "checkpoint_limits_configured", "tool_switch_activated"):
+            self.assertIs(plan[key], False)
         self.assertEqual(plan["rpc_transport"], "codex-app-server-jsonl.v1")
         self.assertEqual(plan["websocket_transport"], "codex-app-server-unix-websocket.v1")
         self.assertEqual(plan["kernel_peer_schema"], "ccrelay.native_unix_peer.v1")
@@ -41,7 +44,7 @@ class NativePlanTests(unittest.TestCase):
         self.assertEqual(plan["resume_permissions_schema"], "ccrelay.codex_resume_permissions.v1")
         self.assertIn("builder", plan["role_profiles_not_active_sessions"])
         self.assertEqual(plan["state_dir"], "/var/lib/ccrelay-broker/native")
-        for args in (["--run"], ["--resume", "native-thread-1"], ["--goal", "invented goal"]):
+        for args in (["--run"], ["--resume", "native-thread-1"], ["--goal", "invented goal"], ["--checkpoint", "checkpoint-1"], ["--switch", "claude"]):
             result = subprocess.run([sys.executable, "-I", str(source / "ccrelay_native.py"), *args],
                                     capture_output=True, text=True, timeout=5)
             self.assertNotEqual(result.returncode, 0)

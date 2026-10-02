@@ -8,7 +8,7 @@ Build testable security and delivery foundations first. Introduce the builder wi
 
 Pouya requested sequential implementation for PC readiness and authorized committing and pushing verified changes. Repository publication is separate from deployment. A separately authorized legacy Mac Khadang test release is active; no GitHub PRs, protected PC capabilities, credential changes or production/HamalBot migration have been performed by this implementation run. Local implementation/test evidence is distinct from target-PC acceptance. Unrelated uncommitted edits and runtime/media files are excluded from this series.
 
-PR 1 is locally implemented. PRs 2–5 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel/runtime integration still pending; evidence and limits are recorded below. PR 6's outbound foundation, bounded format/media repair, receipt-bound owner-prompt bridge, current source-grant dispatch and Telegram-local recovery are prepared offline; real protected producer/context wiring and target integration remain pending. PR 7's native registry, launch-bundle, worker-UID worktree and context-installation foundations are prepared as dependencies for that wiring, without completing PR 6 or its own native/launcher gates. PR 8's durable root/work custody and bounded-diagnosis guard are prepared offline, without granting activity slots or completing real evidence/admission/report/controller integration. PR 9's shared admission/account-pacing ledger, diagnostic transaction bridge, owner-first dispatch offers, bounded quota estimates and durable capacity-retry linkage are prepared offline; real all-source native enforcement, quota/source/stop/usage readers, approved estimate policy, protected priority/diagnostic producers and results, native retry/steering/continuation adapters and target acceptance remain pending. PRs 10–20 remain to be implemented, apart from separately requested early preparations noted below. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
+PR 1 is locally implemented. PRs 2–5 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel/runtime integration still pending; evidence and limits are recorded below. PR 6's outbound foundation, bounded format/media repair, receipt-bound owner-prompt bridge, current source-grant dispatch and Telegram-local recovery are prepared offline; real protected producer/context wiring and target integration remain pending. PR 7's native registry, launch-bundle, worker-UID worktree and context-installation foundations are prepared as dependencies for that wiring, without completing PR 6 or its own native/launcher gates. PR 8's durable root/work custody and bounded-diagnosis guard are prepared offline, without granting activity slots or completing real evidence/admission/report/controller integration. PR 9's shared admission/account-pacing ledger, diagnostic transaction bridge, owner-first dispatch offers, bounded quota estimates and durable capacity-retry linkage are prepared offline; real all-source native enforcement, quota/source/stop/usage readers, approved estimate policy, protected priority/diagnostic producers and results, native retry/steering/continuation adapters and target acceptance remain pending. PR 10's worktree checkpoint foundation is prepared offline; the durable switch controller, semantic/action handoff, destination loading proof, custody transfer and admitted repair remain pending. PRs 11–20 remain to be implemented, apart from separately requested early preparations noted below. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
 
 ## Existing code to extend
 
@@ -486,6 +486,21 @@ Depends on: PRs 5, 7, 8 and 9.
 Implement a durable switch state machine with dirty/untracked snapshots, task context, running operations, provider/tool/permission fingerprints, publications, approvals and pending-action evidence. Quiesce old writers and verify context loaded in the destination tool on the same worktree. Independently validate session/active-turn identity before same-tool delta resume. Report incomplete handoffs as relay bugs through the existing issue path; admitted support can repair and revalidate, or the switch stays pending with owner notification.
 
 Done when: Claude → Codex → Claude preserves unfinished work and action identities. Crashes before/after checkpoints and changed contracts recover without a second writer, silent fresh conversation or action replay. Support repair never grants extra privilege or quota.
+
+Local checkpoint preparation: `worktree_checkpoints.py` captures actual staged,
+unstaged, untracked and ignored file bytes, modes and linked Git operation/index
+metadata. Chunked content and a complete manifest commit atomically; an interrupted
+capture never selects a partial handoff. Unchanged HEAD/status cannot hide changed
+untracked bytes or executable modes. Exact prepared mapping, Git pins and explicit
+capture bounds are required. Sixteen cases include five actual request/capture/seal
+process deaths. The worker-owned journal grants no authority; protected export,
+semantic/action snapshots, the switch phase machine, destination loading proof,
+writer transfer, admitted repair and encrypted restore remain gates. The native
+planner stays disabled; no live source is switched.
+All 132 clean-staged focused checks passed in 33 serial sandbox batches, with
+the existing child timeout and no host home/credentials/network. The strict staged
+secret scan passed; this is not a new full-suite or target-PC acceptance result.
+[Checkpoint and recovery contract](pr10-tool-switch.md).
 
 ## PR 11 Publication and independent merge gates
 
