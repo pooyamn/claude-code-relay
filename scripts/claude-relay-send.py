@@ -2452,6 +2452,7 @@ def watch():
     last_done_mt = last_done_mt or 0
     stream, menu_sig, was_busy, idle_stable, overlay_stable = None, None, False, 0, 0
     _cxconn = None                 # codex app-server connection, owned by this loop
+    _cx_announced = 0              # turn_seq of the last outside turn announced
     _cxblocked_since, _cxblocked_told = None, False
     api_tick, stream_last_text = 0, ""
     while True:
@@ -2479,7 +2480,13 @@ def watch():
             # "Codex server returned an error." on every message. Connect when
             # something is queued, release as soon as the turn is delivered, and
             # the app owns the thread the rest of the time.
-            if _cxconn is None and not cxp().peek(SESSION):
+            # Through the daemon, the relay is one client among several (the
+            # ChatGPT app, `codex queue` from other sessions) and holds no lock
+            # of its own, so it stays attached whenever the topic has a thread:
+            # that is what lets turns started ELSEWHERE show up in Telegram.
+            # Without a thread and without queued work there is nothing to
+            # watch, and opening would start an empty thread.
+            if _cxconn is None and not cxp().peek(SESSION) and not cxp().read_thread(SESSION):
                 continue
             if _cxconn is None or not _cxconn.alive():
                 _cxconn = cxp().Conn(SESSION, folder, _backend())
@@ -2556,6 +2563,20 @@ def watch():
                             f"{_cxconn.error or 'unknown error'}")
                     break                        # leave it queued; retry next pass
                 cxp().drop(SESSION, 1)           # only now is it safely handed over
+            if _cxconn.busy and _cxconn.external and _cx_announced != _cxconn.turn_seq \
+                    and (_cxconn.user_text or _cxconn.message or _cxconn.delta):
+                # A turn this relay did not start. Say where it came from, once,
+                # so the reply that follows has context in the topic.
+                _cx_announced = _cxconn.turn_seq
+                ut = _cxconn.user_text or "(prompt not available)"
+                mm = re.match(r"\[from ([^\]·]+?) ·", ut)
+                if mm:
+                    head = f"📨 **Message from {mm.group(1).strip()}**"
+                    ut = re.sub(r"\n\n\(Reply with the ccrelay send_message tool.*$", "", ut, flags=re.S)
+                else:
+                    head = "📱 **From the ChatGPT app**"
+                deliver(f"{head}\n{ut[:3000]}")
+                write_last_prompt(ut[:500])
             if _cxconn.busy:
                 was_busy = True
                 if stream is None and STREAM:
@@ -2577,8 +2598,9 @@ def watch():
                         delivered = h
                         save_delivered(h)
                 stream, was_busy = None, False
-            if not cxp().peek(SESSION):
-                # Turn done and nothing waiting: give the thread back to the app.
+            if not cxp().peek(SESSION) and _cxconn.ws is None:
+                # Private app-server fallback (daemon unreachable): that process
+                # holds the thread's writer lock, so give the thread back.
                 try:
                     _cxconn.close()
                 except Exception:

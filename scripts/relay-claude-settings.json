@@ -24,5 +24,7 @@
       }
     ]
   },
-  "outputStyle": "Concise"
+  "outputStyle": "Concise",
+  "crossSessionInbound": "accept",
+  "cleanupPeriodDays": 3650
 }

@@ -182,6 +182,14 @@ class Conn:
         self.final = ""            # set when the turn completes
         self.error = ""
         self._cancelled_turn = ""
+        # Turns this connection did NOT start (ChatGPT app, `codex queue` from
+        # another session) are still streamed to us by the daemon. `external`
+        # marks them so the watcher can show where they came from, and
+        # `user_text` holds that turn's prompt.
+        self._own_pending = False
+        self.external = False
+        self.user_text = ""
+        self.turn_seq = 0
         self._id = 0
         self._replies = {}
         self._lock = threading.Lock()
@@ -240,12 +248,22 @@ class Conn:
             self.turn_id = (p.get("turn") or {}).get("id") or p.get("turnId") or ""
             self.busy = True
             self.delta = ""
+            self.external = not self._own_pending
+            self._own_pending = False
+            self.turn_seq += 1
+            if self.external:
+                self.user_text = ""
+                self.steps, self.message, self.final, self.error = [], "", "", ""
         elif m == "turn/completed":
             if p.get("turnId") == self._cancelled_turn or \
                (p.get("turn") or {}).get("id") == self._cancelled_turn:
                 self.message = self.delta = ""      # cancelled: deliver nothing
             else:
                 self.final = self.message or self.delta
+                if not self.final and self.external:
+                    # A turn that answered only through tools (e.g. a ccrelay
+                    # reply) has no text; say so, or the bubble just stops.
+                    self.final = "✓ Done, no text reply (answered through tools or ccrelay)."
             self.busy = False
         elif m == "turn/failed":
             self.error = json.dumps(p)[:300]
@@ -259,7 +277,12 @@ class Conn:
                    "thread/realtime/item/started", "thread/realtime/item/completed"):
             it = p.get("item") or {}
             k = it.get("type")
-            if k in _AGENT_MSG:
+            if k in ("userMessage", "user_message") and self.external and not self.user_text:
+                txt = (it.get("text") or "").strip() or "".join(
+                    c.get("text") or "" for c in (it.get("content") or [])
+                    if isinstance(c, dict)).strip()
+                self.user_text = txt
+            elif k in _AGENT_MSG:
                 txt = (it.get("text") or "").strip()
                 if not txt:
                     # completed items carry the text in content[] on this wire
@@ -502,6 +525,7 @@ class Conn:
         self.steps, self.message, self.delta = [], "", ""
         self.final, self.error = "", ""
         self.busy = True                      # optimistic: turn/started confirms
+        self._own_pending = True
         rid = self._send("turn/start", {
             "threadId": self.tid, "input": [{"type": "text", "text": text}]})
         r = self._wait(rid, 30)
