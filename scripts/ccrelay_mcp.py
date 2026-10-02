@@ -20,7 +20,9 @@ Every message is appended to relay-work/bus.jsonl with its delivery state and
 mirrored to the Telegram bus topic configured in ~/.config/ccrelay/bus.json.
 """
 import fcntl
+import glob
 import hashlib
+import re
 import json
 import os
 import socket
@@ -35,6 +37,8 @@ CODES = os.path.join(D, "relay-codes.json")
 BUS = os.path.join(WORK, "bus.jsonl")
 BUS_CFG = os.path.expanduser("~/.config/ccrelay/bus.json")
 HOP_LIMIT = 3
+ISSUES = os.path.expanduser(os.environ.get("CCRELAY_ISSUES_DIR", os.path.join(WORK, "issues")))
+ISSUES_CFG = os.path.expanduser("~/.config/ccrelay/issues.json")
 CODEX = os.environ.get("RELAY_CODEX_BIN") or "codex"
 
 
@@ -243,6 +247,99 @@ def send_message(to, text, reply_to=None):
     return {"ok": state == "delivered", "id": mid, "state": state, "error": err}
 
 
+# --- issues -----------------------------------------------------------------
+def _issue_path(iid):
+    return os.path.join(ISSUES, f"{iid}.md")
+
+
+def _read_issue(path):
+    meta, body = {}, ""
+    try:
+        txt = open(path).read()
+    except OSError:
+        return None
+    if txt.startswith("---\n"):
+        head, _, body = txt[4:].partition("\n---\n")
+        for line in head.splitlines():
+            k, _, v = line.partition(":")
+            meta[k.strip()] = v.strip()
+    meta["body"] = body
+    return meta
+
+
+def _context(session_name, n=15):
+    """Recent bus lines involving the reporter plus recent relay errors, so the
+    report carries evidence instead of a description from memory."""
+    bus = [r for r in bus_read() if session_name in (r.get("from"), r.get("to"))][-n:]
+    lines = [f"bus {r.get('ts')} {r.get('from')}->{r.get('to')} {r.get('state')}: {r.get('text', '')[:120]}"
+             for r in bus]
+    try:
+        ops = open(os.path.join(WORK, "msg-ops.log"), errors="ignore").read().splitlines()[-400:]
+        errs = [l for l in ops if (" rc=" in l and " rc=0 " not in l) or " ERR=" in l][-n:]
+        lines += [f"ops {l[:200]}" for l in errs]
+    except OSError:
+        pass
+    return "\n".join(lines)
+
+
+def issues_telegram(text):
+    try:
+        cfg = json.load(open(ISSUES_CFG))
+        sys.path.insert(0, D)
+        import relay_tg
+        bot = relay_tg.Bot(relay_tg.load_token(cfg["env"]))
+        relay_tg.send_text(bot, cfg["chat"], cfg.get("thread"), text, silent=True)
+    except Exception as e:
+        print(f"issues telegram: {e}", file=sys.stderr)
+
+
+def report_issue(kind, title, details, reporter=None):
+    sys.path.insert(0, D)
+    import relay_triage
+    me = caller()
+    reporter = reporter or (_name(me) if me else "unknown")
+    t = relay_triage.triage(kind, title, details)
+    os.makedirs(ISSUES, exist_ok=True)
+    iid = time.strftime("%Y%m%d-") + uuid.uuid4().hex[:6]
+    now = time.strftime("%Y-%m-%dT%H:%M:%S")
+    ctx = _context(reporter)
+    with open(_issue_path(iid), "w") as f:
+        f.write(f"---\nid: {iid}\nstatus: open\nkind: {t['kind']}\npriority: {t['priority']}\n"
+                f"assignee: {t['target']}\nreporter: {reporter}\ncreated: {now}\nupdated: {now}\n"
+                f"triaged_by: {t['by']}\ntitle: {title.strip()[:200]}\n---\n"
+                f"{details.strip()}\n\n## Context (auto-attached)\n{ctx or '(none)'}\n")
+    issues_telegram(f"**{t['priority']} {t['kind']}** `{iid}` from {reporter} → {t['target']}\n{title.strip()[:300]}")
+    return {"ok": True, "id": iid, **{k: t[k] for k in ("kind", "priority", "target")}, "triaged_by": t["by"]}
+
+
+def list_issues(status=None):
+    out = []
+    for p in sorted(glob.glob(os.path.join(ISSUES, "*.md"))):
+        m = _read_issue(p)
+        if m and (not status or m.get("status") == status):
+            out.append({k: m.get(k) for k in ("id", "status", "priority", "kind", "assignee", "reporter", "title", "updated")})
+    return out
+
+
+def comment_issue(iid, text, status=None):
+    p = _issue_path(iid)
+    m = _read_issue(p)
+    if not m:
+        return {"ok": False, "error": f"no issue {iid}"}
+    me = caller()
+    who = _name(me) if me else "unknown"
+    now = time.strftime("%Y-%m-%dT%H:%M:%S")
+    txt = open(p).read()
+    if status:
+        txt = re.sub(r"(?m)^status: .*$", f"status: {status}", txt, count=1)
+    txt = re.sub(r"(?m)^updated: .*$", f"updated: {now}", txt, count=1)
+    txt += f"\n## {now} {who}{f' (status: {status})' if status else ''}\n{text.strip()}\n"
+    open(p, "w").write(txt)
+    if status:
+        issues_telegram(f"`{iid}` → **{status}** by {who}: {text.strip()[:200]}")
+    return {"ok": True}
+
+
 # --- MCP plumbing -----------------------------------------------------------
 TOOLS = [
     {"name": "list_sessions",
@@ -256,6 +353,20 @@ TOOLS = [
          "to": {"type": "string", "description": "session name from list_sessions"},
          "text": {"type": "string"},
          "reply_to": {"type": "string", "description": "id of the message you are answering"}}}},
+    {"name": "report_issue",
+     "description": ("Report a problem with the agent platform (message not delivered, Telegram topic not "
+                     "answering, session died, tool missing) or ask for an improvement or feature. Recent "
+                     "logs are attached automatically; describe what you saw and when."),
+     "inputSchema": {"type": "object", "required": ["kind", "title", "details"], "properties": {
+         "kind": {"type": "string", "enum": ["bug", "improvement", "feature"]},
+         "title": {"type": "string"}, "details": {"type": "string"}}}},
+    {"name": "list_issues",
+     "description": "List platform issues, optionally filtered by status (open, in-progress, fixed, wontfix).",
+     "inputSchema": {"type": "object", "properties": {"status": {"type": "string"}}}},
+    {"name": "comment_issue",
+     "description": "Add a note to an issue, optionally changing its status (in-progress, fixed, wontfix, open).",
+     "inputSchema": {"type": "object", "required": ["id", "text"], "properties": {
+         "id": {"type": "string"}, "text": {"type": "string"}, "status": {"type": "string"}}}},
     {"name": "message_log",
      "description": "Show recent inter-session messages.",
      "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer"}}}},
@@ -270,6 +381,12 @@ def call_tool(name, args):
         return {"you": _name(me) if me else None, "sessions": rows}
     if name == "send_message":
         return send_message(args.get("to"), args.get("text", ""), args.get("reply_to"))
+    if name == "report_issue":
+        return report_issue(args.get("kind", ""), args.get("title", ""), args.get("details", ""))
+    if name == "list_issues":
+        return list_issues(args.get("status"))
+    if name == "comment_issue":
+        return comment_issue(args.get("id", ""), args.get("text", ""), args.get("status"))
     if name == "message_log":
         n = int(args.get("limit") or 20)
         return bus_read()[-n:]

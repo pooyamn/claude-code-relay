@@ -233,7 +233,8 @@ Intervene: reply to a bus line; `/pause`, `/resume`, `/stop all`. A watchdog ale
 
 ## 13. Work list
 
-Built and tested: Telegram long-poll and routing, media, voice, rich tables, progress bubble, Codex via daemon, bind/unbind/cancel; ccrelay MCP (`list_sessions`, `send_message`, `message_log`), bus log and bus topic; Codex observer; `talk-to-sessions` skill.
+Built and tested: Telegram long-poll and routing, media, voice, rich tables, progress bubble, Codex via daemon, bind/unbind/cancel; ccrelay MCP (`list_sessions`, `send_message`, `message_log`, `report_issue`, `list_issues`, `comment_issue`), bus log, bus and issues topics; Codex observer; `talk-to-sessions` skill.
+Built here, not yet installed (2026-10-01; scheduling and live use wait for the PC): triage (`relay_triage.py`, rules tested, Jev path waiting for the key); health check (`health_check.py`, dry run found real problems: gateway send timeouts, the hung DAPLink drive); history collector and search (`history/history.py`: 126k messages from 226 sessions ingested in 26 s, secrets masked including known secret values, hybrid search verified); backup packager (`history/backup.py`: first full package 385 MB, encrypted and verified to decrypt; upload waits for the R2 key).
 
 Needed, in order:
 1. Router as `relay`; fail-closed authorisation; action socket with uid check.
