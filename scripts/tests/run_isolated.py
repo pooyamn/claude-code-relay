@@ -22,7 +22,7 @@ LEGACY_SOURCES = (
     "claude-relay-send.py", "relay-extract-message.py", "relay-turn-done",
     "claude-tui-backend-multi", "relay-alt-launch",
 )
-BROKER_SOURCES = ("ccrelay_broker.py", "ccrelay_broker_mcp.py", "ccrelay_owner_gate.py")
+BROKER_SOURCES = ("ccrelay_broker.py", "ccrelay_broker_mcp.py", "ccrelay_owner_gate.py", "ccrelay_intake.py", "ccrelayd.py", "relay_tg.py")
 DEPLOY_SOURCES = (
     "identity-plan.py", "setup-wsl.sh", "pull-from-mac.sh",
     "identities/ccrelay.sysusers.conf", "identities/ccrelay.tmpfiles.conf",
@@ -30,6 +30,7 @@ DEPLOY_SOURCES = (
     "systemd/ccrelay-broker.service",
     "identities/owner-policy.json.example", "identities/deployment-policy.json.example",
     "systemd/ccrelay-owner-gate.service",
+    "identities/intake-policy.json.example", "identities/intake-config.json.example", "systemd/ccrelay-intake.service",
 )
 
 

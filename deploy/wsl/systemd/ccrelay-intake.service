@@ -1,0 +1,26 @@
+# Inert preparation, no [Install], auto-restart, secret env or bot cutover.
+[Unit]
+Description=Durable Khadang intake preparation
+
+[Service]
+Type=simple
+User=relay
+Group=relay
+UMask=0077
+ExecStart=/usr/bin/python3 -I /opt/ccrelay/scripts/ccrelay_intake.py --run --config /etc/ccrelay-intake/intake.json
+Restart=no
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/ccrelay-intake /var/lib/ccrelay-pollers
+KillMode=control-group
+TimeoutStopSec=60

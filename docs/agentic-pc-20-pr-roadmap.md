@@ -8,12 +8,12 @@ Build testable security and delivery foundations first. Introduce the builder wi
 
 Pouya requested sequential implementation for PC readiness and authorized committing and pushing verified changes. Repository publication is separate from deployment: no GitHub PRs, live deployments, credential changes or migration have been performed by this implementation run. Local implementation/test evidence is distinct from target-PC acceptance. Unrelated uncommitted edits and runtime/media files are excluded from this series.
 
-PR 1 is locally implemented. PRs 2–3 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel integration still pending; evidence and limits are recorded below. PRs 4–20 remain to be implemented. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
+PR 1 is locally implemented. PRs 2–4 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel/runtime integration still pending; evidence and limits are recorded below. PRs 5–20 remain to be implemented. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
 
 ## Existing code to extend
 
 - Routing, Telegram formatting, session watchers, Codex observation and MCP messaging already exist in `scripts/`; do not plan their wholesale replacement.
-- `scripts/ccrelayd.py:159` advances the Telegram offset before handling, and its per-topic queues are in memory. Durable intake is still missing.
+- The legacy `scripts/ccrelayd.py` advances the Telegram offset before handling, and its per-topic queues are in memory. PR 4 prepares a separate protected durable intake for the target; native/media/action adapters are still required before cutover. The legacy live Mac deployment is not automatically converted.
 - `scripts/ccrelay_mcp.py:128` derives the caller from cwd. It cannot establish reviewer/CTO authority under the target threat model.
 - `scripts/relay_tg.py` has direct sends and call-local rate-limit sleeps. A durable router-wide scheduler and reply receipts are not yet established.
 - `history/history.py` already collects/searches transcripts; `history/backup.py` packages transcript increments and a search DB snapshot. Extend these into full-system recovery rather than duplicating them.
@@ -78,6 +78,10 @@ Depends on: PRs 1 and 2.
 Persist and fsync Telegram updates before advancing offsets. Store deduplication IDs, routing decisions, media/callback references and dispatch state; reconcile disk/DB commits and recover interrupted intake. Add singleton poller ownership, sustained-409 fail-fast behavior and event-loop liveness detection. Stop/pause and owner steering enter a durable high-priority control path instead of waiting behind a topic's model-work queue.
 
 Done when: crash at each intake boundary loses no durably accepted message and cannot duplicate logical dispatch. Only one poller owns a token, and empty/invalid owner authorization admits nobody.
+
+Local preparation (2026-10-02): `intake.py`, `polling.py` and a thin target entry persist original response bytes, deduplicated updates, frozen routes/media/callback references, per-batch acknowledgment cursors and atomic prioritized logical dispatches. Restart observes pending remote updates before any saved high offset; random lower IDs do not reset history. Protected host-wide bot locks, pinned `getMe`/webhook checks, persistent conflict/cooldown state and an independent actual-cycle watchdog provide the local ownership/liveness mechanism. They never execute a model, download media, send a reply, steal a webhook or change HamalBot wiring. The repository legacy empty-owner allowlist check also now fails closed; its live copy was not updated.
+
+All four legacy suites and 142 core tests pass, including real scratch-process deaths, concurrent materializers and cross-process locks. [The PR 4 evidence and recovery runbook](pr4-durable-intake.md) distinguishes logical readiness from runtime delivery and local locks from cross-machine ownership. Examples/services stay disabled/inert and no live bot was polled. Real WSL isolation/storage and authorized exclusive Khadang integration remain pending; PRs 5–6 must connect guarded effects, receipts and owner UI before any complete phone-control cutover.
 
 ## PR 5 Durable action outbox and guarded runtime delivery
 

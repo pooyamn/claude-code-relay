@@ -1,0 +1,15 @@
+{
+  "schema": "ccrelay.intake_config.v1",
+  "enabled": false,
+  "test_bot": "khadang",
+  "expected_username": "REPLACE_WITH_VERIFIED_KHADANG_USERNAME",
+  "env_path": "/var/lib/ccrelay-components/relay/khadang.env",
+  "state_dir": "/var/lib/ccrelay-intake",
+  "broker_policy": "/etc/ccrelay-intake/broker-policy.json",
+  "owner_policy": "/etc/ccrelay-intake/owner-policy.json",
+  "intake_policy": "/etc/ccrelay-intake/intake-policy.json",
+  "long_poll_seconds": 40,
+  "network_timeout": 50,
+  "commit_grace_seconds": 25,
+  "conflict_limit": 3
+}

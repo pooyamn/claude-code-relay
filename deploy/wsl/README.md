@@ -15,6 +15,7 @@ before using it; testing is not permission for a production-bot cutover.
 
 ```sh
 python3 deploy/wsl/identity-plan.py --dry-run
+python3 scripts/ccrelay_intake.py --plan
 bash deploy/wsl/setup-wsl.sh plan
 bash deploy/wsl/pull-from-mac.sh --dry-run
 python3 scripts/tests/run_isolated.py
@@ -53,6 +54,13 @@ still required; it is not replaced by a common-home copy.
   and the deploy coordinator. It neither polls Telegram nor starts/restarts
   candidate code. [PR 3 evidence and recovery](../../docs/pr3-owner-deployment.md)
   lists the remaining trusted Bot API, target-OS and screener gates.
+- `identities/intake-policy.json.example`, `intake-config.json.example` and
+  `systemd/ccrelay-intake.service`: disabled/inert Khadang-only durable intake
+  preparation with pinned bot identity, private state and host-wide poller locks.
+  The example username and IDs are placeholders. The entry point's `--plan`
+  reads no credentials and calls no API. [PR 4 evidence and recovery](../../docs/pr4-durable-intake.md)
+  distinguishes pending logical dispatches from native delivery and explains
+  why a local lock cannot fence an unmanaged poller on another machine.
 - `identities/session.service.in`: incomplete trusted-launcher template, not a
   runnable unit. PR 7 supplies the exact native command, measured resource
   profile and verified readiness. Each execution needs its own root-controlled

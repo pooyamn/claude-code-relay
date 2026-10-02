@@ -1,0 +1,9 @@
+{
+  "schema": "ccrelay.intake_policy.v1",
+  "bot_username": "REPLACE_WITH_VERIFIED_KHADANG_USERNAME",
+  "allow_users": [1],
+  "allow_chats": [],
+  "bindings": [
+    {"chat_id": -3, "thread_id": 5, "role_id": "builder", "session_id": "builder.preparation"}
+  ]
+}

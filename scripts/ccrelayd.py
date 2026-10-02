@@ -21,6 +21,10 @@ Usage: ccrelayd.py --config ~/.config/ccrelay/test.json
 config: {"env": "<file with CCRELAY_BOT_TOKEN=>", "bindings": "<json>",
          "state": "<dir>", "allow_users": [<your telegram user id>],
          "allow_chats": [<chat ids where any member may use bound topics>]}
+
+Legacy Mac path, not the target PC intake: offsets/queues here are not durable.
+The protected PC intake is ccrelay_intake.py; effectful adapters are later work.
+Do not activate this common-user legacy daemon as the role-isolated target.
 """
 import argparse
 import datetime
@@ -178,7 +182,7 @@ class Daemon:
         return chat, thread
 
     def allowed(self, uid, chat):
-        return not self.allow or uid in self.allow or str(chat) in self.allow_chats
+        return bool(self.allow) and (uid in self.allow or str(chat) in self.allow_chats)
 
     def on_callback(self, cq):
         try:
@@ -209,7 +213,7 @@ class Daemon:
         text = msg.get("text") or msg.get("caption") or ""
 
         # Admin commands work in ANY chat, bound or not.
-        admin = not self.allow or msg.get("from", {}).get("id") in self.allow
+        admin = msg.get("from", {}).get("id") in self.allow
         m = NEWCC_RE.match(text) if admin else None
         if m:
             return self.cmd_newcc(chat, thread, m.group(1))

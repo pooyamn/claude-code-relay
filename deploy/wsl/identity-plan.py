@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 from relay_core.identity import Denied, Policy, strict_json
 from relay_core.owner_gate import OwnerPolicy
 from relay_core.artifacts import DeploymentPolicy
+from relay_core.intake import IntakePolicy
 
 
 def plan(folder, users=None, groups=None):
@@ -27,6 +28,7 @@ def plan(folder, users=None, groups=None):
     policy = Policy(raw)
     owner_policy = OwnerPolicy(strict_json((folder / "identities/owner-policy.json.example").read_bytes()), policy)
     deployment_policy = DeploymentPolicy(strict_json((folder / "identities/deployment-policy.json.example").read_bytes()))
+    intake_policy = IntakePolicy(strict_json((folder / "identities/intake-policy.json.example").read_bytes()), owner_policy, policy)
     accounts, shared_groups, memberships = {}, {}, []
     for line in (folder / "identities/ccrelay.sysusers.conf").read_text().splitlines():
         fields = shlex.split(line, comments=True)
@@ -79,6 +81,7 @@ def plan(folder, users=None, groups=None):
             raise Denied("worker has privileged or another identity's supplementary group")
     return {"schema": "ccrelay.identity_plan.v1", "mode": "dry-run-only", "policy_digest": policy.digest,
             "owner_policy_digest": owner_policy.digest, "deployment_policy_digest": deployment_policy.digest,
+            "intake_policy_digest": intake_policy.digest,
             "owner_ingress_enabled": owner_policy.enabled, "bootstrap_deployment_enabled": deployment_policy.bootstrap_enabled,
             "accounts": accounts, "shared_groups": shared_groups, "memberships": memberships,
             "changes_applied": False, "services_enabled": False,
