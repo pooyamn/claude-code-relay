@@ -1,5 +1,5 @@
 {
-  "schema": "ccrelay.telegram_outbound_policy.v1",
+  "schema": "ccrelay.telegram_outbound_policy.v2",
   "bot_id": 1002,
   "bot_username": "REPLACE_KHADANG_USERNAME",
   "test_bot": "khadang",
@@ -10,5 +10,6 @@
   "max_rate_limit_retries": 0,
   "max_upload_bytes": 10485760,
   "compatibility_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-  "retryable_methods": []
+  "retryable_methods": [],
+  "repairable_methods": []
 }

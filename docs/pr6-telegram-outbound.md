@@ -1,10 +1,12 @@
 # PR 6 Telegram send scheduler and receipt preparation
 
-The protected outbound foundation is implemented and tested offline. It gives
-Telegram sends one durable queue, keeps every required reply chunk, and advances
-watcher offsets only with a complete confirmed receipt set. It does not convert
+The protected outbound foundation and bounded format/media repair are prepared
+and tested offline. They give Telegram sends one durable queue, keep every
+required reply chunk, and advance watcher offsets only with a complete confirmed
+receipt set. This preparation does not convert
 the live Mac relay or establish target-PC acceptance. PR 6 remains in preparation
-until the producer wiring, safe format repair and integration gates below pass.
+until trusted producer/repair authorization, owner-prompt wiring and the
+integration gates below pass.
 Khadang is the authorized test bot; HamalBot wiring remains unchanged.
 
 ## Prepared mechanism
@@ -54,6 +56,39 @@ a formatting placeholder as a real message receipt. Full media captions become
 ordered text chunks rather than being sliced; tail trimming is limited to
 disposable status, whose original text is also retained.
 
+## Prepared format/media repair
+
+`telegram_repair.py` constructs an immutable alternative when the original bundle
+is enrolled: HTML or rich text to complete plain Markdown, an HTML edit to one
+plain-text edit, or an uncaptained photo upload to a document containing the same
+sealed bytes. Plain text retains URLs and every source character, with UTF-16
+chunk limits. Routes, reply controls and buttons stay bound to the original;
+buttons appear only on the final replacement chunk. Full photo captions remain
+separate ordered text operations. Required content is not tail-trimmed.
+
+Only the protected driver may authorize a repair. It must identify a definite
+format/media rejection using the pinned compatibility artifact and exact captured
+attempt. A generic `400`, model prose or a valid-looking JSON authorization is
+not that characterization. The example policy permits no repairs, and no live
+authorizer is installed. Uncharacterized rejection remains failed with its
+original source, assets and response retained. Telegram error details may change;
+verify the adapter's supported behavior before enabling a method.
+[Telegram response contract](https://core.telegram.org/bots/api#making-requests).
+
+One repair transaction enrolls the alternative and its link to the original
+failed operation, negative evidence, recipe, policy and authorization. Stable IDs
+make identical enrollment idempotent; changed authorization is denied. The
+original operation stays failed for inspection. Confirmed siblings never replay,
+and the original stream cursor advances only when every original or replacement
+slot is confirmed. A replacement cannot spawn another format repair. All of its
+chunks share the original operation's remaining rate-retry budget across restarts.
+Uncertain older edits fence later mutations; a late repair cannot overwrite a
+newer edit or deletion already attempted or confirmed.
+
+Queue, bundle and outbound-policy schemas are now v2. Old state is rejected and
+preserved for an explicit reviewed migration, not upgraded or reset at startup.
+This preparation changes repository artifacts only; no live ledger was migrated.
+
 ## Evidence and limits
 
 Run the copied-source OS sandbox, not the legacy suites directly:
@@ -78,9 +113,25 @@ are used; only private-ancestor/kernel observations are substituted for scratch
 storage. These checks do not prove distinct-UID WSL enforcement, real client
 rendering, remote idempotency or live bot acceptance.
 
-Verification on 2026-10-02: all four legacy suites and 232 core tests passed in
-the isolated runner, including 41 new outbound tests. The read-only preparation
-command also passed. These are local conformance results, not approval to deploy.
+An additional fourteen actual process-death boundaries cover repair enrollment,
+replacement claim/submit, remote acceptance, response publication and receipt/
+cursor commits. The test verifies exactly one durable repair, retained original
+negative evidence, no uncertain replacement replay and no premature cursor
+advance. A complete protected response can reconcile the same attempt; a body
+without its attempt envelope cannot. Multi-chunk repairs, shared retry exhaustion
+across restarts, pinned method ceilings, changed source/control bindings and stale
+edits also have deterministic tests. The compatibility authorizer and provider
+are invented fixtures, not proof of a trusted live rejection classifier.
+
+The initial foundation passed all four legacy suites and 232 core tests on
+2026-10-02, including 41 outbound tests. The repair preparation adds 18 focused
+tests, including its fourteen-boundary process-death matrix. Later suite totals
+also include independent capacity-retry and live-bubble regression coverage.
+These are local conformance results, not approval to deploy.
+
+Repair verification on 2026-10-02: all four legacy suites and 282 core tests
+passed in the copied-source sandbox. The read-only preparation command passed
+with sends, network and state changes disabled.
 
 Telegram documents global, group and chat flood limits and returns a wait in
 `retry_after`. This supports persisted scheduling, not unrestricted paid
@@ -102,8 +153,9 @@ does not authorize another send; preserve it for reconciliation. A stale backup
 also cannot prove that an externally completed action did not happen.
 
 PR 12 must capture a consistent outbound SQLite snapshot including streams,
-bundles, original sources, attempts, receipts, cooldowns and counters; the sealed
-response bodies/envelopes; immutable assets and their metadata; pinned policy,
+bundles, original sources, repair recipes/links/authorizations, attempts, receipts,
+cooldowns and shared retry counters; the sealed response bodies/envelopes;
+immutable assets and their metadata; pinned policy,
 adapter artifact and trusted stream/registry evidence. Keep incomplete spool
 files for inspection. The base outbox's database-only snapshot is not a complete
 Telegram component backup. Restore paused, revalidate identity/versions and
@@ -133,13 +185,13 @@ sender beside the new owner is not a rollback.
    guarded native observations. Cut every send/edit/upload/bus/status/callback
    path over to the one owner together. The old scripts still use direct sends;
    this gateway does not itself establish their cutover or a phone-control loop.
-4. Complete safe format/media repair. A definite rejected operation may produce
-   an authorized re-render or photo-to-document alternative retaining negative
-   evidence and source content; unknown outcomes may not. Confirmed earlier
-   chunks must not repeat and the original offset must stay held until the
-   complete replacement receipt set commits. Current non-rate-limit rejection
-   remains failed and visible with its source/assets preserved, not silently
-   discarded. Existing live formatter fallbacks have not been removed.
+4. Characterize exact format/media rejection under pinned compatibility and wire
+   the protected runtime authorizer. The prepared recipe/repair transaction is
+   not permission to treat every `400` as a format failure. Prove the real
+   transport's negative evidence and recovery driver, including failed originals
+   recovered from a spool. Unknown outcomes must not repair or replay. Keep the
+   locally tested sibling/cursor/shared-budget invariants under real integration.
+   Existing live formatter fallbacks have not been removed.
 5. Bind approval prompts to their actual confirmed message receipts and the
    trusted PR 3 owner ingress. Neither ticket enrollment nor model prose may
    authorize an external action. Prove duplicate callbacks, changed candidates,

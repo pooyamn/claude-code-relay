@@ -47,8 +47,8 @@ class OutboundPolicy:
     def __init__(self, raw):
         exact(raw, {"schema", "bot_id", "bot_username", "test_bot", "allowed_chats", "global_spacing_ms",
                     "chat_spacing_ms", "group_spacing_ms", "max_rate_limit_retries", "max_upload_bytes",
-                    "compatibility_digest", "retryable_methods"})
-        if raw["schema"] != "ccrelay.telegram_outbound_policy.v1" or raw["test_bot"] != "khadang":
+                    "compatibility_digest", "retryable_methods", "repairable_methods"})
+        if raw["schema"] != "ccrelay.telegram_outbound_policy.v2" or raw["test_bot"] != "khadang":
             raise Denied("only explicit Khadang preparation is supported")
         for key in ("bot_id", "global_spacing_ms", "chat_spacing_ms", "group_spacing_ms", "max_upload_bytes"):
             integer(raw[key])
@@ -65,6 +65,9 @@ class OutboundPolicy:
         methods = raw["retryable_methods"]
         if type(methods) is not list or any(type(method) is not str or method not in METHODS for method in methods) or len(set(methods)) != len(methods):
             raise Denied("explicit characterized rate-limit rejection capabilities required")
+        repairs = raw["repairable_methods"]
+        if type(repairs) is not list or any(type(method) is not str or method not in {"sendMessage", "sendRichMessage", "sendPhoto", "editMessageText"} for method in repairs) or len(set(repairs)) != len(repairs):
+            raise Denied("explicit characterized format/media repair capabilities required")
         self._raw = canonical_bytes(raw)
         self._digest = fingerprint(raw)
 

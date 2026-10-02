@@ -11,6 +11,7 @@ import relay_tg
 from .contracts import fingerprint
 from .identity import Denied, integer
 from .telegram_outbound import MEDIA_FIELDS
+from .telegram_repair import recipe
 
 
 class _Capture:
@@ -25,20 +26,60 @@ class _Capture:
 
 
 def text_operations(text, chat_id, thread_id, *, silent=False, reply_markup=None):
+    return text_plan(text, chat_id, thread_id, silent=silent, reply_markup=reply_markup)[0]
+
+
+def text_plan(text, chat_id, thread_id, *, silent=False, reply_markup=None):
     if type(text) is not str or not text.strip():
         raise Denied("nonempty original text required")
-    collector = _Capture()
-    relay_tg.send_text(collector, chat_id, thread_id, text, silent, reply_markup)
-    return collector.operations
+    operations, recipes = [], []
+    common = {"chat_id": chat_id, **relay_tg.thread_params(thread_id)}
+    if silent:
+        common["disable_notification"] = True
+    def classic(markdown, markup=None):
+        pieces = relay_tg._split_for_html(markdown)
+        for index, piece in enumerate(pieces):
+            args = {**common, "link_preview_options": {"is_disabled": True}, "text": relay_tg.md_to_html(piece), "parse_mode": "HTML"}
+            if markup and index == len(pieces) - 1:
+                args["reply_markup"] = markup
+            operation = {"method": "sendMessage", "args": args, "assets": {}}
+            operations.append(operation)
+            recipes.append(recipe(operation, kind="html_to_plain", content=piece))
+    segments = relay_tg.segments(text)
+    if not any(kind == "table" for kind, _ in segments) or reply_markup:
+        classic(text, reply_markup)
+    else:
+        group = []
+        def flush():
+            if any(kind == "table" for kind, _ in group):
+                for fitted in relay_tg._fit_rich(group):
+                    collector = _Capture()
+                    relay_tg.send_rich(collector, chat_id, thread_id, fitted, silent)
+                    operation = collector.operations[0]
+                    operations.append(operation)
+                    recipes.append(recipe(operation, kind="rich_to_plain", content="\n\n".join(value for _, value in fitted),
+                                          parts=[[kind, value] for kind, value in fitted]))
+            elif group:
+                classic("\n\n".join(value for _, value in group))
+            group.clear()
+        for kind, value in segments:
+            if kind == "code":
+                flush()
+                classic(value)
+            else:
+                group.append((kind, value))
+        flush()
+    return operations, recipes
 
 
 def bundle(*, bundle_id, root_task_id, session_id, chat_id, thread_id, lane, content, operations,
-           source_kind, native_session_id=None, turn_id=None, submission_id=None, cursor=None, coalesce_key=None):
-    return {"schema": "ccrelay.telegram_bundle.v1", "id": bundle_id, "root_task_id": root_task_id,
+           source_kind, native_session_id=None, turn_id=None, submission_id=None, cursor=None, coalesce_key=None, repair_plans=None):
+    return {"schema": "ccrelay.telegram_bundle.v2", "id": bundle_id, "root_task_id": root_task_id,
             "session_id": session_id, "chat_id": chat_id, "thread_id": thread_id, "lane": lane,
             "source": {"native_session_id": native_session_id, "turn_id": turn_id, "submission_id": submission_id,
                        "source_kind": source_kind, "content": content, "content_digest": fingerprint(content)},
-            "operations": operations, "cursor": cursor, "coalesce_key": coalesce_key}
+            "operations": operations, "cursor": cursor, "coalesce_key": coalesce_key,
+            "repair_plans": [None] * len(operations) if repair_plans is None else repair_plans}
 
 
 class TelegramProducers:
@@ -56,9 +97,8 @@ class TelegramProducers:
         return self.ledger.enqueue(value)
 
     def text(self, *, content, silent=False, reply_markup=None, **binding):
-        operations = text_operations(content, binding["chat_id"], binding["thread_id"],
-                                     silent=silent, reply_markup=reply_markup)
-        return self.enqueue(bundle(content=content, operations=operations, **binding))
+        operations, recipes = text_plan(content, binding["chat_id"], binding["thread_id"], silent=silent, reply_markup=reply_markup)
+        return self.enqueue(bundle(content=content, operations=operations, repair_plans=recipes, **binding))
 
     def media(self, *, method, reference, caption="", silent=False, **binding):
         if method not in MEDIA_FIELDS or type(caption) is not str:
@@ -68,11 +108,14 @@ class TelegramProducers:
         if silent:
             args["disable_notification"] = True
         operations = [{"method": method, "args": args, "assets": {field: reference}}]
+        recipes = [recipe(operations[0], kind="photo_to_document") if method == "sendPhoto" else None]
         # Never slice a required caption at 1024 bytes, or fit_tail a final reply.
         # Use full ordered text chunks after the retained original attachment.
         if caption.strip():
-            operations += text_operations(caption, binding["chat_id"], binding["thread_id"], silent=silent)
-        return self.enqueue(bundle(content={"asset": reference, "caption": caption}, operations=operations, **binding))
+            chunks, alternatives = text_plan(caption, binding["chat_id"], binding["thread_id"], silent=silent)
+            operations += chunks
+            recipes += alternatives
+        return self.enqueue(bundle(content={"asset": reference, "caption": caption}, operations=operations, repair_plans=recipes, **binding))
 
     def status_edit(self, *, content, message_id, coalesce_key, **binding):
         integer(message_id)
@@ -81,4 +124,5 @@ class TelegramProducers:
         fitted = relay_tg.fit_tail(content)
         operation = {"method": "editMessageText", "args": {"chat_id": binding["chat_id"], "message_id": message_id,
                      "text": relay_tg.md_to_html(fitted), "parse_mode": "HTML", "link_preview_options": {"is_disabled": True}}, "assets": {}}
-        return self.enqueue(bundle(content=content, operations=[operation], coalesce_key=coalesce_key, **binding))
+        alternative = recipe(operation, kind="edit_html_to_plain", content=fitted)
+        return self.enqueue(bundle(content=content, operations=[operation], repair_plans=[alternative], coalesce_key=coalesce_key, **binding))

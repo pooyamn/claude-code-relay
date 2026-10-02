@@ -14,11 +14,12 @@ from relay_core.telegram_scheduler import TelegramLedger
 
 def policy_fields(**changes):
     # Invented timing/upload bounds, not production defaults or quota choices.
-    return {"schema": "ccrelay.telegram_outbound_policy.v1", "bot_id": 1002, "bot_username": "SyntheticKhadang",
+    return {"schema": "ccrelay.telegram_outbound_policy.v2", "bot_id": 1002, "bot_username": "SyntheticKhadang",
             "test_bot": "khadang", "allowed_chats": [-1003, -1004, 1005], "global_spacing_ms": 40,
             "chat_spacing_ms": 1000, "group_spacing_ms": 3000, "max_rate_limit_retries": 2,
             "max_upload_bytes": 100000, "compatibility_digest": "sha256:" + "a" * 64,
-            "retryable_methods": ["sendMessage", "editMessageText"], **changes}
+            "retryable_methods": ["sendMessage", "editMessageText"],
+            "repairable_methods": ["sendMessage", "editMessageText", "sendRichMessage", "sendPhoto"], **changes}
 
 
 @contextmanager
