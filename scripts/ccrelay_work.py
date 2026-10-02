@@ -9,6 +9,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from relay_core.identity import Denied, Policy, exact, strict_json
 from relay_core.work_ownership import SCHEMA, WATCHDOG_HANDOFFS
+from relay_core.task_diagnosis import SCHEMA as DIAGNOSIS_SCHEMA
 
 
 def configuration(raw):
@@ -33,8 +34,11 @@ def plan():
             "protected_owner_uid": policy.broker_uid, "policy_digest": policy.digest,
             "initial_watchdog_completed_handoffs": WATCHDOG_HANDOFFS, "task_limits_configured": False,
             "evidence_verifier_available": False, "all_writer_verifier_available": False, "admission_available": False,
+            "diagnosis_schema": DIAGNOSIS_SCHEMA, "diagnosis_guard_activated": False,
+            "material_verifier_available": False, "passive_report_bridge_available": False,
             "pending": ["trusted owner/root creation and inherited-root controller integration",
-                        "real criteria/progress/completed-result evidence and fingerprinted diagnosis",
+                        "real criteria/progress/completed-result and task/wait evidence readers",
+                        "protected diagnostic turn/report delivery and current result-scope enforcement",
                         "protected resource identity/alias inventory and all-source writer/descendant fences",
                         "PR 9 activity/pacing admission and broker/publication fence checks",
                         "company boundaries, joined encrypted restore and distinct-UID WSL acceptance"]}

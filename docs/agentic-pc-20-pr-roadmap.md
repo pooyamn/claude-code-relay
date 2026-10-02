@@ -8,7 +8,7 @@ Build testable security and delivery foundations first. Introduce the builder wi
 
 Pouya requested sequential implementation for PC readiness and authorized committing and pushing verified changes. Repository publication is separate from deployment. A separately authorized legacy Mac Khadang test release is active; no GitHub PRs, protected PC capabilities, credential changes or production/HamalBot migration have been performed by this implementation run. Local implementation/test evidence is distinct from target-PC acceptance. Unrelated uncommitted edits and runtime/media files are excluded from this series.
 
-PR 1 is locally implemented. PRs 2–5 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel/runtime integration still pending; evidence and limits are recorded below. PR 6's outbound foundation, bounded format/media repair, receipt-bound owner-prompt bridge, current source-grant dispatch and Telegram-local recovery are prepared offline; real protected producer/context wiring and target integration remain pending. PR 7's native registry, launch-bundle, worker-UID worktree and context-installation foundations are prepared as dependencies for that wiring, without completing PR 6 or its own native/launcher gates. PR 8's durable root/work custody foundation is prepared offline, without granting activity slots or completing its evidence/diagnosis/controller gates. PRs 9–20 remain to be implemented, apart from separately requested early preparations noted below. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
+PR 1 is locally implemented. PRs 2–5 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel/runtime integration still pending; evidence and limits are recorded below. PR 6's outbound foundation, bounded format/media repair, receipt-bound owner-prompt bridge, current source-grant dispatch and Telegram-local recovery are prepared offline; real protected producer/context wiring and target integration remain pending. PR 7's native registry, launch-bundle, worker-UID worktree and context-installation foundations are prepared as dependencies for that wiring, without completing PR 6 or its own native/launcher gates. PR 8's durable root/work custody and bounded-diagnosis guard are prepared offline, without granting activity slots or completing real evidence/admission/report/controller integration. PRs 9–20 remain to be implemented, apart from separately requested early preparations noted below. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
 
 ## Existing code to extend
 
@@ -367,12 +367,22 @@ resource custody and increasing fencing tokens do not equate completion or expir
 with stopped writers. Nineteen ownership and two planner cases include three actual
 process deaths and a real cross-process lifetime-lock rejection. Evidence/kernel/
 writer facts are synthetic. Real controller/inherited dispatch, resource aliases,
-all-source writer fences, diagnosis/passive reports, publication/action fencing,
+all-source writer fences, real diagnosis/report delivery, publication/action fencing,
 company boundaries, admission and encrypted target restore remain pending.
 `ccrelay_work.py --plan` stays inert; templates are not installed and live bots/
 sessions are unchanged. [PR 8 evidence and recovery](pr8-root-work-ownership.md).
 
-All 307 focused clean-staged checks pass in 77 serial sandbox batches. Full-suite
+The bounded-diagnosis guard prepares one same-root proposal per verified material
+state and coalesced passive report intents. Pending proposals reserve capacity;
+only an admitted attempt charges execution. Ordinary turns preserve the diagnostic
+subset. Owner pause on an already-held root persists independently of its task
+hold, and stale/unknown results cannot authorize continuation. Seventeen diagnosis
+cases include four actual reservation/attempt process deaths. The task/wait and
+admission facts are synthetic; real readers, PR 9 scheduling, current result
+enforcement and the PR 6 report bridge remain unavailable. This creates no model
+turn, Telegram message, automatic repair or new SQL schema.
+
+All 324 focused clean-staged checks pass in 81 serial sandbox batches. Full-suite
 verification remains deferred to the next milestone; PR 8 is not target accepted.
 
 ## PR 9 Global admission and subscription pacing

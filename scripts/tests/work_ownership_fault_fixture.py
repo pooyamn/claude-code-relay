@@ -33,5 +33,5 @@ if __name__ == "__main__":
         if "charge" in point:
             f.ledger.charge(Peer(11, 101, 121), "turn-1", "turn", expected_revision=f.ledger.root("root-builder").revision)
         else:
-            f.ledger.claim(Peer(11, 101, 121), "work-1", "claim-1", expected_revision=0)
+            f.ledger.checkout(Peer(11, 101, 121), "work-1", "claim-1", expected_revision=0)
     raise SystemExit("fault point not reached")

@@ -18,8 +18,10 @@ class WorkPlanTests(unittest.TestCase):
         self.assertEqual(plan["component_schema"], "ccrelay.work_ownership.v1")
         self.assertEqual(plan["initial_watchdog_completed_handoffs"], 3)
         self.assertEqual(plan["state_dir"], "/var/lib/ccrelay-broker/work")
+        self.assertEqual(plan["diagnosis_schema"], "ccrelay.task_diagnosis.v1")
         for key in ("enabled", "automatic_turns_enabled", "state_changes", "native_calls", "task_limits_configured",
-                    "evidence_verifier_available", "all_writer_verifier_available", "admission_available"):
+                    "evidence_verifier_available", "all_writer_verifier_available", "admission_available",
+                    "diagnosis_guard_activated", "material_verifier_available", "passive_report_bridge_available"):
             self.assertIs(plan[key], False)
         for args in (["--run"], ["--claim", "work-1"], ["--release", "work-1"], ["--plan", "--run"]):
             rejected = subprocess.run([sys.executable, "-I", str(script), *args], capture_output=True, text=True, timeout=5)

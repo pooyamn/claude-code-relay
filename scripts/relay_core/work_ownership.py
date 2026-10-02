@@ -163,9 +163,33 @@ class WorkOwnership(DeliveryLedger):
         threshold = integer(row[0])
         event = self.connection.execute("SELECT body,digest FROM work_history WHERE kind='root' AND id=? AND revision=0", (root_id,)).fetchone()
         original = strict_json(event[0])
-        if fingerprint(original) != event[1] or original["proof"] != {"watchdog_handoffs": threshold}:
+        proof = original["proof"]
+        if fingerprint(original) != event[1] or proof not in ({"watchdog_handoffs": threshold},
+                {"watchdog_handoffs": threshold, "owner_desired_state": "running"}):
             raise Denied("root watchdog policy differs from enrollment")
         return threshold
+
+    def owner_control(self, root_id):
+        """Desired owner control, distinct from a watchdog/recovery hold.
+
+Old history without explicit intent is unknown, not permission for diagnosis.
+"""
+        self.root(root_id)
+        control = {"known": False, "desired_state": "unknown", "epoch": 0}
+        for revision, body, digest in self.connection.execute("SELECT revision,body,digest FROM work_history WHERE kind='root' AND id=? ORDER BY revision", (root_id,)):
+            event = strict_json(body)
+            if fingerprint(event) != digest:
+                raise Denied("root owner-control history differs")
+            proof = event["proof"]
+            if revision == 0 and type(proof) is dict and proof.get("owner_desired_state") == "running":
+                control = {"known": True, "desired_state": "running", "epoch": 0}
+            elif event["reason"] == "root_control_requested":
+                if type(proof) is dict and proof.get("schema") == "ccrelay.root_owner_control.v1" and proof.get("desired_state") in {"running", "paused", "stopped"}:
+                    exact(proof, {"schema", "desired_state", "acceptance"})
+                    control = {"known": True, "desired_state": proof["desired_state"], "epoch": revision}
+                else:
+                    control = {"known": False, "desired_state": "unknown", "epoch": revision}
+        return control
 
     def _save_root(self, record, reason, proof=None, *, initial=False):
         value = record.to_dict()
@@ -190,7 +214,7 @@ class WorkOwnership(DeliveryLedger):
                 return current
             if _deadline(record.fields["limits"]["checkpoint_deadline"]) <= self._clock():
                 raise Denied("new root deadline already expired")
-            self._save_root(record, "root_enrolled", {"watchdog_handoffs": watchdog_handoffs}, initial=True)
+            self._save_root(record, "root_enrolled", {"watchdog_handoffs": watchdog_handoffs, "owner_desired_state": "running"}, initial=True)
         self.checkpoint("after_root_enrollment_commit")
         return record
 
@@ -217,6 +241,9 @@ class WorkOwnership(DeliveryLedger):
                 raise Denied("root charge revision changed")
             self._runnable(root)
             usage = dict(root.fields["usage"])
+            # Preserve the preallocated diagnostic subset of the total budget.
+            if kind == "turn" and usage["turns"] + root.fields["limits"]["diagnoses"] - usage["diagnoses"] >= root.fields["limits"]["turns"]:
+                raise Denied("ordinary turn would consume the root diagnostic reserve")
             counters = ("turns", "diagnoses") if kind == "diagnosis" else ("turns",) if kind == "turn" else ("delegations",)
             for counter in counters:
                 if usage[counter] >= root.fields["limits"][counter]:
@@ -330,9 +357,32 @@ class WorkOwnership(DeliveryLedger):
             self._controller(peer, root.fields["owner_role_id"])
             if self.root(root_id) != root:
                 raise Denied("root control changed during verification")
+            desired = "running" if state == "active" else "paused" if state == "held" else "stopped"
+            control = self.owner_control(root_id)
+            if updated == root and (not control["known"] or control["desired_state"] != desired):
+                updated = decode(dict(root.to_dict(), revision=root.revision + 1))
             if updated != root:
-                self._save_root(updated, "root_control_requested", proof)
+                self._save_root(updated, "root_control_requested", {"schema": "ccrelay.root_owner_control.v1", "desired_state": desired, "acceptance": proof})
         return updated  # Neither terminal state nor owner pause releases writers.
+
+    def set_owner_control(self, peer, root_id, desired_state, *, expected_revision):
+        """Owner intent may resume bounded diagnosis without removing a task hold."""
+        if desired_state not in {"running", "paused", "stopped"}:
+            raise Denied("explicit root owner intent required")
+        with self._transaction():
+            root = self.root(root_id)
+            self._controller(peer, root.fields["owner_role_id"])
+            if root.revision != integer(expected_revision, 0) or root.fields["state"] in {"completed", "cancelled"}:
+                raise Denied("current nonterminal root control required")
+            control = self.owner_control(root_id)
+            if control["known"] and control["desired_state"] == desired_state:
+                return root
+            target = root.fields["state"] if desired_state == "running" else "held" if desired_state == "paused" else "cancelled"
+            updated = transition(root, target, expected_revision=root.revision)
+            if updated == root:
+                updated = decode(dict(root.to_dict(), revision=root.revision + 1))
+            self._save_root(updated, "root_control_requested", {"schema": "ccrelay.root_owner_control.v1", "desired_state": desired_state, "acceptance": None})
+        return updated
 
     def work(self, work_id):
         self._check_lock()
@@ -400,7 +450,7 @@ class WorkOwnership(DeliveryLedger):
             self._save_work(value, "work_enrolled", initial=True)
         return value
 
-    def claim(self, peer, work_id, claim_id, *, expected_revision):
+    def checkout(self, peer, work_id, claim_id, *, expected_revision):
         actor, binding = self._actor(peer)
         identifier(claim_id)
         try:

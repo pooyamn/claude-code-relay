@@ -40,7 +40,7 @@ class OwnershipTests(unittest.TestCase):
                                       dependencies=dependencies or [], assignee_role_id="builder", resource_id=resource)
 
     def claim(self, peer=BUILDER, claim_id="claim-1", work_id="work-1", revision=0):
-        return self.ledger.claim(peer, work_id, claim_id, expected_revision=revision)
+        return self.ledger.checkout(peer, work_id, claim_id, expected_revision=revision)
 
     def charge(self, operation, kind="turn", peer=BUILDER):
         return self.ledger.charge(peer, operation, kind, expected_revision=self.ledger.root("root-builder").revision)
@@ -103,11 +103,11 @@ class OwnershipTests(unittest.TestCase):
         self.assertEqual(second["record"].fields["usage"]["diagnoses"], 1)
         with self.assertRaises(Denied):
             self.charge("turn-1", "diagnosis")
-        for index in range(3):
+        for index in range(2):
             self.charge("extra-" + str(index), peer=OTHER)
         with self.assertRaises(Denied):
             self.charge("over-budget")
-        self.assertEqual(self.ledger.root("root-builder").fields["usage"]["turns"], 5)
+        self.assertEqual(self.ledger.root("root-builder").fields["usage"]["turns"], 4)
 
     def test_three_handoffs_hold_root_across_new_message_chains_and_evidence_is_not_text(self):
         for index in range(3):
@@ -218,7 +218,7 @@ class OwnershipTests(unittest.TestCase):
             with work_fixture(folder) as f:
                 if point == "before_work_state_commit":
                     self.assertIsNone(f.ledger.work("work-1")["binding"])
-                    claimed = f.ledger.claim(OTHER, "work-1", "other-claim", expected_revision=0)
+                    claimed = f.ledger.checkout(OTHER, "work-1", "other-claim", expected_revision=0)
                     self.assertTrue(claimed["claimed_now"])
                     self.assertEqual(claimed["work"]["fencing_token"], 1)
                 elif "claim" in point:
@@ -226,7 +226,7 @@ class OwnershipTests(unittest.TestCase):
                     self.assertIsNotNone(work["binding"])
                     self.assertEqual(work["state"], "held")
                     with self.assertRaises(Denied):
-                        f.ledger.claim(OTHER, "work-1", "other-claim", expected_revision=work["revision"])
+                        f.ledger.checkout(OTHER, "work-1", "other-claim", expected_revision=work["revision"])
                 else:
                     root = f.ledger.root("root-builder")
                     self.assertFalse(f.ledger.charge(BUILDER, "turn-1", "turn", expected_revision=root.revision)["charged_now"])
@@ -244,7 +244,7 @@ class OwnershipTests(unittest.TestCase):
                 f.ledger.enroll_root(CONTROLLER, root_record(f.authority.policy.digest))
                 f.ledger.enroll_work(CONTROLLER, work_id="work-1", root_id="root-builder", criteria=["Gate"], dependencies=[],
                                     assignee_role_id="builder", resource_id="fixture-worktree")
-                f.ledger.claim(BUILDER, "work-1", "claim-1", expected_revision=0)
+                f.ledger.checkout(BUILDER, "work-1", "claim-1", expected_revision=0)
                 if mode == "future":
                     f.ledger.connection.execute("UPDATE work_metadata SET schema='future'")
                 elif mode == "allocator":
