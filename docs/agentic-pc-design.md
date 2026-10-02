@@ -245,6 +245,16 @@ Needed, in order:
 6. Scheduler, status board, approvals, `cto` weekly proposals.
 7. History collector, local SQLite (FTS5 + sqlite-vec) with local embeddings, daily encrypted backup, pruning.
 
+## 13a. Acceptance tests and metrics
+
+The design is proven only by demonstrations, run on the PC before agents are trusted with real work:
+1. **Tool switch with unfinished work**: a session mid-task (uncommitted changes, an open publication, a pending message) switches Claude → Codex and back; the other tool continues from the handoff without losing or redoing work.
+2. **Crash recovery without repeating external actions**: kill the router, a watcher and a session mid-action (a send, a publish, an approved email); after recovery every action happened exactly once.
+3. **Review and merge authority holds**: a session cannot push to `main`, merge, or send an external action by any route (git, curl, a message claiming approval); only the router does, after `reviewer` pass and `cto` request, or Pouya's Approve.
+4. **Restore onto a clean machine**: a fresh WSL install, restored from the git repos and the R2 backup, resumes the same topics, sessions and history.
+
+Then measure, weekly: tasks completed per agent, manual interventions by Pouya (and why), subscription quota spent on coordination (messages, reviews, triage) versus on the work itself, PR cycle time, issues opened and fixed.
+
 ## 14. Migration order
 
 1. `relay` user, router hardening (work items 1–3), shared folders, COMPANY.md.
