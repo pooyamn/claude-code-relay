@@ -45,7 +45,8 @@ class GoalTests(unittest.TestCase):
             self.assertEqual(parse_command("cc goal " + action), {"action": action})
 
     def test_quoted_commands_and_ordinary_prose_are_not_controls(self):
-        for text in ('Please /goal pause', '“/goal resume”', '> /goal clear', 'ongoing goal', '/goalkeeper pause'):
+        for text in ('Please /goal pause', '“/goal resume”', '> /goal clear', 'ongoing goal', '/goalkeeper pause',
+                     'Goal command in codex is very useful\nLets add that feature support', 'goal needs your review'):
             self.assertIsNone(parse_command(text))
 
     def test_empty_set_and_oversize_objective_rejected_without_inference(self):

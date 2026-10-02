@@ -13,7 +13,7 @@ import threading
 import uuid
 
 
-COMMAND = re.compile(r"^\s*(?:/|/?cc\s+)?goal(?:@(?P<bot>\w+))?(?:\s+(?P<argument>[\s\S]*))?\s*$", re.I)
+COMMAND = re.compile(r"^\s*(?:/|/?cc\s+)goal(?:@(?P<bot>\w+))?(?:\s+(?P<argument>[\s\S]*))?\s*$", re.I)
 STATUSES = {"active", "paused", "blocked", "usageLimited", "budgetLimited", "complete"}
 HELP = "Use /goal <objective>, /goal pause, /goal resume, /goal status or /goal clear."
 
