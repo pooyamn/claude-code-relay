@@ -21,7 +21,7 @@ class AdmissionPlanTests(unittest.TestCase):
         self.assertEqual(plan["work_state_dir"], "/var/lib/ccrelay-broker/work")
         for key in ("enabled", "automatic_turns_enabled", "state_changes", "native_calls", "quota_calls", "pacing_values_configured",
                     "all_source_fence_available", "quota_adapter_available", "source_verifier_available", "stop_verifier_available",
-                    "capacity_retry_activated", "capacity_verifier_available"):
+                    "capacity_retry_activated", "capacity_verifier_available", "diagnostic_admission_activated"):
             self.assertIs(plan[key], False)
         for args in (["--run"], ["--claim", "turn-1"], ["--plan", "--run"]):
             rejected = subprocess.run([sys.executable, "-I", str(path), *args], capture_output=True, text=True, timeout=5)

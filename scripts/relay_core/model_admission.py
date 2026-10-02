@@ -88,6 +88,23 @@ def receipt_body(receipt):
     return body
 
 
+def validate_request(request):
+    exact(request, {"id", "session_id", "provider", "account_id", "model_id", "native_session_id", "runtime_digest", "adapter_digest", "origin", "estimated_units"})
+    for key in ("id", "session_id", "account_id"):
+        identifier(request[key])
+    for key in ("provider", "model_id", "native_session_id"):
+        if type(request[key]) is not str or not 1 <= len(request[key]) <= 256:
+            raise Denied("exact pinned provider/model/native identity required")
+    for key in ("runtime_digest", "adapter_digest"):
+        _digest(request[key])
+    if type(request["origin"]) is not str or request["origin"] not in ORIGINS or type(request["estimated_units"]) is not dict or not 1 <= len(request["estimated_units"]) <= 16:
+        raise Denied("known source and finite per-window conservative estimates required")
+    for key, value in request["estimated_units"].items():
+        identifier(key)
+        integer(value)
+    return strict_json(canonical_bytes(request))
+
+
 class ModelAdmission:
     def __init__(self, ledger, policy, *, verify_source, observe_activity, observe_quota, verify_stop):
         if type(ledger) is not WorkOwnership or type(policy) is not PacingPolicy or not all(
@@ -179,19 +196,7 @@ class ModelAdmission:
         return binding
 
     def enqueue(self, peer, request):
-        exact(request, {"id", "session_id", "provider", "account_id", "model_id", "native_session_id", "runtime_digest", "adapter_digest", "origin", "estimated_units"})
-        for key in ("id", "session_id", "account_id"):
-            identifier(request[key])
-        for key in ("provider", "model_id", "native_session_id"):
-            if type(request[key]) is not str or not 1 <= len(request[key]) <= 256:
-                raise Denied("exact pinned provider/model/native identity required")
-        for key in ("runtime_digest", "adapter_digest"):
-            _digest(request[key])
-        if type(request["origin"]) is not str or request["origin"] not in ORIGINS or type(request["estimated_units"]) is not dict or not 1 <= len(request["estimated_units"]) <= 16:
-            raise Denied("known source and finite per-window conservative estimates required")
-        for key, value in request["estimated_units"].items():
-            identifier(key)
-            integer(value)
+        request = validate_request(request)
         binding = self._binding(peer, request["session_id"])
         root = self.ledger.root(binding["root_task_id"])
         fields = {"id": request["id"], "root_task_id": root.id, "requested_by_session_id": binding["session_id"], "action_kind": "model_turn", "parameters": request}
@@ -204,39 +209,57 @@ class ModelAdmission:
             result = self.ledger._enroll(action, {"schema": SCHEMA, "binding": binding, "deadline": root.fields["limits"]["checkpoint_deadline"]})
         return result
 
-    def _scope(self, peer, intent_id, attempt_id, plan):
+    def _scope(self, peer, intent_id, attempt_id, plan, diagnoses=None):
         current = self.ledger.load(identifier(intent_id))
-        if current is None or current["record"].fields.get("action_kind") != "model_turn" or current["context"].get("schema") != SCHEMA:
+        if current is None:
             raise Denied("enrolled model intent required")
         action = current["record"]
+        diagnostic = action.fields.get("action_kind") == "diagnostic_turn"
+        if diagnostic:
+            from .task_diagnosis import SCHEMA as DIAGNOSIS_SCHEMA, TaskDiagnoses
+            if type(diagnoses) is not TaskDiagnoses or diagnoses.ledger is not self.ledger or \
+                    current["context"].get("schema") != DIAGNOSIS_SCHEMA or "model_request" not in current["context"]:
+                raise Denied("same-ledger diagnostic guard and pinned model request required")
+            request = validate_request(current["context"]["model_request"])
+            if (request["id"], request["session_id"]) != (action.id, action.fields["requested_by_session_id"]):
+                raise Denied("diagnostic model request differs from its original intent/target")
+            if action.fields["attempt_id"] is None:
+                diagnoses.validate_action(peer, intent_id)
+        else:
+            if action.fields.get("action_kind") != "model_turn" or current["context"].get("schema") != SCHEMA or diagnoses is not None:
+                raise Denied("enrolled model intent required")
+            request = action.to_dict()["parameters"]
         validate_plan(plan, action)
         binding = self._binding(peer, action.fields["requested_by_session_id"])
-        request = action.fields["parameters"]
-        if binding != current["context"]["binding"] or plan["parameters"] != request or plan["target"] != {
+        if binding != current["context"]["binding"] or plan["parameters"] != action.fields["parameters"] or plan["target"] != {
                 "session_id": binding["session_id"], "binding_digest": fingerprint(binding), "provider": request["provider"],
                 "account_id": request["account_id"], "model_id": request["model_id"], "native_session_id": request["native_session_id"],
                 "runtime_digest": request["runtime_digest"], "adapter_digest": request["adapter_digest"]}:
             raise Denied("model plan differs from the exact source/account/runtime binding")
         root = self.ledger.root(action.fields["root_task_id"])
         return current, {"action": action.to_dict(), "attempt_id": identifier(attempt_id), "plan": plan, "root": root.to_dict(),
-                         "binding": binding, "context": current["context"], "owner_control": self.ledger.owner_control(root.id), "policy_digest": fingerprint(self.policy.body())}
+                         "binding": binding, "context": current["context"], "model_request": request, "diagnostic": diagnostic,
+                         "owner_control": self.ledger.owner_control(root.id), "policy_digest": fingerprint(self.policy.body())}
 
     def _wait(self, action, reason, now, eligible=None):
         body = {"intent_id": action.id, "reason": reason, "observed_ms": now, "next_eligible_ms": eligible,
-                "deadline": self.ledger.load(action.id)["context"]["deadline"], "meaning": "no_execution_or_budget_charge"}
+                "deadline": action.fields["parameters"]["deadline"] if action.fields["action_kind"] == "diagnostic_turn" else self.ledger.load(action.id)["context"]["deadline"],
+                "meaning": "no_execution_or_budget_charge"}
         self.ledger.connection.execute("INSERT OR REPLACE INTO model_waits VALUES (?,?,?)", (action.id, canonical_bytes(body), fingerprint(body)))
         return {"may_execute": False, "state": "waiting", **body}
 
-    def claim(self, peer, intent_id, attempt_id, plan, *, expected_revision):
+    def claim(self, peer, intent_id, attempt_id, plan, *, expected_revision, diagnoses=None):
         self._check()
-        current, scope = self._scope(peer, intent_id, attempt_id, plan)
+        current, scope = self._scope(peer, intent_id, attempt_id, plan, diagnoses)
         action = current["record"]
+        request, diagnostic = scope["model_request"], scope["diagnostic"]
+        deadline = action.fields["parameters"]["deadline"] if diagnostic else current["context"]["deadline"]
         if action.fields["attempt_id"] is not None:
             return self.ledger.claim(intent_id, attempt_id, plan, expected_revision=expected_revision)
         from .capacity_journal import admission_gate
         with self.ledger._transaction():
             now = self.ledger._clock()
-            eligible = admission_gate(self.ledger, current, now)
+            eligible = admission_gate(self.ledger, current, now, request=request)
             if now < eligible:
                 return self._wait(action, "shared_capacity_wait", now, eligible)
         observer_input = strict_json(canonical_bytes(scope))
@@ -244,23 +267,23 @@ class ModelAdmission:
         activity = self.observe_activity(strict_json(canonical_bytes(observer_input)))
         quota = self.observe_quota(strict_json(canonical_bytes(observer_input)))
         digest = fingerprint(scope)
-        if type(source) is not SourceReceipt or source.scope_digest != digest or source.origin != action.fields["parameters"]["origin"] or \
+        if type(source) is not SourceReceipt or source.scope_digest != digest or source.origin != request["origin"] or \
                 type(source.owner_requested) is not bool or type(source.owner_reserve_granted) is not bool:
             raise Denied("independent current source/owner grant required")
         _digest(source.source_digest)
-        if current["context"].get("capacity_retry") is not None and source.owner_requested:
-            raise Denied("automatic retry is not a fresh owner request; explicit reserve grant required")
+        if (diagnostic or current["context"].get("capacity_retry") is not None) and source.owner_requested:
+            raise Denied("automatic diagnosis/retry is not a fresh owner request; explicit reserve grant required")
         with self.ledger._transaction():
-            if self._scope(peer, intent_id, attempt_id, plan)[1] != scope:
+            if self._scope(peer, intent_id, attempt_id, plan, diagnoses)[1] != scope:
                 raise Denied("root, intent or authority changed during admission observations")
             now = self.ledger._clock()
-            eligible = admission_gate(self.ledger, current, now)
+            eligible = admission_gate(self.ledger, current, now, request=request)
             if now < eligible:
                 return self._wait(action, "shared_capacity_wait", now, eligible)
             root = self.ledger.root(action.fields["root_task_id"])
             control = scope["owner_control"]
-            if root.fields["state"] not in {"open", "active"} or not control["known"] or control["desired_state"] != "running" or \
-                    _deadline(current["context"]["deadline"]) <= now or root.fields["usage"]["no_progress_handoffs"] >= self.ledger.threshold(root.id):
+            if root.fields["state"] not in ({"held"} if diagnostic else {"open", "active"}) or not control["known"] or control["desired_state"] != "running" or \
+                    _deadline(deadline) <= now or not diagnostic and root.fields["usage"]["no_progress_handoffs"] >= self.ledger.threshold(root.id):
                 return self._wait(action, "root_held_or_expired", now)
             if type(activity) is not ActivityReceipt or activity.scope_digest != digest or activity.pre_turn_fenced is not True or \
                     type(activity.active_sessions) is not tuple or len(activity.active_sessions) != len(set(activity.active_sessions)) or \
@@ -275,7 +298,6 @@ class ModelAdmission:
                 return self._wait(action, "session_busy", now)
             if len(active) >= 3:
                 return self._wait(action, "global_activity_cap", now)
-            request = action.fields["parameters"]
             if type(quota) is not QuotaReceipt or quota.scope_digest != digest or quota.complete is not True or \
                     (quota.provider, quota.account_id, quota.model_id) != (request["provider"], request["account_id"], request["model_id"]) or \
                     not now - self.policy.quota_max_age_ms <= integer(quota.observed_ms, 0) <= now or \
@@ -327,19 +349,21 @@ class ModelAdmission:
             if not source.owner_requested and now < eligible:
                 return self._wait(action, "account_pacing_wait", now, eligible)
             usage, limits = dict(root.fields["usage"]), root.fields["limits"]
-            if usage["turns"] + limits["diagnoses"] - usage["diagnoses"] >= limits["turns"]:
+            budget_hit = (usage["turns"] >= limits["turns"] or usage["diagnoses"] >= limits["diagnoses"]) if diagnostic else \
+                usage["turns"] + limits["diagnoses"] - usage["diagnoses"] >= limits["turns"]
+            if budget_hit:
                 return self._wait(action, "root_execution_budget", now)
             claimed = transition(action, "delivering", expected_revision=expected_revision, attempt_id=attempt_id,
                                  authorization_id=plan["authorization_id"])
             if action.fields["state"] != "stored" or current["hold_reason"] is not None:
                 raise Denied("unsubmitted unheld model intent required")
-            if self._scope(peer, intent_id, attempt_id, plan)[1] != scope:
+            if self._scope(peer, intent_id, attempt_id, plan, diagnoses)[1] != scope:
                 raise Denied("admission scope changed before attempt commit")
             final_now = self.ledger._clock()
-            if _deadline(current["context"]["deadline"]) <= final_now or any(window.reset_ms <= final_now for window in windows.values()) or \
+            if _deadline(deadline) <= final_now or any(window.reset_ms <= final_now for window in windows.values()) or \
                     final_now - activity.observed_ms > self.policy.activity_max_age_ms or final_now - quota.observed_ms > self.policy.quota_max_age_ms:
                 return self._wait(action, "admission_observation_expired", final_now)
-            eligible = admission_gate(self.ledger, current, final_now)
+            eligible = admission_gate(self.ledger, current, final_now, request=request)
             if final_now < eligible:
                 return self._wait(action, "shared_capacity_wait", final_now, eligible)
             self._save_account(quota.provider, quota.account_id, now if not source.owner_requested else account["last_auto_ms"] if account else None,
@@ -351,7 +375,12 @@ class ModelAdmission:
             self._save_attempt(row)
             root = self.ledger.root(action.fields["root_task_id"])
             usage = {**root.fields["usage"], "turns": root.fields["usage"]["turns"] + 1}
-            self.ledger._save_root(transition(root, "active", expected_revision=root.revision, usage=usage), "model_attempt_admitted", {"attempt_id": attempt_id, "source": asdict(source)})
+            if diagnostic:
+                usage["diagnoses"] += 1
+            updated = transition(root, "held" if diagnostic else "active", expected_revision=root.revision, usage=usage)
+            self.ledger._save_root(updated, "diagnostic_attempt_admitted" if diagnostic else "model_attempt_admitted", {"attempt_id": attempt_id, "source": asdict(source)})
+            if diagnostic:
+                diagnoses._notice(updated, scope["binding"], action.fields["parameters"]["material_digest"], "diagnosis_attempted", action.id)
             self.ledger.connection.execute("DELETE FROM model_waits WHERE intent_id=?", (action.id,))
             self.ledger.checkpoint("before_model_admission_commit")
         self.ledger.checkpoint("after_model_admission_commit")

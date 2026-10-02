@@ -16,12 +16,12 @@ def stalled_root(fixture):
                                      expected_revision=charged["record"].revision)
 
 
-def diagnoses(fixture):
+def diagnoses(fixture, *, model_admission=None):
     def inspect(snapshot):
         # Invented stable blocker/wait facts, NOT observed operation provenance.
         return MaterialReceipt("synthetic-observation", fingerprint(snapshot), fingerprint({"synthetic_blocker": "unchanged"}),
                                fingerprint({"synthetic_wait": "none"}), "no_progress", True, False)
-    return TaskDiagnoses(fixture.ledger, inspect_material=inspect)
+    return TaskDiagnoses(fixture.ledger, inspect_material=inspect, model_admission=model_admission)
 
 
 def diagnostic_plan(guard, action):

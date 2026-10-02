@@ -26,6 +26,30 @@ Ordinary turns preserve the root's diagnostic subset. Expected revisions and
 fresh root/control/binding checks reject paused, revoked, changed or expired work.
 An attempted/unknown intent never obtains another execution grant on replay.
 
+## Joined diagnostic admission
+
+`TaskDiagnoses` can use `ModelAdmission` only on the exact same protected ledger.
+Preparation pins explicit provider/account/model, native identity, runtime/adapter,
+source and per-window estimates into the original diagnostic intent's sealed
+context. Repeated preparation cannot change that metadata or create another
+intent for the same material state. Older proposals without these fields are
+held for reviewed integration, not silently converted into fresh model work.
+
+The original diagnosis passes the common source, activity, quota, pacing and
+cooldown gates. Current material, owner-control epoch, binding and deadline are
+rechecked before execution. One commit advances its existing outbox attempt,
+reserves account/window capacity and an activity lease, charges one turn and one
+diagnosis, and enrolls its passive attempted report. Waits spend neither counter.
+The root stays held; diagnosis/input acceptance is not recovered task progress,
+and stop evidence is still required before releasing the activity lease.
+
+When the shared admission component exists, the standalone diagnostic-receipt
+callback cannot authorize a new attempt. Automatic diagnoses cannot claim the
+fresh-owner-request pacing/reserve bypass; only a separately verified action grant
+permits reserve use. This prepares the transaction bridge, not real task readers,
+diagnostic prompt/native dispatch, result application or report delivery. Those
+protected producer/runtime paths remain required before activation.
+
 ## Activity leases and verified stops
 
 Admission counts the union of retained leases and independently observed activity
@@ -115,7 +139,9 @@ provenance and authenticated runtime mappings. Unknown component versions are
 refused before root recovery; changed pacing or retry policies require reviewed
 migration. Compatible readers must preserve held leases, unknown attempts,
 cooldowns, retry history, pacing and estimates. An older reader that lacks the
-admission boundary is not an authorized runtime. Joined encrypted clean-target restore is
+admission boundary is not an authorized runtime. Include sealed diagnostic model
+requests and original diagnostic/report intents in the same cohort; there is no
+separate diagnostic quota store. Joined encrypted clean-target restore is
 still pending; these tables are not a complete disaster-recovery implementation.
 
 ## Verification and remaining gates
@@ -142,9 +168,20 @@ Cancellation during a quota probe and elapsed expiry at the final admission cloc
 cannot obtain another attempt or root charge. This is a focused regression run,
 not a new full-suite milestone; all source/provider observations remain synthetic.
 
+The joined diagnostic preparation adds 16 cases covering the same-ledger boundary,
+once-only counters/leases, finite diagnostic allowance, metadata/plan drift,
+standalone bypass refusal, shared cap/pacing/cooldowns, missing quota, owner
+reserve, stop evidence and material/control races. Two actual process deaths
+straddle the common commit: all diagnosis/outbox/account/slot changes roll back
+before commit or survive together as held/unknown afterward, without replay.
+The clean staged-source run passed all 758 core tests in 190 serial sandbox
+batches, the isolation probe and all four legacy suites. The strict staged secret
+scan passed. These observations remain synthetic and do not establish real native
+dispatch, protected PC fencing or target acceptance.
+
 Remaining integration includes protected owner/company grants, real all-source
 native pre-turn controls and quiescence, compatible subscription/window adapters,
 owner-priority dispatch, bounded missing-telemetry estimates, the passive status
-bridge, joined diagnostic admission, real capacity/native-retry classification,
+bridge, protected diagnostic producers/current result application, real capacity/native-retry classification,
 steering and checkpoint-continuation adapters, and encrypted target restore.
 Existing native sessions, bots, credentials and services remain unchanged.

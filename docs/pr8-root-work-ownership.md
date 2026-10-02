@@ -68,7 +68,14 @@ turns. Quota or pacing waits do not spend a turn or count as progress. After
 mandatory admission, the exact outbox claim atomically charges one root turn and
 one diagnosis and records the attempted report. Exact attempt replay grants no
 execution; ambiguous submission remains unknown and is never automatically retried.
-The real activity/quota/pacing scheduler is unavailable, so no model is dispatched.
+The [PR 9 shared admission bridge](pr9-model-admission.md#joined-diagnostic-admission)
+now prepares that claim on the same ledger, retaining the original diagnosis
+intent. Explicit model/native/source/estimate metadata is sealed at preparation;
+an old proposal lacking it cannot be silently dispatched. The common transaction
+joins root charges, outbox attempt, activity lease and account reservation. Once
+shared admission is enrolled, standalone diagnostic receipts cannot bypass it.
+Real task/provider/fence readers and native dispatch remain unavailable, so no
+live model is dispatched.
 
 Owner desired state and its control epoch are separate from a watchdog/recovery
 hold. Pausing an already-held root is recorded and blocks old proposals. Explicit
@@ -180,13 +187,16 @@ receipts in these tests are synthetic, not real task/provider observations.
 
 The diagnosis preparation passed 324 focused root/work, diagnosis, contract,
 identity, outbox, artifact, isolation and native/transport checks from a clean
-staged-source export in 81 serial sandbox batches. The subsequent
-[PR 9 milestone](pr9-model-admission.md) passed all 724 core tests and all four
-legacy suites. These results do not establish target/native acceptance.
+staged-source export in 81 serial sandbox batches. The preceding shared-admission
+milestone (`c75bfe4`) passed all 724 core tests and all four legacy suites.
+The joined diagnostic bridge adds 16 cases and two real shared-commit deaths;
+the current [PR 9 milestone](pr9-model-admission.md) passed all 758 core tests,
+the isolation probe and all four legacy suites. These results do not establish
+target/native acceptance.
 
 PR 8 remains in preparation. Real protected root creation/inherited dispatch,
 resource inventory and writer fences, criteria/result provenance, diagnostic
 material/wait readers and passive delivery, external-action/publication fencing,
-company context,
-PR 9 admission and joined target restore still need integration. No live bot,
-native session, credential, service or scheduler changed.
+company context, real PR 9 producer/native admission and joined target restore
+still need integration. No live bot, native session, credential, service or
+scheduler changed.

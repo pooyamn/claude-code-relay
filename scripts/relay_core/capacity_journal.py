@@ -67,7 +67,7 @@ def failure_row(ledger, failure_id):
     return body
 
 
-def admission_gate(ledger, current, now):
+def admission_gate(ledger, current, now, *, request=None):
     """Necessary current retry/cooldown check; never an execution authorization."""
     present = ledger.connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='capacity_metadata'").fetchone()
     linked = current["context"].get("capacity_retry")
@@ -94,7 +94,7 @@ def admission_gate(ledger, current, now):
                 source is None or source["record"].fields["state"] != "failed" or \
                 source["record"].fields["outcome_evidence_id"] != proof["receipt"]["evidence_id"] or job["binding"] != current["context"]["binding"]:
             raise Denied("replacement lacks current exact negative/no-native-retry evidence")
-    params = current["record"].fields["parameters"]
+    params = current["record"].fields["parameters"] if request is None else request
     until = 0
     for pool, model, eligible, body, digest in ledger.connection.execute(
             "SELECT pool,model_id,eligible_ms,body,digest FROM capacity_cooldowns WHERE provider=? AND account_id=?", (params["provider"], params["account_id"])):

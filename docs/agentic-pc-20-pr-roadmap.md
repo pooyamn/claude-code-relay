@@ -8,7 +8,7 @@ Build testable security and delivery foundations first. Introduce the builder wi
 
 Pouya requested sequential implementation for PC readiness and authorized committing and pushing verified changes. Repository publication is separate from deployment. A separately authorized legacy Mac Khadang test release is active; no GitHub PRs, protected PC capabilities, credential changes or production/HamalBot migration have been performed by this implementation run. Local implementation/test evidence is distinct from target-PC acceptance. Unrelated uncommitted edits and runtime/media files are excluded from this series.
 
-PR 1 is locally implemented. PRs 2–5 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel/runtime integration still pending; evidence and limits are recorded below. PR 6's outbound foundation, bounded format/media repair, receipt-bound owner-prompt bridge, current source-grant dispatch and Telegram-local recovery are prepared offline; real protected producer/context wiring and target integration remain pending. PR 7's native registry, launch-bundle, worker-UID worktree and context-installation foundations are prepared as dependencies for that wiring, without completing PR 6 or its own native/launcher gates. PR 8's durable root/work custody and bounded-diagnosis guard are prepared offline, without granting activity slots or completing real evidence/admission/report/controller integration. PR 9's shared admission/account-pacing ledger and durable capacity-retry linkage are prepared offline; real all-source native enforcement, quota/source/stop readers, diagnostic admission, native retry/steering/continuation adapters and target acceptance remain pending. PRs 10–20 remain to be implemented, apart from separately requested early preparations noted below. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
+PR 1 is locally implemented. PRs 2–5 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel/runtime integration still pending; evidence and limits are recorded below. PR 6's outbound foundation, bounded format/media repair, receipt-bound owner-prompt bridge, current source-grant dispatch and Telegram-local recovery are prepared offline; real protected producer/context wiring and target integration remain pending. PR 7's native registry, launch-bundle, worker-UID worktree and context-installation foundations are prepared as dependencies for that wiring, without completing PR 6 or its own native/launcher gates. PR 8's durable root/work custody and bounded-diagnosis guard are prepared offline, without granting activity slots or completing real evidence/admission/report/controller integration. PR 9's shared admission/account-pacing ledger, diagnostic transaction bridge and durable capacity-retry linkage are prepared offline; real all-source native enforcement, quota/source/stop readers, protected diagnostic producers/results, native retry/steering/continuation adapters and target acceptance remain pending. PRs 10–20 remain to be implemented, apart from separately requested early preparations noted below. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
 
 ## Existing code to extend
 
@@ -378,7 +378,7 @@ only an admitted attempt charges execution. Ordinary turns preserve the diagnost
 subset. Owner pause on an already-held root persists independently of its task
 hold, and stale/unknown results cannot authorize continuation. Seventeen diagnosis
 cases include four actual reservation/attempt process deaths. The task/wait and
-admission facts are synthetic; real readers, PR 9 scheduling, current result
+admission facts are synthetic; real readers, PR 9 native scheduling, current result
 enforcement and the PR 6 report bridge remain unavailable. This creates no model
 turn, Telegram message, automatic repair or new SQL schema.
 
@@ -409,7 +409,7 @@ grant. Pacing/quota waits charge no turn, and retained activity/quota estimates
 survive restart until exact stop/coverage evidence permits release. Twenty-four
 admission and two planner cases include two actual transaction-boundary deaths.
 Observer facts are synthetic; real pre-turn fences, provider provenance, owner
-priority, missing-telemetry estimates, diagnostic admission, native retry adapters,
+priority, missing-telemetry estimates, diagnostic producers/results, native retry adapters,
 passive reports
 and target restore remain pending. `ccrelay_admission.py --plan` stays disabled,
 with numerical pacing choices unset. [Admission evidence and recovery](pr9-model-admission.md).
@@ -433,6 +433,21 @@ passed within 386 clean-staged focused checks in 97 serial sandbox batches.
 The final admission clock also rejects a retry whose elapsed deadline crosses
 after the initial checks, without spending execution budget. This is focused
 offline evidence, not a new full-suite or target-PC acceptance milestone.
+
+Joined diagnostic preparation: the original diagnostic intent pins its model,
+native/source and finite estimate metadata. `TaskDiagnoses` uses the same
+`ModelAdmission` ledger to commit its attempt, account/slot reservation, turn and
+diagnosis charges, and passive report together. Normal turns still preserve the
+diagnostic subset; diagnoses still obey quota, pacing, shared cooldowns and the
+three-session cap. Standalone receipts cannot bypass an enrolled scheduler.
+Current material/control/binding are rechecked before execution; a successful
+input does not clear the task hold or prove stopped tools. Real protected
+producers, native dispatch, result application and report delivery remain gates.
+Sixteen joined cases include two actual shared-commit deaths. The clean
+staged-source run passed all 758 core tests in 190 serial sandbox batches,
+the isolation probe and all four legacy suites, with no host credentials/network
+or increased timeouts. The strict staged secret scan passed. This is regression
+evidence, not proof of real provider/native or target-PC acceptance.
 
 ## PR 10 Verified tool switch and interrupted recovery
 

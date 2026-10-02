@@ -35,11 +35,12 @@ def plan():
             "pacing_values_configured": all(cfg[key] is not None for key in ("minimum_gap_ms", "quota_max_age_ms", "activity_max_age_ms")),
             "all_source_fence_available": False, "quota_adapter_available": False, "source_verifier_available": False, "stop_verifier_available": False,
             "capacity_journal_schema": CAPACITY_SCHEMA, "capacity_retry_activated": False, "capacity_verifier_available": False,
+            "diagnostic_admission_activated": False,
             "pending": ["protected owner/company source grants and task/native controller integration",
                         "all-source native-app/goal pre-turn fence and independently observed tool quiescence",
                         "pinned account/model/window quota provenance and explicit pacing/estimate policy",
                         "owner-priority dispatch, bounded missing-telemetry estimates and passive status bridge",
-                        "joined diagnostic admission and real capacity/steering/continuation/native-retry adapters",
+                        "protected diagnostic producers/results and real capacity/steering/continuation/native-retry adapters",
                         "joined encrypted recovery, distinct-UID WSL and real provider acceptance"]}
 
 

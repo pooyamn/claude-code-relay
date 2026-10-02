@@ -7,10 +7,10 @@ def scheduler(fixture):
     now = lambda: fixture.clock[0]
     return ModelAdmission(fixture.ledger, PacingPolicy(100, 60000, 1000),
         verify_source=lambda scope: SourceReceipt(fingerprint(scope), fingerprint({"synthetic_source": True}),
-                                                  scope["action"]["parameters"]["origin"], False, False),
+                                                  scope["model_request"]["origin"], False, False),
         observe_activity=lambda scope: ActivityReceipt(fingerprint(scope), fingerprint({"synthetic_fence_not_kernel": True}), now(), (), True),
         observe_quota=lambda scope: QuotaReceipt(fingerprint(scope), fingerprint({"synthetic_quota_not_provider": True}),
-            scope["action"]["parameters"]["provider"], scope["action"]["parameters"]["account_id"], scope["action"]["parameters"]["model_id"],
+            scope["model_request"]["provider"], scope["model_request"]["account_id"], scope["model_request"]["model_id"],
             now(), (QuotaWindow("window-1", "account", 100, 0, 1790966400000 + 100000, ()),), True),
         verify_stop=lambda row: StopReceipt(fingerprint(row), fingerprint({"synthetic_tools_not_real_stop": True}), True, True))
 
@@ -24,8 +24,8 @@ def request(key="turn-1", session="builder.task", *, account="shared-account", o
 
 def plan(ledger, action):
     binding = ledger.load(action.id)["context"]["binding"]
-    params = action.to_dict()["parameters"]
+    params = ledger.load(action.id)["context"].get("model_request", action.to_dict()["parameters"])
     return {"schema": "ccrelay.delivery_plan.v1", "intent_id": action.id, "intent_digest": action.fields["intent_digest"],
             "adapter_id": "synthetic-model-adapter", "authorization_id": "synthetic-model-grant",
-            "parameters": params, "target": {"session_id": binding["session_id"], "binding_digest": fingerprint(binding),
+            "parameters": action.to_dict()["parameters"], "target": {"session_id": binding["session_id"], "binding_digest": fingerprint(binding),
                 **{key: params[key] for key in ("provider", "account_id", "model_id", "native_session_id", "runtime_digest", "adapter_digest")}}}

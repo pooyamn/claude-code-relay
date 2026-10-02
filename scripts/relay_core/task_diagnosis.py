@@ -34,11 +34,16 @@ class DiagnosticAdmission:
 
 
 class TaskDiagnoses:
-    def __init__(self, ledger, *, inspect_material, admit_attempt=None):
+    def __init__(self, ledger, *, inspect_material, admit_attempt=None, model_admission=None):
         if type(ledger) is not WorkOwnership or not callable(inspect_material):
             raise Denied("protected work ledger and independent material/wait observer required")
         self.ledger, self.inspect_material = ledger, inspect_material
         self.admit_attempt = admit_attempt  # Absent scheduler means no executable attempt.
+        if model_admission is not None:
+            from .model_admission import ModelAdmission
+            if type(model_admission) is not ModelAdmission or model_admission.ledger is not ledger:
+                raise Denied("diagnosis and shared admission must own the exact same ledger")
+        self.model_admission = model_admission
 
     def _reservations(self, root_id):
         return sum(self.ledger.load(intent_id)["record"].fields["action_kind"] == "diagnostic_turn" for (intent_id,) in
@@ -103,7 +108,7 @@ class TaskDiagnoses:
                                     "meaning": "pending_protected_owner_report_not_sent"})
         return notice_id
 
-    def prepare(self, peer, root_id, target_session_id, *, expected_revision):
+    def prepare(self, peer, root_id, target_session_id, *, expected_revision, model_request=None):
         snapshot = self._snapshot(root_id)
         root = self.ledger.root(root_id)
         self.ledger._controller(peer, root.fields["owner_role_id"])
@@ -124,6 +129,14 @@ class TaskDiagnoses:
             # the historical/logical session reference is NOT actor authority.
             binding, target_current = {"session_id": identifier(target_session_id)}, False
         diagnosis_id = "diagnosis-" + fingerprint({"root": root_id, "material": material_digest})[7:]
+        pinned_request = None
+        if model_request is not None:
+            from .model_admission import validate_request
+            if type(model_request) is not dict or "id" in model_request:
+                raise Denied("diagnostic model metadata omits id; the original diagnosis owns its identity")
+            pinned_request = validate_request({"id": diagnosis_id, **model_request})
+            if pinned_request["session_id"] != target_session_id:
+                raise Denied("diagnostic model metadata targets another session")
         with self.ledger._transaction():
             if self._snapshot(root_id) != snapshot or target_current and self._target(peer, root, target_session_id, platform_bug=receipt.platform_bug) != binding:
                 raise Denied("root, ownership or control changed during material verification")
@@ -151,6 +164,8 @@ class TaskDiagnoses:
             if prior is not None:
                 if prior["context"].get("binding") != binding:
                     raise Denied("same-material diagnosis cannot silently move to a new execution")
+                if pinned_request is not None and prior["context"].get("model_request") != pinned_request:
+                    raise Denied("same-material diagnosis cannot replace pinned model metadata")
                 return {"state": prior["record"].fields["state"], "prepared_now": False, "diagnosis_id": diagnosis_id}
             reservations = self._reservations(root_id)
             phase = "diagnostic_budget_exhausted" if usage["diagnoses"] >= limits["diagnoses"] or usage["turns"] >= limits["turns"] else \
@@ -165,8 +180,11 @@ class TaskDiagnoses:
             parameters = {"diagnosis_id": diagnosis_id, "material_digest": material_digest, "binding_digest": fingerprint(binding),
                           "owner_control_epoch": snapshot["owner_control"]["epoch"], "deadline": limits["checkpoint_deadline"]}
             action = self._action(diagnosis_id, root, binding["session_id"], "diagnostic_turn", parameters)
-            self.ledger._enroll(action, {"schema": SCHEMA, "policy_digest": self.ledger.policy_digest,
-                                       "binding": binding, "material_observation": asdict(receipt), "budget_reservation": {"turns": 1, "diagnoses": 1}})
+            context = {"schema": SCHEMA, "policy_digest": self.ledger.policy_digest,
+                       "binding": binding, "material_observation": asdict(receipt), "budget_reservation": {"turns": 1, "diagnoses": 1}}
+            if pinned_request is not None:
+                context["model_request"] = pinned_request
+            self.ledger._enroll(action, context)
             if held != root:
                 self.ledger._save_root(held, "diagnostic_capacity_reserved", {"diagnosis_id": diagnosis_id, "material_digest": material_digest})
             notice_id = self._notice(held, binding, material_digest, "diagnosis_requested", diagnosis_id)
@@ -176,9 +194,13 @@ class TaskDiagnoses:
                 "meaning": "budget_reserved_not_model_admitted"}
 
     def claim_attempt(self, peer, diagnosis_id, attempt_id, plan, *, expected_revision):
+        if self.model_admission is not None:
+            return self.model_admission.claim(peer, diagnosis_id, attempt_id, plan, expected_revision=expected_revision, diagnoses=self)
         current = self.ledger.load(identifier(diagnosis_id))
         if current is not None and current["record"].fields["attempt_id"] is not None:
             return self.ledger.claim(diagnosis_id, attempt_id, plan, expected_revision=expected_revision)
+        if self.ledger.connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='model_metadata'").fetchone():
+            raise Denied("joined model admission is installed; standalone diagnostic receipts cannot bypass it")
         if not callable(self.admit_attempt):
             raise Denied("actual all-source activity/quota/pacing admission required; reservation is not execution")
         action = self.validate_action(peer, diagnosis_id)
