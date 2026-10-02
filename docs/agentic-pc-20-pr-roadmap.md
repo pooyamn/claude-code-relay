@@ -6,9 +6,9 @@ Build testable security and delivery foundations first. Introduce the builder wi
 
 ## Execution status
 
-Pouya requested sequential implementation for PC readiness and authorized committing and pushing verified changes. Repository publication is separate from deployment: no GitHub PRs, live deployments, credential changes or migration have been performed by this implementation run. Local implementation/test evidence is distinct from target-PC acceptance. Unrelated uncommitted edits and runtime/media files are excluded from this series.
+Pouya requested sequential implementation for PC readiness and authorized committing and pushing verified changes. Repository publication is separate from deployment. A separately authorized legacy Mac Khadang test release is active; no GitHub PRs, protected PC capabilities, credential changes or production/HamalBot migration have been performed by this implementation run. Local implementation/test evidence is distinct from target-PC acceptance. Unrelated uncommitted edits and runtime/media files are excluded from this series.
 
-PR 1 is locally implemented. PRs 2–5 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel/runtime integration still pending; evidence and limits are recorded below. PR 6's outbound foundation, bounded format/media repair, receipt-bound owner-prompt bridge and current source-grant dispatch mechanism are prepared offline; real protected producer/context wiring and target integration remain pending. PRs 7–20 remain to be implemented, apart from separately requested early preparations noted below. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
+PR 1 is locally implemented. PRs 2–5 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel/runtime integration still pending; evidence and limits are recorded below. PR 6's outbound foundation, bounded format/media repair, receipt-bound owner-prompt bridge, current source-grant dispatch and Telegram-local recovery are prepared offline; real protected producer/context wiring and target integration remain pending. PR 7's native registry foundation is prepared as a dependency for that wiring, without completing PR 6 or its own native/launcher gates. PRs 8–20 remain to be implemented, apart from separately requested early preparations noted below. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
 
 ## Existing code to extend
 
@@ -181,6 +181,21 @@ Depends on: PRs 2, 5 and 6.
 Implement the desired/observed registry with exact Claude/Codex IDs, pinned adapter capabilities and independently verified resume. Add worktree creation/reuse, generated role/repo instructions, reviewed skill references, strict launch manifests and readiness conditions. Enforce WSL CPU/RAM/process profiles including detached children. Make builder/reviewer/support available now, with CEO/CTO profiles on demand; run a manually requested builder fixture task early. Choose a proven role-isolated runtime/subscription topology and preserve native app access; do not assume a shared socket or copied login home is safe. Normalize evidenced temporary-capacity, quota, authentication, terminal-turn and unknown-submission outcomes from pinned adapters; establish native retry ownership/counts and provider wait semantics rather than matching error prose. Keep automated turns disabled pending PR 9.
 
 Done when: exact-ID resume and app visibility work for both tools under isolated identities; failed setup, unsupported controls and failed stop acknowledgment cannot masquerade as readiness or successful pause. No fresh-thread or default-profile fallback hides failure. Document the pre-turn control surface PR 9 will enforce.
+
+Native registry preparation: `native_sessions.py` reuses protected SQLite/lifetime
+fencing for immutable role/root/execution/native mappings, pinned expected
+contracts, desired/observed state and revision history. Fresh unique probes clear
+cached readiness before the trusted observer runs; owner controls, newer probes
+and current-binding changes reject stale results. Restart and snapshot restore
+preserve exact IDs/turns but invalidate observations. Nine actual scratch-process
+deaths test storage boundaries, not native readiness. `ccrelay_native.py --plan`
+and disabled single-owner examples make no native calls or state changes.
+The clean staged candidate passes 447 core checks and all four legacy suites;
+strict staged secret screening passes without repository allowlists.
+[Registry evidence and remaining gates](pr7-native-session-registry.md) records
+required transport/controller/WSL, worktree/launcher, capacity normalization,
+company, admission and recovery integration. No sessions were launched or resumed;
+PRs 6 and 7 remain in preparation.
 
 ## PR 8 Root tasks and atomic work ownership
 

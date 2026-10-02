@@ -1,0 +1,8 @@
+{
+  "schema": "ccrelay.native_registry_config.v1",
+  "enabled": false,
+  "automatic_turns_enabled": false,
+  "scope": "platform-owner-only",
+  "broker_policy_path": "/etc/ccrelay/broker-policy.json",
+  "state_dir": "/var/lib/ccrelay-broker/native"
+}
