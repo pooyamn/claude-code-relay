@@ -6,7 +6,7 @@ import sys
 from intake_fixtures import process
 from relay_core.telegram_outbound import SendOwnership
 from relay_core.telegram_scheduler import TelegramScheduler
-from telegram_fixtures import FakeOutbound, asset_store, open_telegram, protected_fixture, reply
+from telegram_fixtures import FakeOutbound, asset_store, fixture_dispatch, open_telegram, protected_fixture, reply
 
 
 def main():
@@ -25,7 +25,7 @@ def main():
             ledger.enqueue(reply(cursor={"stream_id": "stream-1", "expected": 0, "new": 50}))
         else:
             bot = FakeOutbound(folder / "provider.sqlite", checkpoint=checkpoint)
-            scheduler = TelegramScheduler(ledger, bot, asset_store(folder / "assets"), ownership_check=lambda: None)
+            scheduler = TelegramScheduler(ledger, bot, asset_store(folder / "assets"), ownership_check=lambda: None, authorize_dispatch=fixture_dispatch)
             scheduler.verify()
             scheduler.step()
     raise AssertionError("expected configured process death")

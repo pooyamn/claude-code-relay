@@ -235,6 +235,7 @@ class SendOwnership(PollerLock):
 
 
 class SingleAttemptBot:
+    dispatch_contract = "ccrelay.guarded_telegram_request.v1"
     def __init__(self, token, *, timeout_seconds=30, opener=None):
         if type(token) is not str or not re.fullmatch(r"[0-9]+:[A-Za-z0-9_-]+", token):
             raise Denied("explicit protected bot token required")
@@ -245,9 +246,11 @@ class SingleAttemptBot:
         self.timeout = timeout_seconds
         self.opener = opener or urllib.request.build_opener(NoRedirect())
 
-    def request(self, method, args, assets, store):
+    def request(self, method, args, assets, store, *, before_send=None):
         if method != "getMe" and method not in METHODS:
             raise Denied("method outside outbound adapter capability")
+        if method != "getMe" and not callable(before_send):
+            raise Denied("fresh protected source check required before an outbound request")
         if type(args) is not dict or type(assets) is not dict or (method == "getMe" and (args or assets)) or \
                 (method != "getMe" and set(args) - ARGUMENTS[method]):
             raise Denied("parameters outside single-attempt adapter capability")
@@ -274,6 +277,8 @@ class SingleAttemptBot:
         else:
             body, content_type = canonical_bytes(args), "application/json"
         request = urllib.request.Request(self.base + method, body, {"Content-Type": content_type})
+        if before_send is not None and before_send() is not True:
+            raise Denied("final outbound source/send ownership check rejected")
         try:
             with self.opener.open(request, timeout=self.timeout) as result:
                 raw = result.read(8 * 1024 * 1024 + 1)

@@ -8,7 +8,7 @@ Build testable security and delivery foundations first. Introduce the builder wi
 
 Pouya requested sequential implementation for PC readiness and authorized committing and pushing verified changes. Repository publication is separate from deployment: no GitHub PRs, live deployments, credential changes or migration have been performed by this implementation run. Local implementation/test evidence is distinct from target-PC acceptance. Unrelated uncommitted edits and runtime/media files are excluded from this series.
 
-PR 1 is locally implemented. PRs 2–5 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel/runtime integration still pending; evidence and limits are recorded below. PR 6's outbound foundation, bounded format/media repair and receipt-bound owner-prompt bridge are prepared offline; protected producer/grant revalidation and target integration remain pending. PRs 7–20 remain to be implemented, apart from separately requested early preparations noted below. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
+PR 1 is locally implemented. PRs 2–5 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel/runtime integration still pending; evidence and limits are recorded below. PR 6's outbound foundation, bounded format/media repair, receipt-bound owner-prompt bridge and current source-grant dispatch mechanism are prepared offline; real protected producer/context wiring and target integration remain pending. PRs 7–20 remain to be implemented, apart from separately requested early preparations noted below. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
 
 ## Existing code to extend
 
@@ -124,6 +124,16 @@ Done when: simulated floods, partial chunk delivery, rate limits and restarts pr
 Local foundation: `telegram_scheduler.py`, `telegram_outbound.py` and `telegram_producers.py` prepare one private durable queue, atomic ordered reply bundles, priority/pacing, bounded negative-evidence flood replacements, sealed original response/attempt bindings and receipt-bound stream offsets. Rich tables, classic code, immutable uploads, voice, media groups and full captions use the common protected producer gateway in offline tests. `telegram_repair.py` adds one pre-enrolled, exactly authorized format/media alternative per rejected operation, retaining source/negative evidence, confirmed siblings and the shared retry budget. Fourteen original and fourteen additional repair process-death boundaries test persistence against a non-idempotent fake provider. Queue/bundle/policy v2 rejects and preserves older state for explicit migration. `ccrelay_outbound.py --plan` and disabled examples perform no live I/O. [PR 6 evidence and remaining gates](pr6-telegram-outbound.md) records pinned rejection characterization and protected runtime authorization, authenticated producer and owner-prompt integration, exclusive Khadang/WSL proof, complete component backup and live cutover work. The prepared scheduler has not replaced any legacy sender or HamalBot wiring; PR 6 remains in preparation.
 
 Owner-prompt preparation: `owner_prompts.py` joins deterministic exact-action text, ordered approval bundles and sealed complete delivery evidence to the PR 3 gate's protected ingress. Only the actual final button-bearing message may bind; enrollment or delivery never makes an owner decision. A kernel-ingress-only `read_prompt` operation preserves exact nonces and existing receipts. Seven actual scratch-process deaths exercise separate send/gate commits, including a committed bind with lost ACK, without resending or granting approval. Real source/grant enforcement, gate/client/transport characterization and live WSL/Khadang acceptance remain pending. Company employees do not inherit platform-owner approval authority; v8 onboarding/context isolation must precede grants.
+
+Additional PR 6 preparation: `telegram_authority.py` retains exact-manifest grants
+and issuance/revocation/explicit renewal history in a private component. Mandatory
+typed current permission checks precede claim and the guarded adapter's sole
+request, after upload assembly. Denied unattempted content stays held without
+discarding confirmed siblings or blocking unrelated work; claimed uncertainty
+never replays. Four actual process-death cases preserve grants/attempts/cursors.
+The disabled config is v2 with a separate source directory. Real kernel-native,
+root/company/context and split-UID bridges, exclusive Khadang/WSL acceptance and
+full-component recovery remain pending; this does not complete PR 6.
 
 ## PR 7 Native session registry and role launcher
 

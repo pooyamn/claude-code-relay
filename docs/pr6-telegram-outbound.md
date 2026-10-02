@@ -1,6 +1,7 @@
 # PR 6 Telegram send scheduler and receipt preparation
 
-The protected outbound foundation and bounded format/media repair are prepared
+The protected outbound foundation, bounded format/media repair and current
+source-grant dispatch checks are prepared
 and tested offline. They give Telegram sends one durable queue, keep every
 required reply chunk, and advance watcher offsets only with a complete confirmed
 receipt set. This preparation does not convert
@@ -55,6 +56,52 @@ code blocks without invoking their transports. It returns a bundle ticket, never
 a formatting placeholder as a real message receipt. Full media captions become
 ordered text chunks rather than being sliced; tail trimming is limited to
 disposable status, whose original text is also retained.
+
+## Prepared source permission checks
+
+`telegram_authority.py` adds a private source-grant component. A protected
+kernel-authenticated controller, not a worker or identity header, issues a grant
+for an exact manifest after checking native/source and human/company/root/route
+provenance. It binds the full source, native IDs, operations, alternatives,
+destination and registered role/session/root/execution. The mandatory current
+context callback must consult protected authoritative state; source IDs,
+model prose, decoded JSON and an old cached permission cannot supply it.
+The real callback and split-UID broker/native bridge are still integration gates.
+Do not solve access to the broker's private registry by sharing a worker-readable
+database or credential home.
+
+The grant database retains issuance, revocation and explicit renewal revisions.
+Revocation persists across reopening/snapshot; ordinary issuance cannot extend
+or un-revoke a grant. A controller may explicitly reauthorize the unchanged
+manifest/binding after fresh context checks, preserving all old revisions.
+Already attested output may outlive its producing process; a revoked or changed
+execution binding still fences it. Writer handoff/recovery reattribution requires
+the later verified registry/migration protocol, not editing an old grant.
+
+The scheduler now requires a protected current authorizer and the pinned guarded
+transport contract. It checks a typed exact-operation permit before claiming.
+The transport checks again after multipart/upload assembly, immediately before
+its sole request. Permission revision/expiry, source/route or bot-owner changes
+deny the request. The plan records the actual grant/revision/expiry-bound permit,
+not a static bundle hash. Flood replacements and recipe-bound child bundles
+recheck their original manifest's current source permission.
+
+A pre-claim denial retains the unattempted operation on a visible permission
+hold. Confirmed siblings and the queued cursor remain intact; unrelated work
+can proceed. A trusted driver must revalidate before explicitly releasing that
+hold. A denial/death after claim remains conservatively unknown without replay:
+there is no durable local proof certifying that the request was never submitted.
+Renewal cannot reset that attempt. Actual captured receipts may still reconcile
+an effect admitted before revocation; revocation cannot unsend content or erase
+confirmed evidence. The final check is the admission boundary, not a distributed
+transaction promising cancellation of an already admitted/in-flight request.
+
+Grant storage is `source-grants.sqlite`, schema v1, in a separate private outbound
+source directory. Queue/bundle/policy remain v2. The disabled outbound config is
+now v2 and names that directory; older configs are rejected for reviewed migration.
+The guarded plan uses adapter `telegram-outbound.v2`. Existing attempted records
+remain inspectable/reconcilable, never converted into eligible fresh sends.
+No legacy live sender, controller RPC, service or bot wiring was enabled.
 
 ## Prepared format/media repair
 
@@ -186,6 +233,21 @@ tests passed in the copied-source sandbox, including 15 joined-prompt tests.
 This did not poll or send through a live bot, run a model, enable a service or
 change the user-owned Codex protocol edits.
 
+Source-permission verification on 2026-10-02: the expanded working-tree run passed
+all four legacy suites and 353 core tests, including 26 focused source/transport
+checks. Four actual process deaths commit revocation around claim, final
+validation, remote acceptance and complete response capture. Recovery preserves
+the grant history, unknown attempts and original cursor; only sealed captured
+receipts can reconcile an already accepted effect without another send. Current
+registry/context revocation, expiry, changed manifests, typed-claim forgery,
+worker/controller ceilings, partial replies, explicit renewal, multipart guards,
+repair/flood inheritance and consistent grant snapshots also have coverage.
+The clean staged-source run also passed all 353 core tests and four legacy suites,
+excluding the user-owned protocol edits. Staged secret scanning and the read-only
+preparation command passed; the latter remains disabled with no runtime I/O.
+Kernel identities, context checks and provider are fixtures, not WSL/company or
+live Khadang acceptance. No paid/model or live bot calls were made.
+
 Telegram documents global, group and chat flood limits and returns a wait in
 `retry_after`. This supports persisted scheduling, not unrestricted paid
 broadcasts or a universal exactly-once guarantee. [Telegram flood guidance](https://core.telegram.org/bots/faq#my-bot-is-hitting-limits-how-do-i-avoid-this)
@@ -208,13 +270,22 @@ also cannot prove that an externally completed action did not happen.
 PR 12 must capture a consistent outbound SQLite snapshot including streams,
 bundles, original sources, repair recipes/links/authorizations, attempts, receipts,
 cooldowns and shared retry counters; the sealed response bodies/envelopes;
-immutable assets and their metadata; pinned policy,
+immutable assets and their metadata; a consistent source-grant database snapshot
+with its complete issuance/revocation/renewal history; pinned policy,
 adapter artifact and trusted stream/registry evidence. Keep incomplete spool
 files for inspection. The base outbox's database-only snapshot is not a complete
 Telegram component backup. Restore paused, revalidate identity/versions and
 reconcile external evidence before permitting execution. Runtime lock metadata
 is diagnostic data, not proof of restored ownership; reacquire the numeric-bot
 lock and verify its live kernel process generation.
+
+Quiesce dispatch when checkpointing the queue, grants, broker registry and native
+source evidence together. A stale snapshot cannot prove current membership or
+permission: restore paused and revalidate through current protected checks before
+explicit release/reauthorization. Missing grant components, unsupported schemas,
+old boot/execution mappings or unavailable current context must hold output, not
+reconstruct permission from the bundle or an old boolean. Database-only source
+snapshots do not establish full-system/clean-machine recovery.
 
 Unknown schemas or policy changes require explicit reviewed migration. Do not
 delete ledgers, clear offsets/cooldowns, replace uncertain intents or reclaim a
@@ -235,7 +306,11 @@ sender beside the new owner is not a rollback.
    table/code/media/client receipts. Do not run an unmanaged second sender or
    poller and do not change HamalBot configuration, token, bindings or services.
 3. Wire kernel-authenticated producers, exact watcher stream registrations and
-   guarded native observations. Cut every send/edit/upload/bus/status/callback
+   guarded native observations, controller issuance and current source/context
+   checks through real split-UID channels. Prove revocation/expiry and the final
+   transport guard against real protected policy and company membership; the
+   prepared checker interface and synthetic grants do not prove those bindings.
+   Cut every send/edit/upload/bus/status/callback
    path over to the one owner together. The old scripts still use direct sends;
    this gateway does not itself establish their cutover or a phone-control loop.
 4. Characterize exact format/media rejection under pinned compatibility and wire

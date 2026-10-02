@@ -17,6 +17,7 @@ from .outbox import DeliveryLedger, fsync_directory
 from .runtime_delivery import evidence_for
 from .telegram_outbound import EDIT_METHODS, LANES, SEND_METHODS, Response, receipt, verify_bot
 from .telegram_repair import validate_recipe
+from .telegram_authority import DispatchPermit, DispatchRequest
 
 
 def stable_id(prefix, value):
@@ -280,6 +281,8 @@ class TelegramLedger(DeliveryLedger):
             raise Denied("unknown bundle")
         items = self.items(bundle_id)
         states = [item["effective_state"] for item in items]
+        holds = [item["current"]["hold_reason"] if item["repair"] is None else item["repair"]["hold_reasons"] for item in items]
+        has_hold = any(item["current"]["hold_reason"] is not None if item["repair"] is None else item["repair"]["state"] == "held" for item in items)
         def message_ids(item):
             if item["repair"] is not None:
                 receipts = item["repair"]["message_ids"]
@@ -287,8 +290,9 @@ class TelegramLedger(DeliveryLedger):
             evidence_id = item["current"]["record"].fields["outcome_evidence_id"]
             return None if evidence_id is None else self._evidence(evidence_id)["payload"]["receipt"]["message_ids"]
         return {"id": bundle_id, "state": "superseded" if bundle["superseded_by"] else "confirmed" if all(state == "confirmed" for state in states) else
-                "unknown" if "unknown" in states else "failed" if "failed" in states else "pending",
+                "unknown" if "unknown" in states else "failed" if "failed" in states else "held" if has_hold or "held" in states else "pending",
                 "operation_states": states, "cursor_committed": bundle["cursor_committed"],
+                "hold_reasons": holds,
                 "meaning": "receipts_not_model_completion", "superseded_by": bundle["superseded_by"],
                 "source": bundle["body"]["source"],
                 "message_ids": [message_ids(item) for item in items],
@@ -623,16 +627,41 @@ class TelegramLedger(DeliveryLedger):
 
 
 class TelegramScheduler:
-    def __init__(self, ledger, bot, store, *, ownership_check, authorize_repair=None):
+    def __init__(self, ledger, bot, store, *, ownership_check, authorize_dispatch, authorize_repair=None):
         # Target wiring must supply a host-wide protected numeric-bot-ID lock.
         # Outbox's lock alone only fences owners of this exact state directory.
         if not callable(ownership_check):
             raise Denied("verified host-wide send ownership required")
+        if not callable(authorize_dispatch) or getattr(bot, "dispatch_contract", None) != "ccrelay.guarded_telegram_request.v1":
+            raise Denied("protected current source authorizer and guarded transport required")
         if authorize_repair is not None and not callable(authorize_repair):
             raise Denied("protected exact-failure repair authorizer required")
         self.ledger, self.bot, self.store, self.ownership_check = ledger, bot, store, ownership_check
         self.authorize_repair = authorize_repair
+        self.authorize_dispatch = authorize_dispatch
         self.verified = False
+
+    def _permission(self, item):
+        # Reload the immutable manifest and current attempt, not callback-mutated
+        # candidate dictionaries or caller-chosen native/source references.
+        body = self.ledger.bundle(item["bundle"]["id"])["body"]
+        current = self.ledger.items(body["id"])[item["position"]]
+        request = DispatchRequest.for_item(self.ledger.policy, {**current, "bundle": body})
+        permit = self.authorize_dispatch(request)
+        if type(permit) is not DispatchPermit:
+            raise Denied("decoded claims/booleans cannot authorize source delivery")
+        return permit.validate(request, self.ledger.now())
+
+    def release_source_hold(self, intent_id):
+        """Protected driver only; no automatic release, fresh authority required."""
+        self.ownership_check()
+        current = self.ledger.load(identifier(intent_id))
+        if current is None or current["hold_reason"] != "source_authorization_denied" or current["record"].fields["state"] != "stored":
+            raise Denied("only an unattempted source-permission hold may be released")
+        context = current["context"]
+        item = {"bundle": self.ledger.bundle(context["bundle_id"])["body"], "position": context["position"]}
+        self._permission(item)
+        return self.ledger.release_hold(intent_id)
 
     def verify(self):
         self.ownership_check()
@@ -652,9 +681,14 @@ class TelegramScheduler:
         # verified bytes again before forming its bounded multipart request.
         for reference in item["operation"]["assets"].values():
             self.store.read(reference)
+        try:
+            permit = self._permission(item)
+        except Exception:
+            self.ledger.hold(record.id, "source_authorization_denied")
+            return {"submitted": False, "state": "held", "reason": "source_authorization_denied", "bundle_id": body["id"]}
         plan = {"schema": "ccrelay.delivery_plan.v1", "intent_id": record.id,
-                "intent_digest": record.fields["intent_digest"], "adapter_id": "telegram-outbound.v1",
-                "authorization_id": stable_id("tg-authority-", {"policy": self.ledger.policy.digest, "bundle": body["id"]}),
+                "intent_digest": record.fields["intent_digest"], "adapter_id": "telegram-outbound.v2",
+                "authorization_id": permit.authorization_id,
                 "target": {"bot_id": self.ledger.policy.bot_id, "chat_id": body["chat_id"], "bundle_id": body["id"],
                            "position": item["position"], "dispatch_ms": now}, "parameters": item["operation"]}
         attempt = stable_id("tg-attempt-", {"intent": record.id})
@@ -663,9 +697,17 @@ class TelegramScheduler:
             return {"submitted": False, "state": claim["record"].fields["state"]}
         self.ledger.submitted(record.id, attempt)
         try:
-            self.ownership_check()  # revalidate after asset checks and durable claim
+            def before_send():
+                # Invoked by the pinned adapter AFTER multipart/asset assembly,
+                # immediately before its sole network request. No effect or
+                # input can follow an expired, changed or unavailable grant.
+                self.ownership_check()
+                if self._permission(item).authorization_id != permit.authorization_id:
+                    raise Denied("source grant changed after the durable claim")
+                self.ledger.checkpoint("after_final_source_check")
+                return True
             operation = item["operation"]
-            response = self.bot.request(operation["method"], operation["args"], operation["assets"], self.store)
+            response = self.bot.request(operation["method"], operation["args"], operation["assets"], self.store, before_send=before_send)
             self.ledger.checkpoint("after_telegram_effect")
             if not isinstance(response, Response):
                 raise Denied("protected adapter response required")

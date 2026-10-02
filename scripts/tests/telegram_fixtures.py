@@ -10,6 +10,12 @@ from relay_core.intake import provider_json
 from relay_core.telegram_outbound import AssetStore, OutboundPolicy, Response
 from relay_core.telegram_producers import bundle
 from relay_core.telegram_scheduler import TelegramLedger
+from relay_core.telegram_authority import DispatchPermit
+
+
+def fixture_dispatch(request):
+    """Invented authority only; production requires protected current grants."""
+    return DispatchPermit(request, "fixture-source-grant", 1, 9223372036854775807)
 
 
 def policy_fields(**changes):
@@ -27,7 +33,7 @@ def protected_fixture():
     # Only root-owned/private ancestor checks are substituted for scratch /tmp.
     # SQLite/fsync/flock/sealed files and process deaths stay actual.
     with ExitStack() as stack:
-        for name in ("relay_core.outbox.protected_path", "relay_core.identity.protected_path", "relay_core.telegram_outbound.protected_path"):
+        for name in ("relay_core.outbox.protected_path", "relay_core.identity.protected_path", "relay_core.telegram_outbound.protected_path", "relay_core.telegram_authority.protected_path"):
             stack.enter_context(mock.patch(name, side_effect=lambda path, **_: Path(path)))
         yield
 
@@ -62,6 +68,7 @@ def rejected(code=429, retry_after=30):
 
 
 class FakeOutbound:
+    dispatch_contract = "ccrelay.guarded_telegram_request.v1"
     """Non-idempotent provider: each accepted call creates a new remote effect."""
     def __init__(self, path, *, checkpoint=lambda _: None):
         self.path, self.checkpoint = Path(path), checkpoint
@@ -74,7 +81,10 @@ class FakeOutbound:
         self.bot_id, self.username = 1002, "SyntheticKhadang"
         self.lost_ack = False
 
-    def request(self, method, args, assets, store):
+    def request(self, method, args, assets, store, *, before_send=None):
+        if method != "getMe":
+            if before_send is None or before_send() is not True:
+                raise AssertionError("fake provider requires final source permission")
         with sqlite3.connect(self.path) as db:
             db.execute("INSERT INTO calls VALUES (?,?)", (method, canonical_bytes(args)))
         if method == "getMe":

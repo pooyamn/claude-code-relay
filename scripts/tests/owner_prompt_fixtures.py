@@ -8,7 +8,7 @@ from relay_core.owner_prompts import OwnerIngressClient, OwnerPromptBridge
 from relay_core.telegram_producers import TelegramProducers
 from relay_core.telegram_scheduler import TelegramScheduler
 from owner_fixtures import INGRESS, NOW, open_ledger
-from telegram_fixtures import FakeOutbound, asset_store, open_telegram, protected_fixture
+from telegram_fixtures import FakeOutbound, asset_store, fixture_dispatch, open_telegram, protected_fixture
 
 
 @contextmanager
@@ -34,7 +34,7 @@ def joined(folder, *, checkpoint=lambda _: None, after_bind=lambda: None, owner_
                 channel = OwnerIngressClient(gate.policy, "/fixture/owner.sock")
                 bridge = OwnerPromptBridge(producer, channel, ownership_check=lambda: None, checkpoint=checkpoint)
                 bot = FakeOutbound(folder / "provider.sqlite", checkpoint=checkpoint)
-                scheduler = TelegramScheduler(ledger, bot, asset_store(folder / "assets"), ownership_check=lambda: None)
+                scheduler = TelegramScheduler(ledger, bot, asset_store(folder / "assets"), ownership_check=lambda: None, authorize_dispatch=fixture_dispatch)
                 yield gate, ledger, bridge, bot, scheduler, now
         finally:
             ledger.close()

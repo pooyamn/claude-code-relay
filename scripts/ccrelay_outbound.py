@@ -20,15 +20,15 @@ SEND_OWNER_ROOT = "/var/lib/ccrelay-sendowners"  # one host-wide registry, not p
 
 
 def configuration(raw):
-    exact(raw, {"schema", "enabled", "test_bot", "policy_path", "state_dir", "asset_dir"})
-    if raw["schema"] != "ccrelay.telegram_outbound_config.v1" or raw["enabled"] is not False or raw["test_bot"] != "khadang":
+    exact(raw, {"schema", "enabled", "test_bot", "policy_path", "state_dir", "asset_dir", "source_grant_dir"})
+    if raw["schema"] != "ccrelay.telegram_outbound_config.v2" or raw["enabled"] is not False or raw["test_bot"] != "khadang":
         raise Denied("only disabled Khadang preparation is supported; no live activation path")
-    for key in ("policy_path", "state_dir", "asset_dir"):
+    for key in ("policy_path", "state_dir", "asset_dir", "source_grant_dir"):
         path = raw[key]
         if type(path) is not str or not path.startswith("/") or ".." in path.split("/") or "\x00" in path:
             raise Denied("explicit protected target path required")
-    if raw["state_dir"] == raw["asset_dir"]:
-        raise Denied("distinct state and immutable asset directories required")
+    if len({raw["state_dir"], raw["asset_dir"], raw["source_grant_dir"]}) != 3:
+        raise Denied("distinct state, source grant and immutable asset directories required")
     return raw
 
 
@@ -40,11 +40,14 @@ def plan():
             "test_bot": cfg["test_bot"], "identity_and_timing_are_placeholders": True,
             "network_calls": False, "state_changes": False, "policy_digest": policy.digest,
             "send_owner_registry": SEND_OWNER_ROOT, "priority_lanes": LANES, "method_ceiling": sorted(METHODS),
+            "source_grant_directory": cfg["source_grant_dir"], "dispatch_contract": "ccrelay.guarded_telegram_request.v1",
             "restore_components": ["consistent outbound SQLite snapshot", "sealed response bodies and attempt envelopes",
                                   "immutable assets and original names/MIME metadata", "pinned policy/adapter artifact",
-                                  "trusted watcher stream mappings and externally reconciled offsets"],
+                                  "trusted watcher stream mappings and externally reconciled offsets",
+                                  "consistent source grant snapshot and complete revocation/renewal history"],
             "pending": ["target WSL private owner/lock/filesystem durability", "exclusive verified Khadang transport and UI receipts",
-                        "authenticated producer wiring and real owner-prompt acceptance", "all live sender/watcher paths under one owner",
+                        "authenticated producer and split-UID current source/company/root grant wiring", "real owner-prompt acceptance",
+                        "all live sender/watcher paths under one owner",
                         "pinned repair rejection characterization and protected runtime authorizer", "owner-authorized canary and deployment"]}
 
 

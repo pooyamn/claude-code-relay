@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 
 from relay_core.telegram_scheduler import TelegramScheduler
-from telegram_fixtures import FakeOutbound, asset_store, open_telegram, protected_fixture
+from telegram_fixtures import FakeOutbound, asset_store, fixture_dispatch, open_telegram, protected_fixture
 from test_core_telegram_repair import authorization
 
 
@@ -19,7 +19,7 @@ def main():
         ledger = open_telegram(folder / "ledger", now=lambda: 1790913603000, checkpoint=checkpoint)
         bot = FakeOutbound(folder / "provider.sqlite", checkpoint=checkpoint)
         scheduler = TelegramScheduler(ledger, bot, asset_store(folder / "assets"),
-                                      ownership_check=lambda: None, authorize_repair=authorization)
+                                      ownership_check=lambda: None, authorize_dispatch=fixture_dispatch, authorize_repair=authorization)
         scheduler.verify()
         parent = ledger.items("original")[0]["current"]["record"].id
         scheduler.repair_pending(parent)

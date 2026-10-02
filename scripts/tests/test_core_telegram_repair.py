@@ -14,7 +14,7 @@ from relay_core.telegram_outbound import OutboundPolicy
 from relay_core.telegram_producers import TelegramProducers, text_plan
 from relay_core.telegram_repair import plain_pieces
 from relay_core.telegram_scheduler import TelegramScheduler
-from telegram_fixtures import FakeOutbound, asset_store, open_telegram, policy_fields, protected_fixture, rejected
+from telegram_fixtures import FakeOutbound, asset_store, fixture_dispatch, open_telegram, policy_fields, protected_fixture, rejected
 from test_core_telegram import TelegramFixture
 
 
@@ -244,7 +244,7 @@ class RepairTests(TelegramFixture):
             producer = TelegramProducers(ledger, authorize_source=lambda _: True)
             producer.text(content="**text**", **self.binding())
             scheduler = TelegramScheduler(ledger, self.bot, self.store, ownership_check=self.guard.check,
-                                          authorize_repair=authorization)
+                                          authorize_dispatch=fixture_dispatch, authorize_repair=authorization)
             self.bot.responses = [rejected(400)]
             scheduler.verify()
             self.assertEqual(scheduler.step()["state"], "failed")
@@ -324,7 +324,7 @@ class RepairCrashTests(unittest.TestCase):
                     store = asset_store(folder / "assets")
                     bot = FakeOutbound(folder / "provider.sqlite")
                     bot.responses = [rejected(400)]
-                    scheduler = TelegramScheduler(ledger, bot, store, ownership_check=lambda: None)
+                    scheduler = TelegramScheduler(ledger, bot, store, ownership_check=lambda: None, authorize_dispatch=fixture_dispatch)
                     scheduler.verify()
                     self.assertEqual(scheduler.step()["state"], "failed")
                     parent = ledger.items("original")[0]["current"]["record"].id
@@ -340,7 +340,7 @@ class RepairCrashTests(unittest.TestCase):
                     ledger.recover_inflight()
                     bot = FakeOutbound(folder / "provider.sqlite")
                     scheduler = TelegramScheduler(ledger, bot, store, ownership_check=lambda: None,
-                                                  authorize_repair=authorization)
+                                                  authorize_dispatch=fixture_dispatch, authorize_repair=authorization)
                     scheduler.verify()
                     self.assertEqual(ledger.captured_evidence(parent), original_receipt)
                     self.assertEqual(ledger.load(parent)["record"].fields["state"], "failed")

@@ -19,7 +19,7 @@ from relay_core.polling import NoRedirect, PollError
 from relay_core.telegram_outbound import OutboundPolicy, Response, SendOwnership, SingleAttemptBot, receipt, verify_bot
 from relay_core.telegram_producers import TelegramProducers, bundle, text_operations
 from relay_core.telegram_scheduler import TelegramScheduler
-from telegram_fixtures import FakeOutbound, asset_store, open_telegram, policy_fields, protected_fixture, rejected, reply
+from telegram_fixtures import FakeOutbound, asset_store, fixture_dispatch, open_telegram, policy_fields, protected_fixture, rejected, reply
 
 
 class TelegramFixture(unittest.TestCase):
@@ -40,7 +40,7 @@ class TelegramFixture(unittest.TestCase):
         self.ledger.register_stream("stream-1", session_id="builder.fixture", native_session_id="native-1", initial_cursor=0, evidence_id="stream-evidence-1")
 
     def new_scheduler(self):
-        return TelegramScheduler(self.ledger, self.bot, self.store, ownership_check=self.guard.check)
+        return TelegramScheduler(self.ledger, self.bot, self.store, ownership_check=self.guard.check, authorize_dispatch=fixture_dispatch)
 
     def enqueue(self, **kwargs):
         return self.ledger.enqueue(reply(**kwargs))
@@ -522,13 +522,13 @@ class OutboundProtectionTests(unittest.TestCase):
         opener.open.side_effect = urllib.error.URLError("https://api.telegram.org/bot" + token)
         bot = SingleAttemptBot(token, opener=opener)
         with self.assertRaises(Denied) as caught:
-            bot.request("sendMessage", {"chat_id": -1003, "text": "hello"}, {}, None)
+            bot.request("sendMessage", {"chat_id": -1003, "text": "hello"}, {}, None, before_send=lambda: True)
         self.assertNotIn(token, str(caught.exception))
         self.assertEqual(opener.open.call_count, 1)
         with self.assertRaises(PollError):
             NoRedirect().redirect_request(None, None, None, None, None, "https://invalid.example")
         opener.open.side_effect = urllib.error.HTTPError("https://secret.invalid", 429, "invented", {}, io.BytesIO(rejected().body))
-        self.assertEqual(bot.request("sendMessage", {"chat_id": -1003, "text": "hello"}, {}, None).status, 429)
+        self.assertEqual(bot.request("sendMessage", {"chat_id": -1003, "text": "hello"}, {}, None, before_send=lambda: True).status, 429)
         self.assertEqual(opener.open.call_count, 2)
         with self.assertRaises(Denied):
             bot.request("setWebhook", {}, {}, None)
@@ -543,7 +543,7 @@ class OutboundProtectionTests(unittest.TestCase):
             response = opener.open.return_value.__enter__.return_value
             response.status, response.read.return_value = 200, b'{"ok":true,"result":true}'
             bot = SingleAttemptBot("1002:INVENTED_TOKEN", opener=opener)
-            self.assertEqual(bot.request("sendVoice", {"chat_id": -1003, "voice": "attach://voice"}, {"voice": ref}, store).status, 200)
+            self.assertEqual(bot.request("sendVoice", {"chat_id": -1003, "voice": "attach://voice"}, {"voice": ref}, store, before_send=lambda: True).status, 200)
             request = opener.open.call_args[0][0]
             self.assertIn(b'invented voice bytes', request.data)
             self.assertIn(b'filename="sample.ogg"', request.data)
@@ -609,7 +609,7 @@ class TelegramCrashTests(unittest.TestCase):
                     intent = ledger.items("reply-1")[0]["current"]["record"].id
                     self.assertEqual(ledger.load(intent)["record"].fields["state"], state)
                     self.assertEqual(ledger.stream("stream-1")["committed_cursor"], 50 if state == "confirmed" else 0)
-                    scheduler = TelegramScheduler(ledger, bot, asset_store(folder / "assets"), ownership_check=lambda: None)
+                    scheduler = TelegramScheduler(ledger, bot, asset_store(folder / "assets"), ownership_check=lambda: None, authorize_dispatch=fixture_dispatch)
                     scheduler.verify()
                     if state == "unknown":
                         self.assertFalse(scheduler.step()["submitted"])
