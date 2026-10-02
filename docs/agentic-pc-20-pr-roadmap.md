@@ -32,6 +32,16 @@ launcher. It does not establish protected PC controls or admitted native
 continuations. [Goal preparation evidence and activation gates](codex-goals.md);
 design acceptance test 15 remains pending.
 
+Native Telegram command menus (requested 2026-10-02) extend PR 6's configuration
+and one-scheduler path, PR 7's pinned adapter capabilities, PR 9's control
+admission and PR 19–20's recovery/target acceptance. Legacy repository code
+prepares scoped registration, homogeneous tool menus, a labeled mixed-forum
+union and current-topic `/help`; Telegram has no topic command scope. Explicit
+commands are normalized, owner-gated and rechecked against the current backend,
+never used to bypass company authority or send unsupported controls as model
+text. [Prepared command discovery and activation limits](native-telegram-commands.md).
+The live Khadang daemon and HamalBot wiring remain unchanged.
+
 - Routing, Telegram formatting, session watchers, Codex observation and MCP messaging already exist in `scripts/`; do not plan their wholesale replacement.
 - The legacy `scripts/ccrelayd.py` advances the Telegram offset before handling, and its per-topic queues are in memory. PR 4 prepares a separate protected durable intake for the target; native/media/action adapters are still required before cutover. The legacy live Mac deployment is not automatically converted.
 - `scripts/ccrelay_mcp.py:128` derives the caller from cwd. It cannot establish reviewer/CTO authority under the target threat model.

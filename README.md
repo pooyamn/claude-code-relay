@@ -88,6 +88,17 @@ The `cc-relay-commands` plugin registers `/newcc`, `/unbind`, `/ccstatus` as **p
 | Claude asks a question | tappable buttons appear; tap to answer |
 | `claude-attach 123456` (terminal) | attach to the live TUI |
 
+### Native Telegram command menus
+
+Repository preparation now supports direct `/model`, `/cancel` and `/help`,
+Claude `/clear`, `/compact`, `/unq`, and Codex `/goal` controls. Menus reflect the
+chat's bound session types; mixed forums show a labeled union because Telegram
+has no topic command scope. `/help` is specific to the current topic. Owner
+checks still apply independently of menu visibility, and unsupported Codex
+controls never become model prompts. [Registration, activation gates and
+verification](docs/native-telegram-commands.md). This preparation is not enabled
+on the live Khadang daemon and does not change HamalBot wiring.
+
 ## Telegram rich messages (tables that actually line up)
 
 Telegram renders normal message text in a **proportional** font, so any table — ASCII,

@@ -307,6 +307,7 @@ class JoinedTests(unittest.TestCase):
         daemon.me = {"username": "SyntheticKhadang"}
         daemon.bindings = SimpleNamespace(lookup=lambda c, t: ("-1003:topic:5", "/scratch/fixture"))
         daemon.say, daemon.dispatch, daemon.fetch_media = mock.Mock(), mock.Mock(), mock.Mock(return_value=[])
+        daemon.backend_for_folder = mock.Mock(return_value="codex")
         message = {"message_id": 1, "chat": {"id": -1003, "is_forum": True}, "message_thread_id": 5,
                    "is_topic_message": True, "from": {"id": 999, "is_bot": False}, "text": "/goal resume"}
         daemon.on_message(message)
@@ -327,6 +328,7 @@ class JoinedTests(unittest.TestCase):
         spec.loader.exec_module(module)
         with tempfile.TemporaryDirectory() as folder, mock.patch.object(module, "STATE_DIR", folder), \
                 mock.patch.object(module, "save_target"), mock.patch.object(module, "is_codex", return_value=True), \
+                mock.patch.object(module, "backend_name", return_value="codex"), \
                 mock.patch.object(module, "cxp", return_value=SimpleNamespace(read_thread=lambda key: "native-1")), \
                 mock.patch.object(module, "deliver") as deliver:
             self.assertEqual(module.inject("cc goal pause"), "")
@@ -334,7 +336,7 @@ class JoinedTests(unittest.TestCase):
             inbox = GoalInbox(folder, module.SESSION)
             self.assertEqual(inbox.db.execute("SELECT command FROM requests").fetchone()[0], '{"action": "pause"}')
             inbox.close()
-            with mock.patch.object(module, "is_codex", return_value=False):
+            with mock.patch.object(module, "is_codex", return_value=False), mock.patch.object(module, "backend_name", return_value="claude"):
                 self.assertEqual(module.inject("/goal resume"), "")
                 self.assertIn("No model prompt", deliver.call_args.args[0])
         with mock.patch.object(sys, "argv", ["fixture", "/goal status"]), mock.patch.object(module, "inject", return_value="") as inject, \

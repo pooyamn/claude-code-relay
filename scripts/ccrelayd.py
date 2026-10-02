@@ -44,13 +44,14 @@ D = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, D)
 import relay_tg  # noqa: E402
 from relay_codex_goal import COMMAND as GOAL_RE
+from relay_bot_commands import CommandMenus, backend_for_key, command_error, help_text, menu_plan, slash_command
 
 BACKEND = os.path.join(D, "claude-tui-backend-multi")
 CODES = os.path.join(D, "relay-codes.json")
 RELAY_WORK = os.path.join(D, "relay-work")
 OPENCLAW_CFG = os.path.expanduser("~/.openclaw/openclaw.json")
 
-CANCEL_RE = re.compile(r"^\s*(?:/|cc\s+)?(?:cancel|interrupt|esc)(?:@\w+)?\s*$", re.I)
+CANCEL_RE = re.compile(r"^\s*(?:/|cc\s+)?(?:cancel|interrupt|esc|stop)(?:@\w+)?\s*$", re.I)
 NEWCC_RE = re.compile(r"^\s*/?(?:new[-\s]?cc|new-claude-code)(?:@\w+)?\s+(\d{6})\s*$", re.I)
 UNBIND_RE = re.compile(r"^\s*/?(?:unbind|unbind-claude-code)(?:@\w+)?\s*$", re.I)
 STATUS_RE = re.compile(r"^\s*/?(?:ccstatus|cc-status|claude-code-status)(?:@\w+)?\s*$", re.I)
@@ -128,6 +129,41 @@ class Daemon:
         self.queues = {}
         self.me = self.bot.call("getMe")
         self.titles = {}
+        # Optional until the reviewed command adapter is activated. No second
+        # poller, default scope, webhook or credential changes.
+        expected = cfg.get("command_menu_bot")
+        self.command_menus = CommandMenus(self.bot, self.me.get("username", ""), expected, log) if expected else None
+        self.menu_last_check = 0
+        self.menu_jobs = queue.Queue(maxsize=1)
+        if self.command_menus:
+            threading.Thread(target=self.command_menu_worker, daemon=True).start()
+
+    def backend_for_folder(self, folder):
+        return backend_for_key(RELAY_WORK, session_key(folder))
+
+    def sync_command_menus(self, force=False):
+        if self.command_menus is None or (not force and time.monotonic() - self.menu_last_check < 30):
+            return
+        self.menu_last_check = time.monotonic()
+        try:
+            plan = menu_plan(self.bindings.load(), self.allow, self.backend_for_folder)
+            # Discovery is expendable; coalesce obsolete menu plans. Telegram
+            # menu reads/writes never block inbound steering or stop handling.
+            try:
+                self.menu_jobs.get_nowait()
+            except queue.Empty:
+                pass
+            self.menu_jobs.put_nowait(plan)
+        except Exception as error:
+            log(f"Command menu plan unavailable ({type(error).__name__}); existing menus retained.")
+
+    def command_menu_worker(self):
+        while True:
+            plan = self.menu_jobs.get()
+            try:
+                self.command_menus.reconcile(plan)
+            except Exception as error:
+                log(f"Command menu sync unavailable ({type(error).__name__}); existing menus retained.")
 
     # --- offset ---------------------------------------------------------------
     def offset(self):
@@ -152,6 +188,7 @@ class Daemon:
     def run(self):
         log(f"ccrelayd up as @{self.me.get('username')} bindings={self.bindings.path}")
         while True:
+            self.sync_command_menus()
             try:
                 ups = self.bot.call("getUpdates", {
                     "offset": self.offset(), "timeout": 50,
@@ -212,9 +249,19 @@ class Daemon:
             return
         chat, thread = self.where(msg)
         text = msg.get("text") or msg.get("caption") or ""
+        command = slash_command(text, self.me.get("username", ""))
+        if command and command["foreign"]:
+            return
+        if command:
+            text = command["text"]  # Telegram adds @BotName in group menus.
 
         # Admin commands work in ANY chat, bound or not.
         admin = msg.get("from", {}).get("id") in self.allow
+        is_control = bool(command and command["name"] != "help") or any(
+            pattern.match(text) for pattern in (NEWCC_RE, UNBIND_RE, STATUS_RE, CANCEL_RE))
+        if is_control and (
+                not admin or any(key in msg for key in ("forward_origin", "forward_from", "forward_from_chat", "via_bot", "sender_chat"))):
+            return self.say(chat, thread, "Session controls require a direct command from an authorized owner; no command was forwarded.")
         m = NEWCC_RE.match(text) if admin else None
         if m:
             return self.cmd_newcc(chat, thread, m.group(1))
@@ -233,12 +280,18 @@ class Daemon:
             return self.say(chat, thread, "Goal controls require an authorized owner; no goal command was forwarded.")
 
         peer, folder = self.bindings.lookup(chat, thread)
+        if command and command["name"] == "help":
+            return self.say(chat, thread, help_text(self.backend_for_folder(folder), admin) if folder else
+                            "This topic is not bound. An authorized owner can use /newcc <6-digit code>.")
         if not folder:
             log(f"unbound {self.peer_of(chat, thread)} "
                 f"({msg['chat'].get('title')}): {text[:40]!r}")
             return                      # unbound: stay silent
+        error = command_error(text, self.backend_for_folder(folder)) if command else ""
+        if error:
+            return self.say(chat, thread, error)
         media = self.fetch_media(msg, folder)
-        immediate = is_goal or bool(CANCEL_RE.match(text))
+        immediate = is_goal or bool(command) or bool(CANCEL_RE.match(text))
         self.dispatch(peer, folder, chat, thread, msg["chat"], msg["from"], text,
                       media, msg, immediate=immediate)
 
@@ -395,6 +448,7 @@ class Daemon:
         d = self.bindings.load()
         d[peer] = folder
         self.bindings.save(d)
+        self.sync_command_menus(force=True)
         log(f"bound {peer} -> {folder}")
         self.say(chat, thread, f"Bound to `{folder}` (session `{session_key(folder)}`). "
                                f"Messages here now go to that folder's session.")
@@ -408,6 +462,7 @@ class Daemon:
         if not folder:
             return self.say(chat, thread, "This chat isn't bound.")
         self.bindings.save(d)
+        self.sync_command_menus(force=True)
         try:
             os.remove(os.path.join(RELAY_WORK, f"transport-{session_key(folder)}.json"))
         except Exception:
@@ -425,8 +480,32 @@ class Daemon:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", required=True)
+    ap.add_argument("--command-menu-plan", action="store_true", help="Print exact menu scopes without token/network/state access")
+    ap.add_argument("--sync-command-menu", action="store_true", help="Register/read back menus only; never poll or launch a session")
+    ap.add_argument("--expect-bot", help="Exact expected bot username for one-shot menu registration")
     a = ap.parse_args()
     cfg = json.load(open(os.path.expanduser(a.config)))
+    if a.command_menu_plan or a.sync_command_menu:
+        bindings = json.load(open(os.path.expanduser(cfg["bindings"])))
+        owners = cfg.get("allow_users") or []
+        plan = menu_plan(bindings, owners, lambda folder: backend_for_key(RELAY_WORK, session_key(folder)))
+        if a.command_menu_plan:
+            print(json.dumps({"plan": plan, "network": False, "state_mutation": False}, indent=2))
+            return
+        if not a.expect_bot:
+            ap.error("--sync-command-menu requires --expect-bot; no default/global bot fallback")
+        try:
+            bot = relay_tg.Bot(relay_tg.load_token(cfg["env"]))
+            me = bot.call("getMe", timeout=3, max_wait=0)
+            menus = CommandMenus(bot, me.get("username", ""), a.expect_bot, log)
+            results = menus.reconcile(plan)
+        except Exception as error:
+            print(json.dumps({"command_menu": "unconfirmed", "error_type": type(error).__name__}))
+            raise SystemExit(1) from None  # A transport exception may contain a credentialed URL.
+        print(json.dumps({"bot": me["username"], "results": results}))
+        if "unconfirmed" in results:
+            raise SystemExit(1)
+        return
     Daemon(cfg).run()
 
 

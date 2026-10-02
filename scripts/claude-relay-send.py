@@ -2365,6 +2365,18 @@ def inject(prompt):
     menu tap) into the TUI and return '' immediately. The watcher delivers the
     result, so this never blocks on the turn."""
     save_target(CHAT_ID, THREAD_ID)
+    from relay_bot_commands import command_error, help_text, slash_command
+    command = slash_command(prompt)
+    if command:
+        prompt = command["text"]
+        backend = backend_name()
+        if command["name"] == "help":
+            deliver(help_text(backend))
+            return ""
+        error = command_error(prompt, backend)
+        if error:
+            deliver(error)
+            return ""
     from relay_codex_goal import GoalInbox, parse_command
     try:
         goal_command = parse_command(prompt)
@@ -2983,6 +2995,10 @@ def main():
     if "--watch" in sys.argv[1:]:
         watch(); return
     prompt = " ".join(args)
+    from relay_bot_commands import slash_command
+    if slash_command(prompt):
+        print(inject(prompt))
+        return  # Slash controls cannot enter synchronous/JSONL model paths.
     from relay_codex_goal import COMMAND as GOAL_RE
     if GOAL_RE.fullmatch(prompt):
         print(inject(prompt))
