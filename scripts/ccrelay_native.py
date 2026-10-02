@@ -13,6 +13,7 @@ from relay_core.native_launch import PACKAGE_SCHEMA
 from relay_core.native_workspace import SCHEMA as WORKSPACE_SCHEMA
 from relay_core.native_setup import SCHEMA as SETUP_SCHEMA
 from relay_core.native_resume import ADAPTER as RESUME_ADAPTER
+from relay_core.native_rpc import TRANSPORT as RPC_TRANSPORT
 
 
 def configuration(raw):
@@ -40,6 +41,7 @@ def plan():
             "workspace_journal_schema": WORKSPACE_SCHEMA, "workspace_helper_activated": False,
             "setup_journal_schema": SETUP_SCHEMA, "setup_helper_activated": False,
             "resume_adapter": RESUME_ADAPTER, "resume_adapter_activated": False,
+            "rpc_transport": RPC_TRANSPORT, "rpc_transport_activated": False,
             "role_profiles_not_active_sessions": sorted(policy.roles), "admission_available": False,
             "pending": ["pinned protected Codex and Claude observation/transports and exact-ID resume",
                         "target UID/cgroup/process-generation and role-isolated subscription topology",

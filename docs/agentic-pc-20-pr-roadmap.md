@@ -247,6 +247,18 @@ outbox checks pass, including eight new resume-worker deaths. Real initialized
 transport/observer, admission, Claude controls, app visibility and target-PC
 acceptance remain required; no live session was resumed.
 
+RPC connection preparation: `native_rpc.py` performs the standard initialization
+handshake on explicit owned nonblocking stdio handles, matches typed replies and
+captures notifications/server requests. Idle polling keeps tool/goal updates
+flowing; explicit current approvals are required for server replies. Disconnects,
+lost replies and pin/capture failures close the connection without replay or
+start/fork fallback. All 37 focused RPC/resume/planner checks pass, including a
+real-pipe joined resume with a lost acknowledgment and no repeat effect. Native
+UID/generation gates, capture/admission and provider behavior are synthetic in
+those tests. Protected launcher/observer/event wiring, pinned WebSocket support,
+both tools' isolated app access and target acceptance remain required. No live
+entry point or automated turn was enabled; PR 7 remains in preparation.
+
 ## PR 8 Root tasks and atomic work ownership
 
 Depends on: PRs 1, 2 and 7.

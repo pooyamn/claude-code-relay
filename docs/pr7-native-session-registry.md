@@ -95,6 +95,58 @@ control invalidation adds history events, not an automatic state migration. Nati
 app visibility, complete task/approval continuity and actual target behavior still
 need their acceptance evidence.
 
+## Prepared stdio RPC connection
+
+`native_rpc.py` supplies the initialized callable used by the resume adapter on
+explicit, exclusively owned nonblocking stream handles. It neither launches a
+process nor discovers/connects to a socket. The protected launcher must verify
+the actual role UID, runtime generation and pinned configuration/transport; the
+required verification callback and descriptor checks are not independent proof
+of those facts. Reviewed transport and initialization-result digests have no
+default. The target CLI still exposes only its disabled read-only plan.
+
+This adapter implements JSONL stdio, not the existing Mac daemon's Unix
+WebSocket transport. The upstream contract requires one `initialize` request,
+its successful reply and then `initialized` before other requests. Supporting
+stdio does not replace the required isolated native-app/daemon topology or prove
+app visibility. A pinned WebSocket adapter and target acceptance remain gates.
+[Codex App Server](https://learn.chatgpt.com/docs/app-server).
+
+RPC replies match both request ID value and type. Notifications and server
+requests are captured with exact raw bytes and a connection generation before a
+reply can be accepted. The protected capture bridge must durably record them and
+demultiplex current authorized thread/root bindings; transport capture alone
+does not authorize a foreign event. Caller-driven `poll()` continues receiving
+tool and goal events while idle, without another background poller. Oversized,
+malformed or ambiguous frames are refused, never truncated or silently dropped.
+Native error details are returned without prose-based capacity classification.
+
+Server replies require the exact pending typed ID, connection generation and a
+separate current authorization. Concurrent/replayed replies cannot send twice;
+JSON null results are supported. Approval is never automatic. A protected handler
+can explicitly reply while an RPC awaits the server. Authorization/capture
+callbacks receive detached copies, so mutating them cannot alter wire parameters
+or manufacture an acknowledgment. Runtime pins are checked again after reply
+authorization and before writing.
+
+An outstanding RPC timeout, EOF or failed pin/capture closes the connection and
+leaves outcomes for the existing outbox to reconcile. There is no reconnect,
+RPC replay, start/fork fallback or inference from a successful write. Idle waits
+retain partial frames without treating an absent event as a failed action.
+Closing handles does not prove native/tool descendants stopped. Launcher,
+independent observer, durable event/approval bridge, admission and joined restore
+integration are still required; a restored controller must reconcile pending
+actions before creating another connection.
+
+All 37 focused sandbox checks pass: 23 new RPC checks, 12 resume checks and two
+planner checks. Actual anonymous pipes exercise fragmentation, partial writes,
+idle events, explicit replies, EOF and timeouts. A joined SQLite/outbox fixture
+verifies exact resume over this connection and accepted resume with a lost reply
+without replay. Provider behavior, runtime pins, event capture and admission
+remain synthetic; no native process, login, bot or service was used as a fixture.
+The full suite was not rerun for this slice. This is preparation, not PR 7
+completion or target runtime activation.
+
 ## Read only target preparation
 
 Run `/usr/bin/python3 scripts/ccrelay_native.py --plan` to inspect inert examples.
