@@ -198,8 +198,8 @@ Explicit reuse and prepared replay verify linked-worktree/common-directory
 backlinks, requested branch and baseline ancestry and read NUL-delimited status.
 They do not checkout or rewrite the index, tracked/untracked/ignored files or
 unfinished-operation markers. Status hashes describe observations only; they are
-not a snapshot of dirty contents or proof that a task is complete. Generated
-instruction/skill files are not yet installed by this helper.
+not a snapshot of dirty contents or proof that a task is complete. The separate
+setup helper below installs generated context without changing these Git rules.
 
 The Git executable bytes/version are pinned; changing a recorded Git contract,
 schema, policy or execution/specification requires reviewed migration/transfer.
@@ -236,6 +236,33 @@ alone is incomplete. PRs 12/13 must capture a quiescent consistent cohort and
 restore initially unadmitted with fresh current-writer/native verification. No
 real role workspace has been imported or prepared by this step. Rollback of the
 repository artifact never authorizes removing a partial or dirty worktree.
+
+## Worktree context installation
+
+`native_setup.py` verifies the exact launch package against the prepared workspace,
+copies its complete sealed tree into the worker's private `native-setup/artifacts`
+store, and installs instruction/skill discovery links. License notices, assets
+and executable flags survive; scripts are not executed. Native/MCP configuration
+and resource fragments remain stored inputs, not activated settings or limits.
+The worker journal records the pinned specification and bundle before effects.
+Copy/link phases and atomic no-clobber symlink creation reconcile interrupted
+installation without selecting a different bundle or resetting repository work.
+
+Existing instruction/skill destinations, symlinked parents, changed links and
+missing completed links are held for reviewed integration or evidenced repair;
+the helper never overwrites project context. Replay verifies the copied artifact
+and exact link targets. Unknown journal schemas remain intact. Recovery must
+capture this journal and copied artifact tree alongside the existing workspace
+cohort; relocating absolute discovery links requires explicit migration.
+
+The same real worker UID and mandatory writer/descendant fence apply. A protected
+launcher must still review/authorize and export inputs to the worker without
+sharing protected homes. No such export/dispatch bridge, worker RPC or live entry
+point is enabled. `files_installed` does not imply `native_loaded`, readiness or
+admission; all three remain false. Codex documents repository skill discovery and
+following symlinked skill folders. Instruction-link loading, complete effective
+context, Claude discovery and target resource behavior still need pinned native
+proof. [Codex skills](https://learn.chatgpt.com/docs/build-skills).
 
 ## Verification and remaining gates
 
@@ -282,6 +309,14 @@ four legacy suites from a clean staged-source export. This includes 17 workspace
 checks and two batching checks; both Git identity regressions were reproduced
 before their fixes. Strict staged secret screening passed without repository
 allowlists. These results still do not satisfy the native/WSL acceptance gates.
+
+The context-installation slice passed 31 focused sandbox checks: nine new setup
+checks, 20 launch-bundle checks and two planner checks. Six actual worker deaths
+exercise committed registration, copy, link and completion boundaries. Tests use
+real files, symlinks, Git and SQLite, but substitute target ancestors and writer
+guards; they do not run either native agent. The full suite was not rerun for this
+slice: 486 core checks and four legacy suites are the preceding milestone's
+evidence, not a claim about this candidate.
 
 Before PR 7 acceptance:
 

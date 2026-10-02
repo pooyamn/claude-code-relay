@@ -11,6 +11,7 @@ from relay_core.identity import Denied, Policy, exact, strict_json
 from relay_core.native_sessions import SCHEMA
 from relay_core.native_launch import PACKAGE_SCHEMA
 from relay_core.native_workspace import SCHEMA as WORKSPACE_SCHEMA
+from relay_core.native_setup import SCHEMA as SETUP_SCHEMA
 
 
 def configuration(raw):
@@ -36,11 +37,12 @@ def plan():
             "broker_policy_digest": policy.digest, "registry_schema": SCHEMA, "scope": cfg["scope"],
             "launch_package_schema": PACKAGE_SCHEMA, "launch_package_activated": False, "resource_limits_enforced": False,
             "workspace_journal_schema": WORKSPACE_SCHEMA, "workspace_helper_activated": False,
+            "setup_journal_schema": SETUP_SCHEMA, "setup_helper_activated": False,
             "role_profiles_not_active_sessions": sorted(policy.roles), "admission_available": False,
             "pending": ["pinned protected Codex and Claude observation/transports and exact-ID resume",
                         "target UID/cgroup/process-generation and role-isolated subscription topology",
                         "protected dispatch/writer fences and target acceptance of worker-UID worktree setup",
-                        "applying verified launch/instruction/skill bundles and native loading proof",
+                        "protected bundle export/dispatch, target setup acceptance and native loading proof",
                         "measured target resource profiles and independently observed enforcement",
                         "independent native control receipts and actual app visibility",
                         "normalized native capacity/auth/quota/unknown outcomes",
