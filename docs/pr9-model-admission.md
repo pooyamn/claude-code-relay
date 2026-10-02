@@ -2,8 +2,8 @@
 
 The shared admission ledger is prepared offline. It joins model-attempt claims,
 root turn charges, activity leases and account reservations in one transaction.
-It also retains capacity waits, shared cooldowns and once-only replacement
-proposals in that database. It preserves the approved three-active-session cap
+It also retains owner-first dispatch offers, capacity waits, shared cooldowns and
+once-only replacement proposals in that database. It preserves the approved three-active-session cap
 and 10% owner reserve. No native runtime, subscription probe, worker endpoint or
 live scheduler is enabled;
 PR 9 is not accepted until every real turn source passes its pre-turn boundary.
@@ -93,7 +93,7 @@ are checked against their retained body/digest before use.
 An independently verified Pouya-requested new turn may bypass automated spacing
 and use his reserve, but not actual quota or the global activity cap. Autonomous
 support needs an explicit action-scoped owner reserve grant. Real owner/company
-attribution and priority dispatch remain unconnected; receipt booleans alone do
+attribution and the live priority driver remain unconnected; receipt booleans alone do
 not authenticate a human. Steering an existing turn and stop/pause controls must
 remain separate from new-turn pacing when the runtime driver is integrated.
 
@@ -101,6 +101,45 @@ Missing, stale, incomplete or mismatched quota holds work with a labeled reason;
 an elapsed reset time requires a fresh provider observation rather than inventing
 availability. The required bounded conservative fallback for missing telemetry
 is still pending. No paid fallback, model change or purchase path exists.
+
+## Durable owner-first dispatch offers
+
+`model_dispatch.py` enrolls bounded offers in the same protected database. An
+offer pins the original intent, attempt, plan, revision, target and model request;
+it reserves no model capacity or root turn. Exact repeats retain their original
+sequence. A full pending queue retains the unoffered intent rather than dropping
+work. The pending bound requires explicit policy; fixture values are not runtime
+defaults. Original deadlines and cancellation remain effective during waits.
+
+Once the component is enrolled, an unoffered direct model claim is refused.
+Among currently eligible offers, independently verified owner requests precede
+automation; each class keeps sequence order. Priority is reread through the
+protected source verifier, not taken from a stored owner flag. Known busy,
+stopped, expired, cooldown-held or freshly quota-exhausted offers do not block
+otherwise runnable work. Unverifiable previously owner-requested work retains
+a labeled hold on automation rather than granting execution or discarding it.
+Missing quota is not treated as proof of available capacity.
+
+The common admission path still enforces quota, reserve, pacing, root budgets,
+current authority and the three-active-session cap. It rechecks the current
+source grant after examining other offers, closing a reproduced revocation race.
+The offer becomes attempted in the same commit as its original outbox attempt,
+root charge, account reservation and activity lease. Recovery cannot grant that
+attempt again. Cancellation holds only unattempted work; it does not interrupt
+running tools or release activity. Steering, pause and stop need their separate
+runtime control paths.
+
+Enrollment pins a composite pacing/dispatch policy digest, preventing a
+pacing-only admission checksum from authorizing new attempts against the enrolled
+state. Sequence/history and supported metadata are validated without resetting
+them. Signed compatible runtime deployment remains necessary; this does not prove
+that every historical reader understands the new component.
+
+This is the offline priority boundary, not a polling loop, native dispatcher or
+human authentication mechanism. Protected producers, current source-grant readers
+and the live driver remain unconnected. Comparing another diagnostic offer
+requires its current same-ledger diagnosis guard; without that guard it remains
+unverified, not silently admitted.
 
 ## Capacity retries and shared admission
 
@@ -127,7 +166,8 @@ does not mean task completion. [Retry evidence and recovery](model-capacity-retr
 
 `ccrelay_admission.py --plan` reads only the disabled repository example and
 reports unavailable runtime/probe/fence/grant/stop integration. Its three numerical
-pacing/freshness values remain unset. Runtime commands are unavailable. The test
+pacing/freshness values remain unset. Owner-priority activation and dispatch policy
+configuration are also explicitly false. Runtime commands are unavailable. The test
 runner copies its source/template through explicit allowlists; none is installed.
 
 Register `ccrelay.model_admission.v1` with the full-system recovery inventory.
@@ -143,6 +183,12 @@ admission boundary is not an authorized runtime. Include sealed diagnostic model
 requests and original diagnostic/report intents in the same cohort; there is no
 separate diagnostic quota store. Joined encrypted clean-target restore is
 still pending; these tables are not a complete disaster-recovery implementation.
+
+Include `ccrelay.model_dispatch.v1` metadata and all offers, their retained
+sequence, pinned plans, initial source proofs, original intent links and the
+composite admission policy digest in that same consistent cohort. Preserve
+cancelled/attempted history and held model attempts. There is no separate dispatch
+database, and restoring an offer never proves execution or tool quiescence.
 
 ## Verification and remaining gates
 
@@ -176,12 +222,26 @@ straddle the common commit: all diagnosis/outbox/account/slot changes roll back
 before commit or survive together as held/unknown afterward, without replay.
 The clean staged-source run passed all 758 core tests in 190 serial sandbox
 batches, the isolation probe and all four legacy suites. The strict staged secret
-scan passed. These observations remain synthetic and do not establish real native
+scan passed at the joined-diagnosis milestone (`6223bb9`). These observations remain synthetic and do not establish real native
 dispatch, protected PC fencing or target acceptance.
+
+Sixteen owner-priority cases cover durable order, duplicate offers, direct-claim
+bypass refusal, bounded pending work, cancellation, busy/quota-blocked owners,
+current source rechecks and the unchanged activity cap. Four actual isolated
+process deaths straddle offer and common-admission commits: pre-commit changes
+roll back; post-commit history and held attempts survive without another grant.
+Owner arrival during a quota observation is seen before automation commits, and
+revocation during either quota observation or another offer's priority read
+cannot grant execution. All owner/source/provider observations remain synthetic.
+The clean staged-source run passed 418 focused root/diagnosis/admission/retry/
+native/storage checks in 105 serial sandbox batches, without host home,
+credentials, network access or increased child timeouts. This is focused
+regression evidence, not a replacement for the historical full-suite runs or
+target acceptance.
 
 Remaining integration includes protected owner/company grants, real all-source
 native pre-turn controls and quiescence, compatible subscription/window adapters,
-owner-priority dispatch, bounded missing-telemetry estimates, the passive status
+the protected priority producer/driver and explicit pending policy, bounded missing-telemetry estimates, the passive status
 bridge, protected diagnostic producers/current result application, real capacity/native-retry classification,
 steering and checkpoint-continuation adapters, and encrypted target restore.
 Existing native sessions, bots, credentials and services remain unchanged.

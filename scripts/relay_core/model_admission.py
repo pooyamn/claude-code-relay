@@ -136,8 +136,25 @@ class ModelAdmission:
 
     def _check(self):
         self.ledger._check_lock()
-        if self.ledger.connection.execute("SELECT schema,policy_digest FROM model_metadata").fetchall() != [(SCHEMA, fingerprint(self.policy.body()))]:
+        if self.ledger.connection.execute("SELECT schema,policy_digest FROM model_metadata").fetchall() != [(SCHEMA, self._policy_digest())]:
             raise Denied("unsupported admission component/policy; preserve state for reviewed migration")
+
+    def _policy_digest(self):
+        body = self.policy.body()
+        if self.ledger.connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='model_dispatch_metadata'").fetchone():
+            from .model_dispatch import metadata
+            body = {"pacing_policy": body, "dispatch_policy": metadata(self.ledger)[0].body()}
+        return fingerprint(body)
+
+    def _source(self, scope):
+        source = self.verify_source(strict_json(canonical_bytes(scope)))
+        if type(source) is not SourceReceipt or source.scope_digest != fingerprint(scope) or source.origin != scope["model_request"]["origin"] or \
+                type(source.owner_requested) is not bool or type(source.owner_reserve_granted) is not bool:
+            raise Denied("independent current source/owner grant required")
+        _digest(source.source_digest)
+        if (scope["diagnostic"] or scope["context"].get("capacity_retry") is not None) and source.owner_requested:
+            raise Denied("automatic diagnosis/retry is not a fresh owner request; explicit reserve grant required")
+        return source
 
     def _attempts(self):
         result = []
@@ -239,7 +256,7 @@ class ModelAdmission:
         root = self.ledger.root(action.fields["root_task_id"])
         return current, {"action": action.to_dict(), "attempt_id": identifier(attempt_id), "plan": plan, "root": root.to_dict(),
                          "binding": binding, "context": current["context"], "model_request": request, "diagnostic": diagnostic,
-                         "owner_control": self.ledger.owner_control(root.id), "policy_digest": fingerprint(self.policy.body())}
+                         "owner_control": self.ledger.owner_control(root.id), "policy_digest": self._policy_digest()}
 
     def _wait(self, action, reason, now, eligible=None):
         body = {"intent_id": action.id, "reason": reason, "observed_ms": now, "next_eligible_ms": eligible,
@@ -263,16 +280,10 @@ class ModelAdmission:
             if now < eligible:
                 return self._wait(action, "shared_capacity_wait", now, eligible)
         observer_input = strict_json(canonical_bytes(scope))
-        source = self.verify_source(strict_json(canonical_bytes(observer_input)))
+        source = self._source(scope)
         activity = self.observe_activity(strict_json(canonical_bytes(observer_input)))
         quota = self.observe_quota(strict_json(canonical_bytes(observer_input)))
         digest = fingerprint(scope)
-        if type(source) is not SourceReceipt or source.scope_digest != digest or source.origin != request["origin"] or \
-                type(source.owner_requested) is not bool or type(source.owner_reserve_granted) is not bool:
-            raise Denied("independent current source/owner grant required")
-        _digest(source.source_digest)
-        if (diagnostic or current["context"].get("capacity_retry") is not None) and source.owner_requested:
-            raise Denied("automatic diagnosis/retry is not a fresh owner request; explicit reserve grant required")
         with self.ledger._transaction():
             if self._scope(peer, intent_id, attempt_id, plan, diagnoses)[1] != scope:
                 raise Denied("root, intent or authority changed during admission observations")
@@ -359,6 +370,16 @@ class ModelAdmission:
                 raise Denied("unsubmitted unheld model intent required")
             if self._scope(peer, intent_id, attempt_id, plan, diagnoses)[1] != scope:
                 raise Denied("admission scope changed before attempt commit")
+            if self._source(scope) != source:
+                raise Denied("source/owner grant changed before attempt commit")
+            from .model_dispatch import gate, committed
+            reason = gate(self, peer, current, scope, source, activity, expected_revision, diagnoses, now)
+            if reason:
+                return self._wait(action, reason, self.ledger._clock())
+            if self._source(scope) != source:
+                raise Denied("source/owner grant changed during priority verification")
+            if self._scope(peer, intent_id, attempt_id, plan, diagnoses)[1] != scope:
+                raise Denied("admission scope changed during priority verification")
             final_now = self.ledger._clock()
             if _deadline(deadline) <= final_now or any(window.reset_ms <= final_now for window in windows.values()) or \
                     final_now - activity.observed_ms > self.policy.activity_max_age_ms or final_now - quota.observed_ms > self.policy.quota_max_age_ms:
@@ -381,6 +402,7 @@ class ModelAdmission:
             self.ledger._save_root(updated, "diagnostic_attempt_admitted" if diagnostic else "model_attempt_admitted", {"attempt_id": attempt_id, "source": asdict(source)})
             if diagnostic:
                 diagnoses._notice(updated, scope["binding"], action.fields["parameters"]["material_digest"], "diagnosis_attempted", action.id)
+            committed(self.ledger, action.id, attempt_id)
             self.ledger.connection.execute("DELETE FROM model_waits WHERE intent_id=?", (action.id,))
             self.ledger.checkpoint("before_model_admission_commit")
         self.ledger.checkpoint("after_model_admission_commit")

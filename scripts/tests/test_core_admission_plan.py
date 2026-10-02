@@ -17,11 +17,13 @@ class AdmissionPlanTests(unittest.TestCase):
         plan = json.loads(result.stdout)
         self.assertEqual(plan["component_schema"], "ccrelay.model_admission.v1")
         self.assertEqual(plan["capacity_journal_schema"], "ccrelay.capacity_journal.v1")
+        self.assertEqual(plan["dispatch_schema"], "ccrelay.model_dispatch.v1")
         self.assertEqual((plan["active_cap"], plan["owner_reserve_percent"]), (3, 10))
         self.assertEqual(plan["work_state_dir"], "/var/lib/ccrelay-broker/work")
         for key in ("enabled", "automatic_turns_enabled", "state_changes", "native_calls", "quota_calls", "pacing_values_configured",
                     "all_source_fence_available", "quota_adapter_available", "source_verifier_available", "stop_verifier_available",
-                    "capacity_retry_activated", "capacity_verifier_available", "diagnostic_admission_activated"):
+                    "capacity_retry_activated", "capacity_verifier_available", "diagnostic_admission_activated",
+                    "owner_priority_activated", "dispatch_policy_values_configured"):
             self.assertIs(plan[key], False)
         for args in (["--run"], ["--claim", "turn-1"], ["--plan", "--run"]):
             rejected = subprocess.run([sys.executable, "-I", str(path), *args], capture_output=True, text=True, timeout=5)

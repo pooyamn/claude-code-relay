@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from relay_core.identity import Denied, exact, integer, strict_json
 from relay_core.model_admission import SCHEMA
 from relay_core.capacity_journal import SCHEMA as CAPACITY_SCHEMA
+from relay_core.model_dispatch import SCHEMA as DISPATCH_SCHEMA
 
 
 def configuration(raw):
@@ -36,10 +37,11 @@ def plan():
             "all_source_fence_available": False, "quota_adapter_available": False, "source_verifier_available": False, "stop_verifier_available": False,
             "capacity_journal_schema": CAPACITY_SCHEMA, "capacity_retry_activated": False, "capacity_verifier_available": False,
             "diagnostic_admission_activated": False,
+            "dispatch_schema": DISPATCH_SCHEMA, "owner_priority_activated": False, "dispatch_policy_values_configured": False,
             "pending": ["protected owner/company source grants and task/native controller integration",
                         "all-source native-app/goal pre-turn fence and independently observed tool quiescence",
                         "pinned account/model/window quota provenance and explicit pacing/estimate policy",
-                        "owner-priority dispatch, bounded missing-telemetry estimates and passive status bridge",
+                        "protected dispatch producer/loop and explicit pending-offer bound, bounded missing-telemetry estimates and passive status bridge",
                         "protected diagnostic producers/results and real capacity/steering/continuation/native-retry adapters",
                         "joined encrypted recovery, distinct-UID WSL and real provider acceptance"]}
 

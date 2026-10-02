@@ -89,6 +89,9 @@ class WorkOwnership(DeliveryLedger):
             if len(capacity) != 1 or capacity[0][0] != CAPACITY_SCHEMA:
                 raise Denied("unsupported joined capacity schema; preserve database before recovery")
             _digest(capacity[0][1])
+        if self.connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='model_dispatch_metadata'").fetchone():
+            from .model_dispatch import metadata
+            metadata(self)
         metadata = self.connection.execute("SELECT schema,next_fence,last_wall_ms FROM work_metadata").fetchall()
         if len(metadata) != 1 or metadata[0][0] != SCHEMA:
             raise Denied("unsupported work ownership schema; preserve for migration")
