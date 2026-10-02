@@ -187,12 +187,28 @@ Streamlining
 
 ## 10. Session history
 
+Retention
 - Claude's 30-day transcript deletion is off (`cleanupPeriodDays: 3650`), so nothing is lost before it is backed up.
-- A collector follows Claude transcripts, Codex sessions and `bus.jsonl`, tracks how far it has read in each file, and writes a **local database**: SQLite with FTS5 full-text search and sqlite-vec vector search (one file, no server), holding sessions, messages and tool calls, long tool outputs capped, secrets masked.
-- Embeddings are computed locally by a small open embedding model (no API keys); on the Windows PC it uses the GPU if there is one. The same database serves the knowledge search layer (§11).
-- **Daily cloud backup**: a consistent snapshot of the database (`VACUUM INTO`) plus the day's new raw transcripts, encrypted before upload, to Cloudflare R2 (bucket `agent-history`, access key scoped to that bucket, held only by the `relay` user; free 10 GB, then $0.015/GB-month). Raw transcripts keep secrets; the snapshot has them masked. The database can always be rebuilt from the raw files.
-- Local pruning only after the upload is verified by checksum, only for sessions idle 30+ days, never a session pinned by a relay topic or in the registry; every deletion logged.
-- Measured volume (2026-10-01): about 0.5 GB/month compressed raw and 0.4 GB/month searchable at today's pace; 2–3x with ten agents (estimate).
+- Local pruning only after the upload is verified by checksum, only for sessions idle 30+ days, never a session pinned by a relay topic or in the registry; every deletion logged to `relay-work/pruned.log`. A pruned session can no longer be resumed, and a pruned Codex thread disappears from the ChatGPT app.
+
+Local database
+- A collector follows Claude transcripts, Codex sessions and `bus.jsonl`, keeps a per-file read offset (so nothing is ingested twice and it catches up after downtime), and writes one SQLite file: FTS5 full-text search plus sqlite-vec vector search, no server.
+- Tables: sessions (id, tool, agent, repo, title, start, end), messages (time, role, text, tool calls), with long tool outputs capped at 2 KB (the full output stays in the raw files) and secrets masked.
+- Embeddings come from a small open model run locally (no API keys); on the Windows PC it uses the GPU if there is one. The same database serves the knowledge search layer (§11).
+
+Daily backup to Cloudflare R2
+- Contents, encrypted before upload (AES-256, password held by `relay`):
+  - the day's new raw transcript lines per source (`raw/YYYY/MM/DD/<source>.7z`), secrets kept;
+  - a consistent database snapshot (`VACUUM INTO`, `db/YYYY-MM-DD.7z`), secrets masked; the last 7 daily and the last 8 weekly snapshots are kept, older ones deleted.
+- Every upload is verified (size and checksum of the stored object) before anything local is pruned.
+- Restore: download the latest snapshot and the raw files since it, decrypt, replay the raw files into the database. If no snapshot survives, the database is rebuilt from the raw files alone (re-embedding takes hours of local compute, at no cost).
+- Measured volume (2026-10-01): about 0.5 GB/month compressed raw and 0.4 GB/month searchable at today's pace; 2–3x with ten agents (estimate). R2 free tier: 10 GB-month, egress free; then $0.015/GB-month.
+
+R2 setup (one time, by Pouya)
+1. Cloudflare dashboard → R2 → Create bucket `agent-history` (location: Automatic).
+2. R2 → Manage API tokens → Create API token: permission Object Read & Write, scoped to `agent-history` only.
+3. Hand over the Account ID, Access Key ID and Secret Access Key. Preferably as a file on the machine rather than in chat, since chat text ends up in the archived transcripts.
+4. The keys are stored in `~relay/.config/ccrelay/r2.env` (mode 600, owner `relay`); no session can read them. The key can touch only that bucket.
 
 ## 11. Knowledge
 
