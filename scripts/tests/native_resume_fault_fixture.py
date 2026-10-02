@@ -17,7 +17,8 @@ if __name__ == "__main__":
     checkpoint = lambda name: os._exit(73) if name == point else None
     with native_fixture(folder, checkpoint=checkpoint) as (registry, authority):
         ledger = open_outbox(folder / "ledger", policy_digest=authority.policy.digest, checkpoint=checkpoint)
-        provider = FakeResume(folder / "provider.sqlite")
-        CodexExactResume(provider.rpc, authorize=lambda *_: "fixture-admission", resume_supported=True).deliver(
+        provider = FakeResume(folder / "provider.sqlite", checkpoint=checkpoint)
+        CodexExactResume(provider.rpc, response_evidence=provider.response_evidence,
+                         authorize=lambda *_: "fixture-admission", resume_supported=True).deliver(
             ledger, "resume-1", "resume-attempt", registry, CONTROLLER)
     raise SystemExit("fault point not reached")

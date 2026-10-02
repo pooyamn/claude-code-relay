@@ -5,13 +5,14 @@ RPC and authorization covering source/current context, writer and all-source
 admission (including possible native goal continuations). No live driver exists.
 Registry observations must independently verify runtime/worktree/permissions.
 """
-from .contracts import canonical_bytes, create, fingerprint, intent_payload
+from .contracts import create, fingerprint, intent_payload
 from .identity import Denied, exact, identifier, integer
 from .runtime_delivery import evidence_for
 from .native_settings import verify_resume_permissions
+from .native_capture import validate_reference
 
 
-ADAPTER = "codex-app-server-exact-resume.v2"
+ADAPTER = "codex-app-server-exact-resume.v3"
 
 
 def resume_action(row, action_id, *, settings_digest):
@@ -53,10 +54,11 @@ def resume_plan(action, row, authorization_id):
 
 
 class CodexExactResume:
-    def __init__(self, rpc, *, authorize, resume_supported):
-        if not callable(rpc) or not callable(authorize) or type(resume_supported) is not bool:
-            raise Denied("initialized pinned RPC, protected admission gate and compatibility proof required")
+    def __init__(self, rpc, *, response_evidence, authorize, resume_supported):
+        if not all(callable(value) for value in (rpc, response_evidence, authorize)) or type(resume_supported) is not bool:
+            raise Denied("initialized pinned RPC, durable capture, protected admission gate and compatibility proof required")
         self.rpc, self.authorize, self.resume_supported = rpc, authorize, resume_supported
+        self.response_evidence = response_evidence
 
     def deliver(self, ledger, intent_id, attempt_id, registry, controller):
         current = ledger.load(intent_id)
@@ -106,7 +108,9 @@ class CodexExactResume:
                 raise Denied("resume control changed before RPC")
             response = self.rpc("thread/resume", plan["parameters"], request_id=attempt_id)
             ledger.checkpoint("after_resume_rpc")
-            canonical_bytes(response)
+            captured = self.response_evidence("thread/resume", plan["parameters"], request_id=attempt_id, response=response)
+            validate_reference(captured)
+            ledger.checkpoint("after_resume_capture_verified")
             if type(response) is not dict or response.get("id") != attempt_id or \
                     set(response) - {"jsonrpc", "id", "result", "error"} or \
                     ("jsonrpc" in response and response["jsonrpc"] != "2.0") or "error" in response or \
@@ -124,7 +128,7 @@ class CodexExactResume:
                     registry._controller(controller, session_id) != binding:
                 raise Denied("resume remains unavailable or its fresh observation changed")
             evidence = evidence_for(action, attempt_id, plan, outcome="accepted", provider_reference=plan["parameters"]["threadId"],
-                                    payload={"rpc_response": response, "resume_permissions": settings,
+                                    payload={"native_response": captured, "resume_permissions": settings,
                                              "observation_id": observed.fields["observation_id"],
                                              "observed_revision": observed.revision})
             ledger.reconcile(evidence)

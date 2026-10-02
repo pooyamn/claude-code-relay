@@ -33,7 +33,8 @@ class ResumeTests(unittest.TestCase):
         self.addCleanup(lambda: self.ledger.close())
         self.native = FakeResume(self.folder / "provider.sqlite")
         self.addCleanup(self.native.close)
-        self.adapter = CodexExactResume(self.native.rpc, authorize=lambda *_: "fixture-admission", resume_supported=True)
+        self.adapter = CodexExactResume(self.native.rpc, response_evidence=self.native.response_evidence,
+                                       authorize=lambda *_: "fixture-admission", resume_supported=True)
 
     def store(self, action_id="resume-1"):
         action = resume_action(self.registry._row("builder.task"), action_id, settings_digest=SETTINGS_DIGEST)
@@ -88,6 +89,16 @@ class ResumeTests(unittest.TestCase):
         self.assertEqual(self.deliver()["state"], "unknown")
         self.assertEqual(self.native.count(), 1)
         self.assertFalse(self.registry.cached("builder.task").fields["ready"])
+
+    def test_missing_or_invalid_durable_capture_cannot_confirm_resume(self):
+        with self.assertRaises(Denied):
+            CodexExactResume(self.native.rpc, response_evidence=None, authorize=lambda *_: "fixture", resume_supported=True)
+        self.store()
+        self.adapter.response_evidence = lambda *_, **__: {}
+        self.assertEqual(self.deliver()["state"], "unknown")
+        self.assertEqual(self.observed, [])
+        self.assertEqual(self.deliver()["state"], "unknown")
+        self.assertEqual(self.native.count(), 1)
 
     def test_reported_settings_mismatch_is_unknown_before_observer_and_never_retried(self):
         self.registry.refresh(CONTROLLER, "builder.task", expected_revision=0)
@@ -252,7 +263,9 @@ class ResumeTests(unittest.TestCase):
 
     def test_actual_process_deaths_retain_attempt_and_never_repeat_resume_rpc(self):
         points = ("after_claim_commit", "after_native_resume_control_commit", "after_resume_control_commit", "after_submit_commit",
-                  "after_resume_rpc", "after_resume_settings_verified", "after_resume_fresh_observation", "before_receipt_commit", "after_receipt_commit")
+                  "before_native_payload_commit", "after_native_payload_commit", "after_native_frame_commit",
+                  "after_resume_rpc", "after_resume_capture_verified", "after_resume_settings_verified",
+                  "after_resume_fresh_observation", "before_receipt_commit", "after_receipt_commit")
         for point in points:
             folder = self.folder / point
             with native_fixture(folder) as (registry, authority):
@@ -268,7 +281,8 @@ class ResumeTests(unittest.TestCase):
                 provider = FakeResume(folder / "provider.sqlite")
                 try:
                     before = provider.count()
-                    adapter = CodexExactResume(provider.rpc, authorize=lambda *_: "fixture-admission", resume_supported=True)
+                    adapter = CodexExactResume(provider.rpc, response_evidence=provider.response_evidence,
+                                               authorize=lambda *_: "fixture-admission", resume_supported=True)
                     recovered = adapter.deliver(ledger, "resume-1", "resume-attempt", registry, CONTROLLER)
                     self.assertEqual(recovered["state"], "confirmed" if point == "after_receipt_commit" else "unknown")
                     self.assertEqual(provider.count(), before)

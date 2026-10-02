@@ -52,7 +52,11 @@ def native_fixture(folder, *, observer=observation, checkpoint=lambda _: None):
     registry = None
     try:
         registry = open_registry(folder / "native", authority, observer=observer, checkpoint=checkpoint)
-        yield registry, authority
+        # Mac scratch has shared writable ancestors. Real artifact bytes,
+        # owners/modes/links, locks and fsync remain checked; ancestor isolation
+        # and native source/kernel observations are NOT target-OS evidence.
+        with mock.patch("relay_core.artifacts.protected_path", side_effect=lambda path, **_: Path(path)):
+            yield registry, authority
     finally:
         if registry is not None:
             registry.close()

@@ -293,7 +293,7 @@ process/bot changed. [Evidence and remaining gates](pr7-native-session-registry.
 
 Resume-permission preparation: `native_settings.py` compares the native Codex
 resume response's sandbox, approval policy, reviewer and cwd to a separately
-reviewed settings digest bound into the durable action. Adapter v2 holds old
+reviewed settings digest bound into the durable action. The settings adapter holds old
 unpinned intents and preserves mismatches as unknown rather than retrying or
 claiming readiness. The broader registry permission/context contract and required
 independent observation remain unchanged. All 167 clean-staged focused settings/
@@ -302,6 +302,19 @@ deaths and exact-intent/no-fallback negatives. Named-profile and runtime-root
 evidence, fresh control epochs, real native/WSL and protected launcher acceptance
 remain pending. The plan stays inactive; no live model/session/bot changed.
 [Response evidence and recovery](pr7-native-session-registry.md#resume-permission-response-verification).
+
+Lossless response preparation: `native_capture.py` seals full native reply/event
+bytes separately from financial action JSON. Adapter v3 requires a verified
+capture of the exact matched resume response before independent observation;
+the ledger retains a compact artifact reference. This fixes reproduced finite
+float and 70 KB history failures without weakening financial rules, truncating
+history or repeating an accepted resume. The complete 8 MiB transport payload
+fits the existing store via chunks and separate metadata. Verification covers
+203 clean-staged focused checks, including thirteen
+synthetic-driver deaths and real-pipe/UnixWS regression cases. Actual kernel/source
+integration, ordered event recovery, encrypted inventory/restore and native target
+acceptance remain pending; capture stays inactive and no live bot/model changed.
+[Capture and recovery contract](pr7-native-session-registry.md#durable-native-response-capture).
 
 ## PR 8 Root tasks and atomic work ownership
 

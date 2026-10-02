@@ -315,11 +315,11 @@ thread creation. [Native resume contract](https://learn.chatgpt.com/docs/app-ser
 `resume_action(..., settings_digest=...)` now requires that separate pin. It
 changes the durable intent and delivery plan before any effect, without changing
 the registry's broader permission/context digest. The native request still
-contains only the exact thread ID and worktree. The adapter is version 2:
+contains only the exact thread ID and worktree. The current adapter is version 3:
 missing pins are held before RPC, while mismatch, unsupported response shape or
 failed verification after submission stays unknown without another resume.
 Changing the action ID cannot bypass its unresolved predecessor. Successful
-evidence retains the reported response and canonical permissions alongside the
+evidence references the sealed full response and retains canonical permissions alongside the
 independent observation; an acknowledgment alone still cannot mark readiness.
 
 Normalization follows the pinned schema's defaults and preserves network access,
@@ -335,11 +335,12 @@ current policy. An old unsubmitted intent without it needs explicit replacement;
 do not rewrite an existing intent, discard unknown outcomes or reset counters.
 Old confirmed receipts remain historical, not new settings evidence. Preserve
 the existing outbox, native registry, full response/evidence and launch cohort
-during recovery; no new persistent component or silent database migration was
-introduced. Rollback to adapter v1 is not permission to run version-2 intents
-with older, weaker verification. The plan keeps this check inactive.
+during recovery. The settings slice introduced no database migration; the capture
+slice below adds immutable artifacts. Rollback to an older adapter is not
+permission to execute current intents with weaker verification. The plan keeps
+these checks inactive.
 
-The clean staged sandbox run passes 167 focused settings, registry, resume,
+The preceding settings slice's clean staged sandbox run passed 167 focused settings, registry, resume,
 outbox, identity and transport checks. Nine new settings checks and three added
 resume checks cover mismatched permissions, exact intent pins, absent legacy
 pins, preserved defaults and refusal rather than policy fallback. Nine actual
@@ -354,6 +355,72 @@ Fresh settings/control epochs, complete loaded instructions/skills/MCP context,
 native app visibility, subscription topology and actual isolation still require
 the protected observer/launcher integration. No bound native session, daemon,
 bot, service or model was used as a fixture or changed by this preparation.
+
+### Durable native response capture
+
+Native JSON is not the action ledger's financial JSON. The generated Codex
+0.160.0 schema allows arbitrary JSON in MCP arguments, and resume can return a
+large history. The [app-server contract](https://learn.chatgpt.com/docs/app-server)
+documents these returned items. Two real-pipe synthetic-provider regressions
+reproduced the previous failure: a finite floating-point argument or a 70 KB
+history changed an accepted resume into `unknown`. The ledger forbids floats and
+limits evidence to 64 KiB; neither restriction should be weakened for transcripts.
+
+`native_capture.py` preserves the complete received JSON bytes in the protected
+`ArtifactStore`, without redaction, rounding, truncation or execution. Non-executable
+1 MiB chunks form a `native-payload` artifact. A separate `native-frame` artifact
+contains `ccrelay.native_frame.v1` metadata: source and connection pins, unique
+frame ID, kind, typed request ID, full-byte digest/size and payload reference.
+Separating metadata preserves the existing store's full 8 MiB payload capacity
+without increasing deployment limits. Original whitespace and numeric spelling
+survive, not just the parsed representation. Repeated notifications have distinct
+frame receipts even when their payload bytes are identical.
+
+The protected launcher must attach capture before initialization and supply a
+source digest derived from current kernel identity, binding, runtime and connection
+context. A worker-supplied digest does not establish that provenance. Capture
+checks this source before and after publication and invokes existing event/UI
+listeners only after durable storage, with a detached parse. Foreign-thread
+notifications are retained as connection evidence, not attributed to the bound
+thread; existing exact-thread demultiplexing remains required. This is durable
+individual-frame capture, not an ordered replay log or a fresh settings observer.
+
+`CodexRPC.response_evidence` verifies the last matched response's exact method,
+parameters, typed ID, return value, current transport and sealed bytes. An
+in-memory capture cannot satisfy it. Adapter v3 requires that proof immediately
+after resume, before independent observation can issue another RPC. The outbox
+stores a compact `ccrelay.native_frame_receipt.v1` reference plus permissions and
+fresh observation, not the full transcript. A missing, corrupt, mismatched or
+revoked capture leaves an already-submitted action unknown, without another
+resume, a new-ID bypass or inferred readiness.
+
+Recovery must include both artifact components, their manifests/chunks, the
+outbox and native registry, and the protected source/connection cohort. These raw
+frames can contain private data and credentials: keep the store inaccessible to
+workers and include it in encrypted recovery, not Telegram text or worker memory.
+Preserve staging and orphan payloads for inspection; do not treat a payload
+without its scoped frame artifact as a confirmed reply. A complete frame surviving
+lost ledger acknowledgment is forensic evidence, not automatic reconciliation or
+permission to resend. Historical reads verify stored bytes but do not grant
+current execution authority. Rollback must preserve these artifacts and unknown
+actions rather than discard them or route through an older adapter.
+
+Protected source/producer wiring, persistent control epochs, ordered event recovery,
+archive inventory integration and clean-target restore acceptance remain pending.
+The plan reports capture inactive. No live native session, daemon, bot or model
+was changed or used as a fixture.
+
+The clean staged-source OS-sandbox run passed 203 focused capture, artifact,
+resume, settings, registry, identity, outbox and transport checks in 51 serial
+batches. Eight capture cases exercise exact-byte restoration, the full 8 MiB
+payload, unique event receipts, typed IDs, tampering, source revocation and
+post-durability listeners. Both regression histories and an observer issuing a
+second RPC pass over real pipes and anonymous Unix WebSocket fixtures. Thirteen
+actual synthetic resume-driver deaths include payload publication, scoped frame
+publication and capture verification; recovery never repeats the provider effect.
+Source/kernel/native settings and admission observations remain substituted,
+not native Linux/WSL enforcement evidence. The full suite remains deferred to
+the next milestone.
 
 ## Read only target preparation
 

@@ -191,6 +191,7 @@ class CodexRPC:
         self.authorize, self.capture, self.authorize_reply = authorize, capture, authorize_reply
         self.connection_id = "native-connection-" + uuid.uuid4().hex
         self.initialized = False
+        self.last_response = None
         self.request_ids, self.server_requests, self.server_ids = set(), {}, set()
         self.call_lock = threading.Lock()
         self.reply_lock = threading.Lock()
@@ -201,6 +202,7 @@ class CodexRPC:
             raise Denied("native runtime/UID/generation/transport pin no longer current")
 
     def _exchange(self, method, parameters, request_id, deadline):
+        self.last_response = None
         key = (type(_request_id(request_id)), request_id)
         if key in self.request_ids or len(self.request_ids) >= 4096:
             raise Denied("RPC ID reused or connection inspection bound reached")
@@ -217,7 +219,9 @@ class CodexRPC:
             if ("result" in message) == ("error" in message) or "id" not in message or \
                     type(message["id"]) is not type(request_id) or message["id"] != request_id or "params" in message:
                 raise Denied("unmatched or ambiguous native response")
-            self.capture(_decode(raw), raw=raw, kind="response", connection_id=self.connection_id)
+            receipt = self.capture(_decode(raw), raw=raw, kind="response", connection_id=self.connection_id)
+            self._current()
+            self.last_response = (method, type(request_id), request_id, _encode(parameters), _encode(message), receipt)
             return message
         raise Denied("native event inspection bound reached")
 
@@ -325,6 +329,25 @@ class CodexRPC:
         finally:
             self.reply_lock.release()
 
+    def response_evidence(self, method, parameters, *, request_id, response):
+        """Verify the exact matched reply's sealed capture before another RPC."""
+        from .native_capture import NativeCapture
+        if not self.call_lock.acquire(blocking=False):
+            raise Denied("native response capture is busy")
+        try:
+            self._current()
+            _request_id(request_id)
+            expected = (method, type(request_id), request_id, _encode(parameters), _encode(response))
+            if not self.initialized or type(self.capture) is not NativeCapture or self.last_response is None or \
+                    self.last_response[:5] != expected:
+                raise Denied("exact matched durable native response capture required")
+            evidence = self.capture.response_evidence(self.last_response[5], response=response, request_id=request_id)
+            self._current()
+            return evidence
+        finally:
+            self.call_lock.release()
+
     def close(self):
         self.initialized = False
+        self.last_response = None
         self.channel.close()

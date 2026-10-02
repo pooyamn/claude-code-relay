@@ -9,7 +9,7 @@ import unittest
 from unittest import mock
 
 from native_rpc_fixtures import CLIENT, INITIALIZED, RPCFixture, TRANSPORT_DIGEST
-from native_resume_fixtures import FakeResume, SETTINGS_DIGEST
+from native_resume_fixtures import FakeResume, SETTINGS_DIGEST, attach_capture
 from native_session_fixtures import CONTROLLER, enrollment, native_fixture, observation
 from outbox_fixtures import CONTEXT, open_outbox
 from relay_core.contracts import fingerprint
@@ -142,6 +142,62 @@ class RPCTests(unittest.TestCase):
         with self.assertRaises(Denied):
             wire.rpc.rpc("thread/read", {}, request_id=7)
         wire.peer.assert_quiet()
+
+    def test_an_in_memory_capture_cannot_supply_durable_response_evidence(self):
+        wire = self.fixture()
+        wire.initialize()
+        wire.peer.start(lambda peer: (peer.receive(), peer.write({"id": 7, "result": {"ok": True}})))
+        response = wire.rpc.rpc("thread/read", {}, request_id=7)
+        wire.peer.finish()
+        with self.assertRaisesRegex(Denied, "durable native response"):
+            wire.rpc.response_evidence("thread/read", {}, request_id=7, response=response)
+        wire.peer.assert_quiet()
+
+    def test_durable_evidence_matches_exact_method_parameters_typed_id_and_response(self):
+        with tempfile.TemporaryDirectory() as temporary, native_fixture(Path(temporary)):
+            wire = self.fixture()
+            attach_capture(wire, Path(temporary) / "wire-artifacts")
+            wire.initialize()
+            parameters = {"threadId": "native-1"}
+            wire.peer.start(lambda peer: (peer.receive(), peer.write({"id": 7, "result": {"duration": 1.5}})))
+            response = wire.rpc.rpc("thread/read", parameters, request_id=7)
+            wire.peer.finish()
+            proof = wire.rpc.response_evidence("thread/read", parameters, request_id=7, response=response)
+            self.assertEqual(proof["connection_id"], wire.rpc.connection_id)
+            for method, params, rid, value in (("thread/resume", parameters, 7, response),
+                    ("thread/read", {"threadId": "foreign"}, 7, response),
+                    ("thread/read", parameters, "7", response),
+                    ("thread/read", parameters, True, response),
+                    ("thread/read", parameters, 7, {"id": 7, "result": {"duration": 2}})):
+                with self.assertRaises(Denied):
+                    wire.rpc.response_evidence(method, params, request_id=rid, response=value)
+            wire.peer.start(lambda peer: (peer.receive(), peer.write({"id": 8, "result": {"ok": True}})))
+            wire.rpc.rpc("thread/read", parameters, request_id=8)
+            wire.peer.finish()
+            with self.assertRaises(Denied):
+                wire.rpc.response_evidence("thread/read", parameters, request_id=7, response=response)
+            wire.peer.assert_quiet()
+
+    def test_transport_revoked_during_durable_capture_is_not_an_accepted_reply(self):
+        with tempfile.TemporaryDirectory() as temporary, native_fixture(Path(temporary)):
+            wire = self.fixture()
+            attach_capture(wire, Path(temporary) / "wire-artifacts")
+            wire.initialize()
+            captured = []
+            original = wire.rpc.capture.notify
+            def revoke(message, **fields):
+                original(message, **fields)
+                captured.append(message)
+                wire.pin = fingerprint({"revoked": True})
+            wire.rpc.capture.notify = revoke
+            wire.peer.start(lambda peer: (peer.receive(), peer.write({"id": 7, "result": {"ok": True}})))
+            with self.assertRaises(Denied):
+                wire.rpc.rpc("thread/read", {}, request_id=7)
+            wire.peer.finish()
+            self.assertEqual(captured, [{"id": 7, "result": {"ok": True}}])
+            self.assertIsNone(wire.rpc.last_response)
+            self.assertTrue(wire.peer.channel.closed)
+            wire.peer.assert_quiet()
 
     def test_eof_after_request_is_unknown_and_no_new_call_is_possible(self):
         wire = self.fixture()
@@ -410,6 +466,61 @@ class RPCTests(unittest.TestCase):
 class JoinedResumeTests(unittest.TestCase):
     wire_type = RPCFixture
 
+    def history_case(self, items, *, observer_reads=False):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            def inspect(binding, record, probe_id):
+                if observer_reads:
+                    wire.rpc.rpc("thread/read", {"threadId": record.fields["provider_session_id"]}, request_id="observe-1")
+                return observation(binding, record, probe_id)
+            with native_fixture(folder, observer=inspect) as (registry, authority), \
+                    closing(open_outbox(folder / "outbox", policy_digest=authority.policy.digest)) as ledger:
+                registry.enroll(CONTROLLER, enrollment())
+                ledger.store(resume_action(registry._row("builder.task"), "resume-1", settings_digest=SETTINGS_DIGEST), CONTEXT)
+                wire = self.wire_type(max_frame_bytes=2 * 1024 * 1024)
+                try:
+                    attach_capture(wire, folder / "wire-artifacts")
+                    wire.initialize()
+                    def provider(peer):
+                        request = peer.receive()
+                        with closing(FakeResume(folder / "provider.sqlite")) as native:
+                            response = native.rpc(request["method"], request["params"], request_id=request["id"])
+                        response["result"]["thread"]["turns"] = [{"id": "prior-turn", "items": items}]
+                        peer.write(response)
+                        if observer_reads:
+                            request = peer.receive()
+                            self.assertEqual(request["method"], "thread/read")
+                            peer.write({"id": request["id"], "result": {"thread": {"id": request["params"]["threadId"]}}})
+                    wire.peer.start(provider)
+                    adapter = CodexExactResume(wire.rpc.rpc, response_evidence=wire.rpc.response_evidence,
+                                               authorize=lambda *_: "fixture-admission", resume_supported=True)
+                    result = adapter.deliver(ledger, "resume-1", "resume-attempt", registry, CONTROLLER)
+                    wire.peer.finish()
+                    from relay_core.native_capture import NativeFrameReceipt
+                    payload = ledger.connection.execute("SELECT body FROM evidence").fetchone()[0]
+                    reference = json.loads(payload)["payload"]["native_response"]
+                    captured = wire.rpc.capture.read(NativeFrameReceipt(reference["artifact_digest"]))
+                    self.assertEqual(captured[1]["result"]["thread"]["turns"][0]["items"], items)
+                    self.assertEqual(result["state"], "confirmed")
+                    self.assertLess(len(payload), 4096)
+                    self.assertNotIn(b'"rpc_response"', payload)
+                    with closing(FakeResume(folder / "provider.sqlite")) as native:
+                        self.assertEqual(native.count(), 1)
+                        self.assertEqual(adapter.deliver(ledger, "resume-1", "resume-attempt", registry, CONTROLLER)["state"], "confirmed")
+                        self.assertEqual(native.count(), 1)
+                    wire.peer.assert_quiet()
+                finally:
+                    wire.close()
+
+    def test_resume_history_preserves_native_floating_tool_arguments(self):
+        self.history_case([{"id": "tool-1", "type": "mcpToolCall", "arguments": {"duration": 1.5}}])
+
+    def test_resume_history_larger_than_action_ledger_is_not_truncated(self):
+        self.history_case([{"id": "message-1", "type": "agentMessage", "text": "x" * 70000}])
+
+    def test_resume_capture_is_verified_before_an_independent_observer_rpc(self):
+        self.history_case([{"id": "tool-1", "type": "mcpToolCall", "arguments": {"duration": 1.5}}], observer_reads=True)
+
     def test_durable_resume_uses_initialized_real_pipe_and_lost_ack_is_never_replayed(self):
         for lose_ack in (False, True):
             with self.subTest(lose_ack=lose_ack), tempfile.TemporaryDirectory() as temporary:
@@ -424,6 +535,7 @@ class JoinedResumeTests(unittest.TestCase):
                     ledger.store(resume_action(registry._row("builder.task"), "resume-1", settings_digest=SETTINGS_DIGEST), CONTEXT)
                     wire = self.wire_type()
                     try:
+                        attach_capture(wire, folder / "wire-artifacts")
                         wire.initialize()
                         def provider(peer):
                             request = peer.receive()
@@ -437,7 +549,8 @@ class JoinedResumeTests(unittest.TestCase):
                             else:
                                 peer.write(response)
                         wire.peer.start(provider)
-                        adapter = CodexExactResume(wire.rpc.rpc, authorize=lambda *_: "fixture-admission", resume_supported=True)
+                        adapter = CodexExactResume(wire.rpc.rpc, response_evidence=wire.rpc.response_evidence,
+                                                   authorize=lambda *_: "fixture-admission", resume_supported=True)
                         result = adapter.deliver(ledger, "resume-1", "resume-attempt", registry, CONTROLLER)
                         wire.peer.finish()
                         self.assertEqual(result["state"], "unknown" if lose_ack else "confirmed")
