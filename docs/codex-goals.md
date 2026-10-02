@@ -109,3 +109,25 @@ second poller, modify HamalBot wiring, restart the native daemon or use a bound
 model session as a fixture. Rollback removes the adapter activation, not native
 goals or command history; preserve the journal for inspection. This is scoped
 preparation, not completion of PRs 6–9 or design acceptance test 15.
+
+### Current relay topic activation — 2026-10-02
+
+Topic 816's watcher (`cr-a8012a3205`) still loaded the shared sender and bubble
+module, which lacked goal reads and the footer. The active native goal was
+present; this was a deployment gap, not a missing goal or oversized message.
+Only that watcher was moved to the existing goal-enabled Khadang release above,
+after its old watcher and edit-server child were verified stopped. The exact
+native thread, existing OpenClaw bot route and bubble journal were preserved;
+no bot wiring, router, other watcher or native daemon changed.
+
+Four focused OS-sandbox tests passed against goal/bubble/protocol sources that
+matched the installed release byte-for-byte. Live observation captured an edit
+intent for existing message 13469 ending with `Working (13m 10s)` and
+`Goal: active — do one by one, get it ready for when pc gets here`, followed by
+the acknowledgment clearing that intent without changing the message ID. The
+payload was 3086 UTF-16 units. This verifies the current topic's native goal
+read and same-message delivery, not phone rendering or a native goal mutation.
+
+The topic's running tmux watcher now launches from the release. Its upstream
+shared launcher was not changed: a future recreation must use this release
+rather than the old shared sender. Target-PC supervised startup remains pending.
