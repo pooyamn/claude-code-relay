@@ -1,7 +1,7 @@
 # Agentic PC: design
 
-Status: v6 (2026-10-01). Adds the `support` agent, issue intake, health checks, the ccrelay MCP server (built and tested), the Codex observer (built), and the session-history archive. Owner: Pouya.
-Target: Windows PC, WSL2 Ubuntu 24.04. Sessions run as user `pouya` (home `/Users/pouya`, so existing absolute paths keep working); the router runs as a separate user `relay`.
+Status: v7, decisions in progress (2026-10-01). Incorporates Pouya's review decisions on local identities, relay update authorization, daily disaster recovery, tool-switch repair, evidence-based memory maintenance with passive inconsistency reporting, a builder in the first rollout with demand-driven management, a three-active-session cap with task-wide progress monitoring, subscription-aware pacing with a 10% owner reserve, evaluated GStack/GBrain integration, and source-evaluated AX/Paperclip launch, ownership and continuity patterns. Remaining review questions are listed in §15. These are target requirements, not claims that the live Mac relay already implements them. Owner: Pouya.
+Target: Windows PC, WSL2 Ubuntu 24.04. Agent roles run under separate local security identities with private homes and runtime state; the router runs as `relay`. Pouya remains the owner and uses one GitHub account. The existing Mac deployment remains a migration source.
 
 ## 1. Goals and constraints
 
@@ -20,21 +20,24 @@ Constraints
 - Phone access through the Telegram router (ccrelayd) and the Claude Code and Codex remote-control apps.
 - Migrate gradually, one agent at a time.
 
-Threat model: one owner. The risks are mistakes and prompt injection (from web pages, documents, other sessions), not a hostile user on the machine. Protection is real where an action leaves the machine or touches `main`; inside the machine, sessions trust each other.
+Threat model: one owner. The risks are mistakes and prompt injection (from web pages, documents, other sessions), not a hostile owner. A compromised worker must not impersonate the reviewer or CTO, change privileged policy, or deploy code that gains the router's credentials. Cooperation between sessions does not grant access to another role's identity or controls.
 
 ## 2. Model
 
 - **Agent**: a role. Instructions, skills, role memory, the paths it owns.
 - **Session**: one live conversation of an agent on one task, in Claude Code or Codex. Id `<agent>.<task>`. An agent can have several sessions.
 - Sessions talk to sessions through ccrelay. One Telegram bot carries all traffic.
-- Plain files are the source of truth. Built-in memory is off: Claude `autoMemoryEnabled: false`; Codex `memories` (already off; pin with `codex features disable memories`).
+- Plain files are the source of truth for instructions and curated memory. Operational databases/ledgers and derived retrieval views have the explicit roles described below. Built-in memory is off: Claude `autoMemoryEnabled: false`; Codex `memories` (already off; pin with `codex features disable memories`).
 
 ### Agents
 
-v1: `ceo`, `cto`, `reviewer`, `support`. Then one at a time: `researcher`, `firmware`, `backend`, `frontend`, `pcb-schematic`, `pcb-routing`, `art-director`.
+v1: `builder`, `reviewer`, `support`, with `ceo` and `cto` role profiles and security identities available on demand. The builder delivers the first scoped production task; its repo, domain skills, and owned paths are assigned for that task. Then add specialist roles one at a time: `researcher`, `firmware`, `backend`, `frontend`, `pcb-schematic`, `pcb-routing`, `art-director`.
+
+CEO/CTO coordination is demand-driven: direction decisions, architecture or ownership conflicts, merge requests, and scheduled improvement reviews. Routine implementation does not require a CEO → CTO delegation chain. Independent reviewer approval and the authenticated CTO merge request remain mandatory; on-demand management does not bypass publication or security gates.
 
 | Agent | Owns |
 |---|---|
+| `builder` | implementation, tests, and reproducible evidence for the assigned repo/component; no self-review or merge authority |
 | `ceo` | direction for Fidior and Oracova, outreach, docs, pricing, COMPANY.md |
 | `cto` | architecture, task split, merges, the improvement backlog and weekly streamlining proposals |
 | `reviewer` | pass/fail on other sessions' work with evidence; runs on the other tool |
@@ -61,10 +64,29 @@ Every memory is a directory of small files, one fact per file, plus a generated 
 | History | session-history archive (§10) | every transcript, verbatim | collector |
 
 Rules
-- Every fact file has frontmatter: `date`, `session`, and for repo facts `commit`. A repo fact from an unmerged branch is marked `unmerged` and is promoted only after its PR merges.
-- Precedence when files disagree: decisions > company > repo > agent; newer beats older within a layer.
+- Every fact file has frontmatter: stable `id`, `date`, authenticated `session`, `scope`, evidence references, validity conditions, and status (`proposed`, `verified`, `disputed`, or `superseded`); repo facts also carry `commit`. A repo fact from an unmerged branch is marked `unmerged` and is promoted only after its PR merges.
+- Decisions > company > repo > agent remains the authority order for instructions in the same scope. Timestamps do not establish factual correctness. Conflicting facts are flagged and checked against evidence; the index identifies the dispute rather than silently selecting the newest entry.
+- Agents append proposals under their own identity. A curator for each scope reconciles canonical facts through the router; worker access to shared memory does not permit changing approved company decisions or another role's memory. Index generation and canonical updates are serialized per scope and retain an audit trail.
+- Corrections explicitly identify the facts they supersede and the evidence supporting the change. Superseded entries remain recoverable. An unresolved conflict goes to the responsible agent and stays marked disputed; no unsupported choice is promoted as verified.
 - Loading: company and the decisions index load in every session. Agent and repo indexes load at session start (instructed in AGENTS.md); individual fact files are read on demand.
-- Handoffs are per session and written at checkpoints (every publish, hand-back, tool switch). The launcher warns when a handoff is older than the session's last commit.
+- Handoffs are per session and written at checkpoints (every publish, hand-back, tool switch). Freshness checks cover HEAD, dirty and untracked files, pending actions, and task progress; a last-commit timestamp alone is insufficient.
+
+Maintenance
+- Task completion and new evidence trigger reconciliation of affected facts. A nightly job catches missed updates and scans for duplicates, stale evidence, invalid scope, and inconsistencies.
+- A deterministic scan runs first. A maintenance agent reads only changed or flagged entries; a quiet scan does not start model work. Evidence-backed corrections and index updates can apply automatically within the curator's authority, with a recorded rationale.
+- Pouya receives a passive, silent nightly digest when inconsistencies are found, including those resolved automatically. Each item links to the conflicting facts and evidence, responsible agent, and resolution or open status. Repeated unchanged conflicts are coalesced. The digest does not demand approval or pause unrelated work.
+- Memory maintenance preserves fact history and obeys the authorization boundaries for company decisions and security policy. Backup captures the canonical records, proposals, indexes, disputes, and maintenance audit trail.
+
+### GBrain: controlled memory retrieval
+
+Evaluation supports using GBrain as a local memory projection/retrieval service, not as the authority for facts, roles, approvals, or task state. At the tested revision, 150 upstream checks passed and two synthetic probes reproduced important correctness mismatches; ten Windows-only checks were skipped. The evidence and limits are recorded in [the evaluation](research/2026-10-01-gstack-gbrain-evaluation.md).
+
+- Canonical fact/decision files remain authoritative. The router projects their stable IDs, scope, evidence, status, revisions, and explicit correction/withdrawal relations into GBrain; retrieval links back to those records. Publication uses durable change/request IDs and a replayable projection outbox. A stale projection is reported as stale, never used to silently reverse a canonical correction. Withdrawal tombstones and dispute history survive rebuilds and restore.
+- Run a single local PGLite-backed service under a dedicated protected identity. Agents cannot read its database/configuration, run its privileged local CLI, or acquire a shared administrator credential. The authenticated router is the only agent-facing entry point; it constrains source grants and allowed operations per role/session. Do not use legacy no-grant federation as a worker grant. Folder/source dotfiles are routing hints, not authentication.
+- Agents query allowed memory and submit proposals under their own identity; the scope's authorized curator publishes canonical updates. Do not expose unrestricted `remember`, `forget`, database administration, arbitrary filesystem operations, or autonomous-job controls to workers. Backend grants enforce source/operation ceilings; the broker additionally enforces our fact-status/evidence rules and labels proposals/disputes rather than presenting them as verified instructions. GBrain's `private` visibility means local-only, not role-private, so role privacy requires independent source grants and protected storage.
+- Upstream `remember` accepts free-text provenance, defaults to `world`, and can supersede changed text on embedding similarity alone. In keyless mode it skips semantic deduplication. Neither behavior proves a correction: canonical promotion/supersession still requires the evidence checks and explicit links above. Do not feed canonical records through an automatic similarity-based replacement path.
+- Start keyless with deterministic retrieval and bounded context packing. Preserve local semantic search through QMD (§11); adding a local GBrain embedding provider requires a target-runtime compatibility/quality test and must not weaken canonical-write policy. No automatic cloud embedding/reranking, standalone API-backed synthesis/dream/extraction, or unadmitted model work. Our existing quota-managed sessions perform any model-assisted curation, under the 10% owner reserve and task limits.
+- Pin reviewed GBrain code, runtime, dependencies, and schema expectations. Lifecycle migrations run only as an approved deployment step after a consistent snapshot, not opportunistically in an agent install. Snapshot its complete store, receipts, withdrawals and configuration in the daily encrypted recovery package (§10); a Markdown export alone is insufficient. Target WSL isolation, concurrency, compatibility and restore tests remain mandatory before live use.
 
 ## 4. Files
 
@@ -85,11 +107,22 @@ Rules
 ~/worktrees/<repo>/<agent>.<task>/ one worktree per session, outside the main checkout
 ```
 
-Global wiring
+Global wiring (generated separately for each role's private home)
 - `~/.claude/CLAUDE.md` imports shared AGENTS.md, COMPANY.md and the decisions index.
 - `~/.codex/AGENTS.md` is a generated concatenation of the same, rebuilt on change.
 - Claude `instructionFiles: "claude-md-and-agents-md"`, `crossSessionInbound: "accept"`, `cleanupPeriodDays: 3650`.
 - ccrelay MCP server registered for both tools (Claude user scope, Codex `codex mcp add`).
+
+The shared tree is router-managed, with read access and scoped proposal submission for agents. Each role's home, runtime sockets, authentication material, and worktrees are protected from other roles. Global instructions and role definitions cannot be rewritten by an ordinary session to acquire privileges. Legacy `/Users/pouya` paths must be migrated deliberately; a common writable home would defeat identity isolation.
+
+### GStack: on-demand workflow methods
+
+Source evaluation supports adapting selected GStack methods, not installing its entire stock automation. Use engineering-plan review for on-demand CTO work, risk-focused checklists for the reviewer, investigation for support, and explicit QA charters/reports for builder/reviewer validation. These are skills of existing roles, not additional always-running agents. Runtime/quality validation remains pending; see [the evaluation](research/2026-10-01-gstack-gbrain-evaluation.md).
+
+- The reviewer reports findings against the exact candidate without auto-editing it. The builder implements fixes, then review is rerun on the new SHA. GStack's default fix-first review must be adapted to preserve independence.
+- Outside opinions and specialist work go through admitted native interactive sessions and the same root-task budget, three-active-session cap, and subscription pacing. Stock direct CLI invocations or parallel reviewer launches cannot bypass admission. Use additional perspectives when the task/risk warrants them, not a compulsory management chain on every change.
+- Shipping still uses the router's publication, reviewer/CTO gates, and owner approvals. No skill gains a direct GitHub credential or permission to push, merge, deploy, or approve its own changes.
+- Vendor/adapt only reviewed, pinned assets with license notices preserved; upgrades follow normal reviewed deployment. No silent team auto-update, external telemetry/artifact sync, or broad GBrain setup. Browser QA uses isolated test profiles/fixtures; access to Pouya's logged-in browser or real external actions requires explicit scope and existing authorization.
 
 ## 5. Sessions
 
@@ -104,15 +137,54 @@ Start: `a <agent> <task> [claude|codex] [repo]`. The launcher:
 
 Generated files are regenerated after every merge into `main` and at every start.
 
+Launch contract (AX-inspired; local implementation, not a cluster dependency)
+
+- A versioned, protected manifest resolves role/session identity, repo/worktree and baseline SHA, pinned runtime/adapter versions, instructions/skills/MCP references, allowed paths and permissions, and a resource profile. Reject unknown fields and unsupported controls; persist its admitted digest. Bootstrap is deterministic; any model-assisted setup is separately admitted under the same task budget. Reusing a dirty worktree never runs forced initialization checkout.
+- Verify identity, workspace setup, runtime capabilities and enforced permissions before admitting a turn. Record readiness conditions with reason, observation time and manifest digest. Failed setup or a missing runtime capability stays not-ready; never substitute a default or less-restricted profile. Process liveness/readiness is not task completion.
+- Enforce configured CPU/RAM/process limits through WSL systemd/cgroups, including detached descendants and ongoing tools. Track resource-limit failures as evidenced issues while preserving work. Resource accounting is separate from subscription quota and the three-active-session cap; numeric profiles require target-PC measurements.
+
 Ownership
 - Each agent's AGENTS.md lists the paths it owns. Changing another agent's paths goes through that agent or `cto`.
 - Unmergeable artifacts (KiCad board, schematic, BOM of one revision) are leased per session (`ccrelay.lease`), checked when the session publishes.
+- Each work item is atomically checked out against expected state, assignee and execution/run ID under its root task; unresolved dependencies block execution. Continuing accountable ownership is distinct from the active execution lease and global activity slot. Same-run replay is idempotent; competing runs cannot both claim the item. Delegators may release an activity slot while retaining responsibility, but cannot leave overlapping writers.
+- The broker fences stale execution IDs on task updates, publication and external actions. Transfer of a worktree also requires trusted proof that its previous writer and descendants have stopped or quiesced (process start identity and unit/cgroup state); an expired timer or terminal database row alone is insufficient. Reassignment preserves root budgets, evidence, approvals and uncertain-action reconciliation.
 
-Switching tool: stop the current session (it writes its handoff), mark it `stopped`, start the other tool on the same worktree. Never two live sessions on one worktree.
+Activity limits and progress (initial watchdog policy; task budgets/deadlines pending)
+- At most three sessions actively work at once across all roles. Idle interactive sessions do not count. An executing turn or its ongoing tools do count; a session waiting for another agent releases its slot. Admission is enforced before execution through the trusted launcher/runtime adapters, including native-app, Telegram, inter-session, maintenance, and recovery turns. Observing turns after they start is not sufficient enforcement.
+- Each top-level task receives a router-issued root ID, one accountable owner, acceptance criteria, and a durable progress/budget ledger. Delegated subtasks inherit the root. New message chains, omitted `reply_to`, renamed tasks, new sessions, tool switches, and restarts do not reset its counters. An agent cannot mint a new top-level task to escape the original budget.
+- An agent's `done` is a completion proposal: the controller checks deliverable/evidence references and the applicable acceptance/review gates before recording completion. Process exit, readiness and unsupported prose claims cannot establish success.
+- Before delegation, record the specific question or deliverable, receiving owner, expected evidence, and next milestone. Each result records what changed and references inspectable evidence: an artifact/diff, reproducible test or measurement, an evidenced review finding, or an experiment that rules out a hypothesis. Failed experiments can be progress when they narrow the problem.
+- Message volume, acknowledgments, repeated plans, changing assignees, fresh commits without a relevant outcome, and unsupported claims of progress do not count. Evidence references are checked against the task's criteria and prior checkpoint; artifact churn or repeating the same result must not refresh the progress window.
+- A deterministic monitor tracks repeated delegation cycles, unchanged evidence/milestones, elapsed time since verified progress, and aggregate activity. It wakes an independent agent only for ambiguous or flagged findings. Semantic relevance is not proven by a changed hash; ambiguous progress remains unverified rather than automatically resetting the counters.
+- Keep the watchdog as the initial policy: three consecutive completed handoffs without verified progress trigger the hold-and-diagnose path below. Count assessed delegation results, not every message or an operation still in flight. The threshold is configurable through approved policy and recorded with each task's ledger; new message chains cannot reset it. Tune it from observed incidents rather than treating the initial value as permanently optimal.
+- Persist a diagnosis fingerprint of material task/ownership/blocker/wait state and verified evidence/milestone revisions. Cosmetic updates and repeated messages do not cause another model diagnosis; new relevant evidence does. Revalidate the fingerprint and current authority before applying diagnostic actions; reject stale results. This strengthens the same initial watchdog, not a second always-running management loop, and does not reset its counters or budget.
+- Each root has finite execution/delegation budgets, a deadline or next-checkpoint deadline, and a no-progress threshold, configured before autonomous work. Use measured quota where the runtime exposes it and bounded turn/attempt counts otherwise; do not claim exact token accounting when unavailable. Every child and diagnostic attempt charges the same root, including fresh message chains.
+- A long-running build, measurement, or external wait has an explicit expected checkpoint and operation state. Lack of a new commit alone does not establish a loop; waiting must not trigger repeated delegation or unnecessary model wakes.
+- At a no-progress threshold or budget/deadline exhaustion, hold further automatic delegation for that task and preserve its work. Assign one bounded diagnosis to the accountable owner (support for a relay mechanism bug), using a preallocated diagnostic budget within the same three-session cap. Record the cause and a concrete evidence-producing next step; resume only within the remaining authorized budget. Budget extensions require Pouya's approval, and further diagnosis cannot recursively grant itself more budget. Only verified progress resets the no-progress window.
+- Report detected stalls, diagnosis, and resolution to Pouya passively in the Issues topic, with task/evidence links and spent budget; coalesce unchanged repeats. Unrelated tasks continue. Security or P1 incidents retain their normal alert policy. This circuit breaker contains wasted work while diagnosis fixes the cause; pausing is not presented as the fix or as abandoning the task.
+
+Subscription-aware pacing (10% owner reserve approved; initial gap pending)
+- Introduce configurable minimum spacing between automated agent starts/handoffs, plus adaptive admission based on remaining allowance and time to reset. A single durable scheduler owns this pacing; independent sessions cannot each spend the same reported allowance. Keep the three-active-session ceiling, but allow fewer active sessions when the budget is tight.
+- Track capacity by provider and subscription account, not local role UID. All sessions using that account share its pacing state. Apply every reported quota window or model-specific pool, using the most restrictive applicable allowance. Store quota observations with their timestamp/source, estimated burn rate, in-flight usage reservations, cooldowns, and queued work's next eligible time; restart, new roles, or new message chains cannot reset them.
+- Reserve 10% of each applicable subscription allowance for Pouya's direct use; automation may use at most the other 90%, subject to actual remaining capacity and conservative in-flight estimates. This is 10% of the quota window's allowance, not 10% of whatever remains at each check. Autonomous support/urgent repair does not spend Pouya's reserve without his explicit authorization. Spread automated capacity across the remaining window; increase spacing and defer background coordination/maintenance when consumption outpaces the target. The initial gap remains to be chosen (§15); neither an account tier nor a fixed number of turns per window is assumed.
+- Use a compatible documented status/usage adapter where available. Missing or stale telemetry falls back to explicitly labeled conservative estimates and bounded automated starts, not invented remaining-quota figures. OpenAI documents variable per-task consumption and remaining limits through the usage dashboard or CLI `/status`; this does not by itself establish a supported machine-readable adapter for the installed runtime. [Official OpenAI documentation](https://learn.chatgpt.com/docs/pricing).
+- Quota adapters return typed windows, reset times, provider/account identity, observation source/time and explicit errors, with bounded polling and per-provider failure isolation. Probes are privileged, read-only and outside model sessions; workers do not receive subscription tokens. Paperclip's RPC/usage adapters are prior art, not authorization to discover host credentials or depend on unverified internal endpoints. Pin compatibility and verify account provenance; quota display and recorded dollar spending do not enforce our admission/reserve policy.
+- A fixed delay alone cannot guarantee avoiding the limit: one extended turn or activity outside the relay can consume substantial allowance. Prefer bounded evidence-producing work checkpoints and refresh usage before further admission. Defer new automated model work on observed exhaustion until provider-reported availability/reset is confirmed, preserving handoffs and pending actions; do not repeatedly wake agents or replay uncertain external actions to probe the limit. Do not enable paid credits, API fallback, or plan upgrades automatically.
+- Persist incoming messages immediately; pacing delays model execution, not durable intake or the delivery log. Owner steering into an active turn and stop/pause controls remain responsive. Owner-requested new turns get priority and access to his reserve within the same concurrency cap and actual available allowance. Autonomous urgent repair gets priority within the automated budget; using the owner reserve requires Pouya's explicit authorization. Required review and security gates are never skipped to save quota.
+- Mark quota/pace waits explicitly with their reason and next eligible time. They do not consume execution budget, count as no-progress handoffs, or trigger a delegation-loop diagnosis merely because no work started. Absolute owner deadlines remain visible; report a threatened deadline rather than resetting it. Passively show pacing, telemetry uncertainty, deferred tasks, and expected resumption in the status/Issues topics.
+
+Switching tool
+- Persist a switch request and keep the original session as the recovery source. Ask it to checkpoint task context; also snapshot committed, dirty, and untracked work, running operations, open publications, pending messages, approvals, and known external outcomes. Crashes before a semantic checkpoint must remain detectable.
+- Verify the handoff against the current worktree and action ledger. Quiesce writes before the final snapshot, preserve all local work, then launch the other tool on the same worktree and verify it loaded the handoff. Never allow two sessions to write the worktree concurrently.
+- Checkpoints bind role/task/workspace identity and provider IDs to runtime/adapter versions, tool-contract and permission fingerprints. A same-tool resume independently verifies the exact returned session and recorded active turn before using a compact context delta or issuing steer/interrupt; control requests are guarded by the expected turn ID. Capability or contract drift requires compatible repair or a verified full handoff under the switch policy, never an implicit fresh-session fallback.
+- An incomplete or failed handoff is a relay bug: record the issue, ask support to diagnose and repair it, revalidate, then complete the switch. Repair uses the normal support review and deployment policy; a bug report does not grant extra authority.
+- If repair cannot produce a verified handoff, keep the switch pending and notify Pouya. Preserve the original thread, checkpoints, worktree, and action state so recovery can continue; do not silently replace the task with an empty or partial context.
+- On restart, resume the recorded switch phase and reconcile pending external actions. Approval and message identities survive the switch; switching never grants approval or repeats an action merely to rebuild context.
 
 Recovery
 - `sessions.json` keeps desired state (running, paused, stopped) separate from observed state. On boot or router restart, only sessions whose desired state is `running` are resumed, by exact id. A failed resume alerts; it never silently starts a fresh thread.
-- One Codex daemon. Nothing ever deletes a thread lock held by a live process.
+- Record observed stop/suspend only after runtime acknowledgment and writer-state verification. A failed stop request cannot release the execution lease or, while a turn/tools remain active or unknown, its activity slot; it cannot be reported as successfully paused. Reconcile the process before resuming/reassigning it; a verified idle interactive process alone does not occupy an activity slot.
+- Codex runtime access must respect role isolation: a shared daemon socket must not expose another role's sessions or credentials. The exact daemon topology is a remaining implementation decision (§15). Never kill or restart the existing remote-control daemon to perform migration, and never delete a thread lock held by a live process.
 - Boot order: WSL (Task Scheduler) → systemd user units: Codex daemon, router, health checks, then session resume.
 
 ## 6. Messaging: the ccrelay MCP server
@@ -129,11 +201,11 @@ Sessions message each other only through the ccrelay MCP server (built and teste
 | `request_action(kind, details)` | email, payment, post: becomes an Approve button |
 | `report_issue(kind, title, details)`, `list_issues(status?)`, `comment_issue(id, text)` | platform issues (§9) |
 
-- Identity: the server takes the caller's identity from the folder it runs in; a session cannot choose its sender name.
-- Header `[from <session> · hop N · id <id>]` is written by the server; the receiver answers with `reply_to`.
+- Identity in the target design: the router authenticates the caller's local security identity and binds it to an allowed role and a launcher-registered session. A directory, sender field, or message header does not authenticate the role. Folder-derived identity in the current MCP implementation must be replaced before enforcing reviewer or CTO privileges.
+- Header `[from <session> · task <root-id> · hop N · id <id>]` is written by the server; the receiver answers with `reply_to`. The router binds the task root from the admitted turn, not a caller-chosen header.
 - Delivery: Claude via one JSON line on its inbox socket (`/tmp/cc-socks/<pid>.sock`); Codex via `codex queue --thread <id>`, or `turn/steer` for urgent.
 - States per message: `stored`, `delivered`, `failed`; retries for failed; duplicates dropped by id.
-- Hop limit 3, counted by the server. If the target is not running, the message is parked and Pouya is alerted. Nothing auto-starts.
+- Hop limit 3, counted by the server, is a per-chain guard only. The task-wide budgets and progress checks in §5 also apply across newly started chains. If the target is not running, the message is parked and Pouya is alerted. Nothing auto-starts.
 - Claude's native `SendMessage` to other sessions is denied by permission rule, so nothing bypasses the log.
 
 Codex observer (built 2026-10-01): the relay stays attached to every Codex thread through the daemon. Turns it did not start (the ChatGPT app, messages from other sessions) are mirrored into the session's topic, labelled "📱 From the ChatGPT app" or "📨 Message from <session>", followed by the reply; a turn that answered only through tools ends with "✓ Done".
@@ -141,14 +213,25 @@ Codex observer (built 2026-10-01): the relay stays attached to every Codex threa
 ## 7. Enforcement
 
 Real boundaries:
-- **Separate OS user.** The router runs as `relay` and alone holds the Telegram token, GitHub credentials and any mail/payment credentials, in files `pouya` cannot read. Sessions ask the router for actions over a socket; the router authenticates the peer by uid and checks the action against policy.
+- **Separate local identities.** Worker roles, `reviewer`, `cto`, and `support` have separate OS identities; only the router runs as `relay` and holds Telegram, GitHub, mail, and payment credentials. Workers cannot use unrestricted sudo, read another role's home, attach to its runtime, or rewrite privileged identity mappings. A change of working directory cannot change the authenticated role.
+- **Authenticated action requests.** The router checks the peer UID against a protected role registry and launcher-owned session binding. The reviewer alone can submit a review verdict; the CTO alone can request a policy-allowed merge. Sessions of one role share that role's authority; task/session attribution is enforced by the trusted launcher and broker, not caller-chosen names.
 - **No credentials in sessions.** Worktrees push only to a local mirror owned by `relay`; publishing to GitHub is a router action.
+- **One GitHub owner.** Separate local identities do not require additional human GitHub accounts. The router uses a scoped GitHub App installation for publication and records the requesting role/session. Commit author names and several personal tokens from the same account do not authenticate agent authority.
 - **GitHub branch protection** on `main`: required status `review` on the exact head SHA, up to date with `main`, only the router's token may merge.
 - **Approvals** are single-use and bound to the exact action. They cover email, payments, purchases, public posts. Merges follow `cto` policy.
 
 Guardrails, not boundaries: deny hooks on `git push` to other remotes, mail CLIs and curl to known APIs. Later, optionally, a Jev-backed pre-tool gate (allow / ask / deny per command, ~0.4 s). Its own published injection test let 10% of polite "the owner approved this" claims through, so it stays a guardrail; approvals remain in the router.
 
 Router authorisation fails closed: an empty allow list allows nobody.
+
+Optional upstream task/governance components must not expose an unauthenticated localhost owner/admin route to workers. A Paperclip prototype would use authenticated deployment and protected owner access, with the router retaining role/session mediation and one authority for admission, approvals and publication. Disable stock telemetry before first launch and audit egress/credential staging; ordinary agent access cannot bypass the broker. This is an integration condition, not a live installation decision.
+
+Relay updates
+- Routine relay changes may deploy after independent review, automated tests, and Jev security clearance. Pouya does not review every relay change.
+- Changes affecting credentials or secret access, authorization rules or identity boundaries, security screening (including Jev), or deployment controls always require Pouya's approval. A protected deterministic check classifies these changes before Jev; the changed code cannot rewrite its own deployment rules to bypass approval.
+- Jev screens the exact candidate version, including relevant dependencies and configuration, using masked evidence. Other changes it flags as a security risk go to Pouya. If screening is unavailable, uncertain, or cannot cover the candidate, deployment waits for clearance or Pouya's explicit approval.
+- Pouya can discuss a flagged change with an agent, normally the reviewer. Deployment authorization must record Pouya's explicit decision for that exact candidate and scope through the authenticated owner channel. An agent's message claiming approval is not owner authorization. Any candidate change invalidates the previous decision.
+- The protected deployment service installs an immutable reviewed artifact identified by its digest; ordinary support sessions cannot overwrite installed router code, screening policy, or the deployer. Tests of unapproved candidate code run without live router credentials. Jev is a screener, while OS permissions and deployment authorization provide the boundary.
 
 ## 8. Branches and PRs
 
@@ -175,18 +258,29 @@ Triage
 - P1 (relay down, messages lost, a topic dead) → the alerts path; notifies Pouya.
 
 Health checks
-- A plain script runs every 15 minutes, no model: errors in `msg-ops.log` and the ccrelayd log, dead watchers, failed or held bus messages, Codex daemon status, stale handoffs, disk space, wedged USB mass-storage volumes on the bench (the DAPLink drive that hung Finder).
-- It wakes the `support` session only when it finds something, with the findings attached. A quiet day costs nothing.
+- A plain script runs every 15 minutes, no model: errors in `msg-ops.log` and the ccrelayd log, dead watchers, failed or held bus messages, Codex daemon status, stale handoffs, task-progress/delegation stalls and exhausted budgets (§5), disk space, wedged USB mass-storage volumes on the bench (the DAPLink drive that hung Finder).
+- It wakes `support` only for platform findings, or the accountable task owner for a task-progress finding, with evidence attached and within §5 limits. A quiet day costs nothing.
 
 Fixing
 - `support` works like every agent: its own worktree of the relay repo, PR, `reviewer`, `cto` merge.
+- Deployment follows §7: routine changes can proceed after review, tests, and Jev clearance; protected changes and security flags require Pouya's exact-version approval. Support cannot modify the privileged deployment mechanism directly.
 - Rollout of platform changes: test group first; automatic check (one round trip in each test topic plus one `send_message`); then live topics; automatic rollback if health checks fail within 10 minutes.
 - `support`'s AGENTS.md carries the standing rules: root cause before fix and a workaround labelled as one; never restart or kill the Codex remote-control daemon; never touch the bench VPN; never remove a capability to make a problem go away.
 
 Streamlining
 - Weekly, `cto` reviews the issue log, the bus (repeated hand-offs, stuck threads, long review loops), usage per agent and PR cycle times, and posts up to three concrete proposals with Approve buttons. Approved proposals become issues assigned to `support` or another agent.
 
-## 10. Session history
+## 10. Session history and disaster recovery
+
+Recovery target (approved by Pouya)
+- Recover as much of the working system as possible. Successful off-machine backups must be no more than 24 hours apart; the accepted loss window is up to one day of work. Backup age is measured from the captured state, not upload completion. A missed backup produces an alert; until repaired, the target is not met.
+- Daily encrypted recovery packages include company decisions, role and repo memory (including disputes and audit trails), handoffs, instructions and skills, desired/observed registry state, session/thread mappings, task roots/progress/budget ledgers and pacing state, configuration, deployment manifests and versions, repos and local branches, unpushed commits, dirty and untracked files, raw transcripts, search snapshots, issues, bus records, and durable inbound/outbound/action and approval ledgers.
+- The backup manifest records captured paths, exclusions, digests, versions, and any incomplete component. Database and ledger snapshots must be consistent; worktree snapshots must detect concurrent writes. Generated indexes can be rebuilt, while source records and unfinished work must be preserved.
+- If a task/governance backend such as Paperclip is adopted, include its consistent database, configuration, artifact state and relay mappings; a company-template/export file alone is not disaster recovery. Restore its autonomous launches paused and reconcile it with the single authoritative operational ledger before enabling work.
+- Include a consistent full GBrain store snapshot, including DB-only records, grant metadata, publication receipts and withdrawal state, with its canonical source files and projection ledger. Restore with autonomous jobs paused, revalidate/reissue grants and service permissions, reconcile canonical revisions/tombstones, and only then enable retrieval. Its component snapshot complements, but does not replace, the full-system recovery package.
+- Credentials needed for recovery are kept only in the restricted encrypted package or re-established by owner login. Keep the decryption key and recovery instructions separately from the PC in an owner-controlled recovery location; never put that key in the same backup archive, public repo, or agent-readable memory. The precise key custody choice remains open (§15).
+- A clean-machine restore reconstructs local identities and permissions, installed compatible versions, configuration, repos/worktrees, memories, registry, and conversation history. Sessions resume by exact ID only after validation. Pending external actions from the restored ledger are reconciled against external evidence before execution; a stale backup is never treated as proof an action did not happen.
+- Restore drills demonstrate the full workflow without access to the original PC and without re-executing real external actions. Log missing data and actual recovery time so transcript retention cannot be mistaken for complete system recovery.
 
 Retention
 - Claude's 30-day transcript deletion is off (`cleanupPeriodDays: 3650`), so nothing is lost before it is backed up.
@@ -201,8 +295,9 @@ Daily backup to Cloudflare R2
 - Contents, encrypted before upload (AES-256, password held by `relay`):
   - the day's new raw transcript lines per source (`raw/YYYY/MM/DD/<source>.7z`), secrets kept;
   - a consistent database snapshot (`VACUUM INTO`, `db/YYYY-MM-DD.7z`), secrets masked; the last 7 daily and the last 8 weekly snapshots are kept, older ones deleted.
+  - the complete working-system recovery package and manifest described above, including required base packages for any incremental snapshots. Raw transcript increments and the search database alone do not satisfy the recovery target.
 - Every upload is verified (size and checksum of the stored object) before anything local is pruned.
-- Restore: download the latest snapshot and the raw files since it, decrypt, replay the raw files into the database. If no snapshot survives, the database is rebuilt from the raw files alone (re-embedding takes hours of local compute, at no cost).
+- Search-index restore: download the latest database snapshot and the raw files since it, decrypt, replay the raw files into the database. If no database snapshot survives, the index is rebuilt from raw files (re-embedding takes hours of local compute, at no cost). Complete system recovery additionally restores the working-system package and follows the validation and action-reconciliation rules above.
 - Measured volume (2026-10-01): about 0.5 GB/month compressed raw and 0.4 GB/month searchable at today's pace; 2–3x with ten agents (estimate). R2 free tier: 10 GB-month, egress free; then $0.015/GB-month.
 
 R2 setup (one time, by Pouya)
@@ -214,7 +309,7 @@ R2 setup (one time, by Pouya)
 ## 11. Knowledge
 
 - Always loaded: COMPANY.md and the decisions index.
-- On demand, deferred: local hybrid search (QMD or picoqmd, local models, MCP) over repo docs, memory, handoffs, datasheets, the bus and the searchable history. Results carry source and date and are quoted as data.
+- On demand: GBrain supplies bounded, scope-filtered memory facts/context (§3); QMD supplies local hybrid search over Markdown docs, memory source files, handoffs, and datasheets; the existing history database searches transcripts and the bus (§10). One broker routes queries to the appropriate source and applies role access before exposing results, rather than maintaining three copies of every corpus. Initial GBrain retrieval is keyless; semantic corpus search remains available through local models. Results carry source, date/revision, and validity/dispute status and are quoted as data, not trusted instructions.
 
 ## 12. Visibility
 
@@ -225,6 +320,9 @@ One outbound scheduler in the router owns every Telegram send, with priorities: 
 | Inter-session messages with delivery state | Bus topic | no |
 | Session replies, incoming messages and mirrored app turns | Session topic | final reply only |
 | New issues and their status changes | Issues topic | P1 only |
+| Nightly memory inconsistency digest, with resolution and evidence links | Issues topic | no; silent and coalesced |
+| Task stalls, loop diagnosis and resolution, with evidence and budget | Issues topic | no; silent and coalesced, unless security/P1 |
+| Subscription pacing, deferred tasks, telemetry uncertainty and next eligible time | Status/Issues topics | no; silent and coalesced |
 | Status board | Pinned message, on change, at most every 30 s | no |
 | Approvals (Approve / Deny), including `cto` proposals | Approvals topic | yes |
 | Alerts | Approvals topic | yes |
@@ -237,38 +335,57 @@ Built and tested: Telegram long-poll and routing, media, voice, rich tables, pro
 Built here, not yet installed (2026-10-01; scheduling and live use wait for the PC): triage (`relay_triage.py`, rules tested, Jev path waiting for the key); health check (`health_check.py`, dry run found real problems: gateway send timeouts, the hung DAPLink drive); history collector and search (`history/history.py`: 126k messages from 226 sessions ingested in 26 s, secrets masked including known secret values, hybrid search verified); backup packager (`history/backup.py`: first full package 385 MB, encrypted and verified to decrypt; upload waits for the R2 key).
 
 Needed, in order (prior art per item: `docs/research/2026-10-01-prior-art.md`):
-1. Router as `relay`; fail-closed authorisation; action socket with uid check; liveness watchdog, exit on sustained 409, singleton lock (ccbot).
+
+The [20 PR implementation roadmap](agentic-pc-20-pr-roadmap.md) splits this work into dependency-ordered deliverables with tests, rollout gates and explicit pending decisions. It is a proposal, not authorization to deploy or create live PRs.
+
+1. Router as `relay`; separate local role identities and protected runtime/state; authenticated action socket and session bindings; fail-closed authorization; protected deployment policy with Jev screening and exact-version owner approvals (§7); liveness watchdog, exit on sustained 409, singleton lock (ccbot).
 2. Durable inbound spool (persist + fsync before advancing the offset); durable outbox for messages with `stored → delivering → submitted / unknown / failed`, idempotency keys, in-flight marked `unknown` on restart and never blindly retried (agent-wire); Codex queue race fix; send timeout treated as unknown.
 2b. Delivery receipts for replies: the watcher tails the transcript and advances only after each Telegram send is confirmed; the Stop hook stays the turn-finished signal, tagged with the submission (ccgram, claude_codex_bridge). Bracketed paste for typed input (ccbot).
 3. `report_issue`, `list_issues`, `comment_issue`; issues topic; health-check script and timer; Jev triage with rule fallback.
 4. Publication flow, SHA-bound review status, per-repo merge serialisation.
-5. Session registry with desired/observed state; resume by id; boot units.
+5. Session registry with desired/observed state and verified readiness/stop conditions; strict pinned launch manifests and enforced resource profiles (AX patterns); exact-ID resume with tool/permission-contract checks, verified tool-switch handoffs and durable switch phases, automatic bug intake and support repair, pending-and-notify on unresolved repair (§5); boot units.
 6. Outbound scheduler with persisted per-operation cooldowns, status dropped and content kept during floods, per-group spacing (ccbot, tmux-duck, ccgram); status board; approvals; `cto` weekly proposals.
-7. History collector, local SQLite (FTS5 + sqlite-vec) with local embeddings, daily encrypted backup, pruning; chunk long messages before embedding, weighted fusion and strong-match shortcut, an eval set with Farsi queries, then a local reranker (qmd).
+7. History collector, local SQLite (FTS5 + sqlite-vec) with local embeddings; daily encrypted backup of the whole working system with a 24-hour maximum loss window, separate key custody, clean-machine restore drills, and verified pruning (§10); chunk long messages before embedding, weighted fusion and strong-match shortcut, an eval set with Farsi queries, then a local reranker (qmd).
 8. qmd as the §11 knowledge server for markdown corpora.
 9. Deterministic deny hook: hard rules, then allowlist, then (optional, observe mode) Jev (jev-gate).
+10. Evidence-scoped memory proposals and canonical curation; brokered local GBrain projection/retrieval with private service storage, explicit source/operation grants, stable-ID replay, and no automatic canonical supersession; event-triggered reconciliation and nightly maintenance, recoverable corrections/withdrawals, unresolved conflicts assigned to their owner, and Pouya's passive inconsistency digest (§3). Use the evaluated revision as the compatibility baseline, not a floating install.
+11. Three-active-session admission control across every turn source; durable task-root progress/budget ledgers with atomic work-item checkout, dependency gates and execution fencing; cross-chain loop detection, evidence validation, fingerprinted/revalidated bounded diagnosis, and passive stall reporting (Paperclip patterns); provider/account-wide subscription pacing with durable staggered admission, scoped quota/status adapters, in-flight reservations, and explicit quota-wait state (§5). Integrate admission before enabling automated delegation.
+12. Adapt reviewed GStack engineering-review, reviewer-checklist, investigation and QA methods to existing role skills (§4), with independent read-only review, native-session admission, isolated QA evidence, and router-only publication. No stock autonomous shipping/auto-update or model subprocess bypasses.
 
 ## 13a. Acceptance tests and metrics
 
 The design is proven only by demonstrations, run on the PC before agents are trusted with real work:
-1. **Tool switch with unfinished work**: a session mid-task (uncommitted changes, an open publication, a pending message) switches Claude → Codex and back; the other tool continues from the handoff without losing or redoing work.
+1. **Tool switch with unfinished work**: a session mid-task (uncommitted and untracked changes, running operations, an open publication, a pending message and approval) switches Claude → Codex and back; the other tool continues from a validated handoff without losing or redoing work. Inject an incomplete handoff and a crash during switching: a bug is recorded, support repairs and revalidates, or the switch stays pending and Pouya is notified.
 2. **Crash recovery without repeating external actions**: kill the router, a watcher and a session mid-action (a send, a publish, an approved email); after recovery every action happened exactly once.
-3. **Review and merge authority holds**: a session cannot push to `main`, merge, or send an external action by any route (git, curl, a message claiming approval); only the router does, after `reviewer` pass and `cto` request, or Pouya's Approve.
-4. **Restore onto a clean machine**: a fresh WSL install, restored from the git repos and the R2 backup, resumes the same topics, sessions and history.
+3. **Review and merge authority holds**: a worker cannot become reviewer or CTO by changing directories, spoofing session metadata, accessing their sockets, or editing the role registry; it cannot push to `main`, merge, or send an external action by git, HTTP, or a message claiming approval. The router enforces the authenticated reviewer verdict, CTO request, and required owner approval. Routine relay updates pass review/tests/Jev; protected updates and security flags wait for exact-version owner approval, and changing the artifact invalidates it.
+4. **Restore onto a clean machine**: without the original PC, a fresh WSL install and separately recovered key restore the same topics, sessions, role permissions, memories, decisions, handoffs, configuration, repos and dirty/untracked work from a backup within the 24-hour target. Reconcile externally completed actions that occurred after the snapshot so they are not repeated.
+5. **Memory contradictions stay visible**: inject two conflicting facts with different timestamps; the newer one cannot overwrite verified knowledge without evidence. Nightly maintenance records supersession or a dispute, retains both source records, assigns unresolved conflicts, and includes a silent digest for Pouya even when it resolved the inconsistency automatically.
+6. **Delegation cannot masquerade as progress**: agents pass the same task around using fresh chains, renamed subtasks, and new sessions, while changing only status text or irrelevant artifacts. The task root and counters persist through restart/tool switch; no unsupported progress is recorded. At the initial threshold of three completed handoffs without verified progress, the chain is held, one bounded diagnosis is assigned, and Pouya gets a passive report. A reproducible failed experiment that genuinely narrows the problem counts as progress; a monitored long-running operation is not falsely classified merely for lacking commits.
+7. **Concurrency is globally enforced**: attempt a fourth active session through Telegram, native apps, inter-session delivery, and recovery while three sessions work. It cannot start until a slot is available; idle sessions do not occupy slots, waiting delegators do not deadlock their recipients, and stalled-task diagnosis never bypasses the cap.
+8. **Pacing follows shared subscription capacity**: simulate falling allowance, several quota windows, concurrent roles on one account, missing/stale telemetry, and a scheduler restart. Starts remain staggered and share one admission ledger; background work is deferred conservatively, queued messages remain durable, and owner controls stay responsive. Verify the 10% reserve is for Pouya and autonomous support cannot consume it without explicit owner authorization. Quota waiting cannot reset task counters or cause a false loop diagnosis. Confirm known exhaustion holds new automated work until verified availability, with no automatic purchases, paid fallback, or duplicate external actions.
+9. **GBrain integration respects memory authority**: on the target WSL runtime, demonstrate proposal → checked canonical file → projection → scoped retrieval → explicit correction/withdrawal → restart/replay → encrypted backup/restore. False attribution of owner approval cannot authenticate a proposal; similarity cannot overwrite verified knowledge; workers cannot widen source grants, read another role's private memory, access backend files/admin tools, or start hidden model jobs. Stale/rebuilt/restored projections cannot resurrect withdrawn claims or silently hide disputes. Repeat concurrency and restore checks under the chosen service topology.
+10. **GStack methods cannot bypass the platform**: one adapted review and one isolated QA workflow produce useful evidence without reviewer auto-edits, direct push/merge/deploy, unadmitted outside opinions, silent upgrades/egress, or quota/cap bypass. A finding requiring a fix returns to the builder and invalidates the old SHA-bound review. Measure usefulness and quota overhead before expanding the adapted workflows.
+11. **Ownership and diagnosis remain current**: race two checkouts of the same item; only one succeeds and replay by that run is idempotent. Simulate a terminal DB row with a surviving detached writer: reassignment cannot launch a second writer, and stale runs cannot publish or execute broker actions. Repeated cosmetic updates/restarts do not trigger duplicate diagnoses; genuinely new verified evidence does. A diagnostic action against changed state is rejected without erasing progress or resetting the root budget.
+12. **Launch/recovery contracts fail closed**: fail workspace setup, request an unsupported capability and fail a suspend acknowledgment; no turn starts in a fallback profile, and desired pause is not mistaken for observed stop. Change runtime/tool/permission contracts during resume: no partial-delta fresh thread is silently created. On the target PC, detached tool children stay within the measured CPU/RAM/process envelope; limit failures preserve evidence and unfinished work. An optional Paperclip prototype must additionally demonstrate authenticated owner isolation and disabled stock telemetry.
 
-Then measure, weekly: tasks completed per agent, manual interventions by Pouya (and why), subscription quota spent on coordination (messages, reviews, triage) versus on the work itself, PR cycle time, issues opened and fixed.
+Then measure, weekly: tasks completed per agent, manual interventions by Pouya (and why), subscription quota spent on coordination (messages, reviews, triage) versus on the work itself, PR cycle time, issues opened and fixed, evidence-producing milestones versus handoffs, no-progress incidents, diagnosis/recovery outcomes, quota-related deferrals, and whether pacing preserved the intended reserve. Label estimated quota measurements separately from provider observations.
 
 ## 14. Migration order
 
-1. `relay` user, router hardening (work items 1–3), shared folders, COMPANY.md.
-2. `ceo`, `cto`, `reviewer`, `support`.
+1. Separate local security identities including `relay`, router hardening (work items 1–3), protected shared folders, COMPANY.md.
+2. `builder`, `reviewer`, `support`, plus protected `ceo`/`cto` profiles and identities with demand-driven coordination. Include the builder in the first rollout rather than waiting for every management role to run continuously.
 3. Publication flow and registry (items 4–5).
 4. Remaining agents one at a time.
-5. History archive and search index.
+5. Full-system daily recovery packages and restore drills, history archive, nightly memory maintenance and passive digest, and search index. The order relative to trusting agents with real work must satisfy the acceptance tests above.
 
 ## 15. Open items
 
 1. Build on the Mac VM and migrate, or directly on the Windows PC.
+2. Remaining review decisions: numerical task/delegation budgets and checkpoint deadlines (retain the initial watchdog for now: three active sessions, evidence-based progress monitoring across chains, and diagnosis after three completed handoffs without progress); independent build/test validation against the current merge target; version-pinned adapters and upgrade compatibility checks.
+3. Reconcile separate local role identities with subscription authentication and Codex daemon/remote-control topology before implementing the WSL launcher. Cross-role access to a common daemon is not an accepted identity boundary; preserve the existing Mac daemon during migration.
+4. Select an owner-controlled location for the off-PC recovery key and bootstrap access instructions; then prove restoration without the original PC. The daily recovery target and broad data coverage are already approved.
+5. Subscription pacing and a 10% reserve for Pouya's direct use are approved. Choose the initial minimum gap and verify compatible quota/status adapters for each installed provider runtime. Fixed delays alone are not a guarantee against exhaustion.
+6. AX/Paperclip source evaluation supports the patterns added in §5, not replacement of the relay. Paperclip's current native runner makes it a credible optional task/governance backend; decide adoption only after an isolated relay-adapter proof preserves native interactive/app continuity, one operational authority, role isolation, budgets and recovery, and shows useful productivity/coordination-cost results. See [the pinned source evaluation](research/2026-10-01-ax-paperclip-evaluation.md). Target-PC resource-profile values also remain to be measured.
 
 ## Appendix: verified facts (2026-10-01, Claude Code 2.1.287, Codex 0.159.3)
 
