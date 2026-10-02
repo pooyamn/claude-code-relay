@@ -206,6 +206,14 @@ class OwnerLedger:
         return {"action": action.to_dict(), "approval": approval.to_dict(),
                 "approve_data": "cc1:" + nonce + ":a", "deny_data": "cc1:" + nonce + ":d"}
 
+    def read_prompt(self, peer, action_id):
+        """Protected ingress only; decoded prompts do not authenticate callers."""
+        self.policy.require(peer, self.policy.ingress_uid)
+        identifier(action_id)
+        _, _, _, receipt = self._row(action_id)
+        return {"schema": "ccrelay.owner_prompt_view.v1", "policy_digest": self.policy.digest,
+                "prompt": self.prompt(action_id), "receipt": receipt}
+
     def bind_prompt(self, peer, action_id, receipt):
         self.policy.require(peer, self.policy.ingress_uid)
         exact(receipt, {"bot_id", "chat_id", "thread_id", "message_id"})

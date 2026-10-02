@@ -26,6 +26,9 @@ def dispatch(ledger, peer, request):
         exact(args, {"action_id", "receipt"})
         ledger.bind_prompt(peer, **args)
         return {"bound": True}
+    if request["method"] == "read_prompt":
+        exact(args, {"action_id"})
+        return ledger.read_prompt(peer, **args)
     if request["method"] == "owner_callback":
         exact(args, {"update"})
         return ledger.decide(peer, args["update"])

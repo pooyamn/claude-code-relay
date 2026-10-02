@@ -44,7 +44,7 @@ def plan():
                                   "immutable assets and original names/MIME metadata", "pinned policy/adapter artifact",
                                   "trusted watcher stream mappings and externally reconciled offsets"],
             "pending": ["target WSL private owner/lock/filesystem durability", "exclusive verified Khadang transport and UI receipts",
-                        "authenticated producer and approval-prompt bridge", "all live sender/watcher paths under one owner",
+                        "authenticated producer wiring and real owner-prompt acceptance", "all live sender/watcher paths under one owner",
                         "pinned repair rejection characterization and protected runtime authorizer", "owner-authorized canary and deployment"]}
 
 

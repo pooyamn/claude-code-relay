@@ -39,8 +39,10 @@ Show the exact action parameters, intent digest, screening state/exception and
 expiry in the approval UI, not a model-generated substitute. Reviewer discussion
 can inform that decision, but cannot authenticate it. A subsequent deny decision
 on the original prompt revokes an unconsumed grant. A consumed action cannot be
-revoked into an unattempted action. The final UI/scheduler is not implemented by
-this preparation.
+revoked into an unattempted action. PR 6 now prepares a deterministic full prompt
+and receipt-bound bridge in isolated tests; its [runbook](pr6-telegram-outbound.md)
+distinguishes that implementation from pending trusted runtime, real UI and WSL
+acceptance. This PR 3 gate alone does not establish a working phone-control loop.
 
 ## Durable decisions and attempts
 

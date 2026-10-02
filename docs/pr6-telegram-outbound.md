@@ -5,7 +5,7 @@ and tested offline. They give Telegram sends one durable queue, keep every
 required reply chunk, and advance watcher offsets only with a complete confirmed
 receipt set. This preparation does not convert
 the live Mac relay or establish target-PC acceptance. PR 6 remains in preparation
-until trusted producer/repair authorization, owner-prompt wiring and the
+until trusted producer/repair wiring, real owner-prompt acceptance and the
 integration gates below pass.
 Khadang is the authorized test bot; HamalBot wiring remains unchanged.
 
@@ -89,6 +89,44 @@ Queue, bundle and outbound-policy schemas are now v2. Old state is rejected and
 preserved for an explicit reviewed migration, not upgraded or reset at startup.
 This preparation changes repository artifacts only; no live ledger was migrated.
 
+## Prepared owner prompts
+
+`owner_prompts.py` prepares deterministic, complete approval text from the PR 3
+gate's authenticated prompt view. It displays the action, root/requester, intent
+digest, approval, owner, expiry and every exact parameter, including any candidate,
+base, screening verdict and exception contained in those parameters. Plain-text
+JSON visibly escapes controls and non-ASCII data without discarding it; parameter
+strings cannot become HTML or break a Markdown fence. Long prompts use ordered
+chunks, with opaque Approve/Deny buttons only on the final chunk. A general-topic
+policy uses `null`, not topic ID `1`.
+
+The new gate `read_prompt` operation is limited to the kernel-authenticated
+protected ingress, just like receipt binding and callbacks. It returns the exact
+action/approval/nonce and any existing receipt. The client verifies the configured
+gate UID through the existing Unix channel and checks response/policy binding;
+caller-supplied identity headers are not used. No worker read, action execution,
+deployment or restart operation was added. Installed channel/policy, send-owner
+isolation and actual WSL credentials still need acceptance; a decoded view alone
+does not prove them. The fixtures substitute those observations explicitly.
+
+The approval bridge derives one stable bundle from that view and pinned owner
+route. Enrollment is only a ticket. Binding requires the identical retained
+source, every prompt chunk confirmed, and each sealed response/body/attempt
+matching its stored receipt evidence. The gate then binds the actual message ID
+carrying the buttons. Partial or uncertain delivery, guessed receipts, changed
+candidates, foreign views, lost ownership or expired pending approvals cannot
+create that binding. Confirmed delivery itself never grants or consumes approval:
+the owner must still make an authenticated exact-message decision.
+
+The send ledger and gate commit separately. Repeating a completed bind, including
+after the gate committed but its response was lost, reconciles the same receipt
+without sending another prompt or deciding for the owner. If the gate already
+binds a prompt but the send component/history is missing, recovery holds for
+component reconciliation instead of creating a replacement. Preserve both sides
+and their artifact/policy versions in a full-system snapshot. Owner ledger v1 is
+unchanged; older gate code lacking `read_prompt` denies the new client, with no
+unauthenticated fallback. No live ingress, sender or employee grant is enabled.
+
 ## Evidence and limits
 
 Run the copied-source OS sandbox, not the legacy suites directly:
@@ -123,6 +161,16 @@ across restarts, pinned method ceilings, changed source/control bindings and sta
 edits also have deterministic tests. The compatibility authorizer and provider
 are invented fixtures, not proof of a trusted live rejection classifier.
 
+Owner-prompt tests join the actual scratch gate and outbound databases with
+sealed captured responses. They cover complete and partial prompts, flood
+replacement receipts, general topics, forged response/evidence with consistent
+hashes, changed candidates/views, expiry, lost ownership, employee-versus-owner
+callbacks, duplicate decisions and consumed-approval replay. Seven additional
+actual process-death cases cover prompt enrollment, remote acceptance, response
+publication and before/after binding, including commit before lost bind ACK.
+Kernel/channel observations and the provider are synthetic; live UI and distinct
+ingress/gate identities are not established by these tests.
+
 The initial foundation passed all four legacy suites and 232 core tests on
 2026-10-02, including 41 outbound tests. The repair preparation adds 18 focused
 tests, including its fourteen-boundary process-death matrix. Later suite totals
@@ -132,6 +180,11 @@ These are local conformance results, not approval to deploy.
 Repair verification on 2026-10-02: all four legacy suites and 282 core tests
 passed in the copied-source sandbox. The read-only preparation command passed
 with sends, network and state changes disabled.
+
+Owner-prompt verification on 2026-10-02: all four legacy suites and 297 core
+tests passed in the copied-source sandbox, including 15 joined-prompt tests.
+This did not poll or send through a live bot, run a model, enable a service or
+change the user-owned Codex protocol edits.
 
 Telegram documents global, group and chat flood limits and returns a wait in
 `retry_after`. This supports persisted scheduling, not unrestricted paid
@@ -192,10 +245,13 @@ sender beside the new owner is not a rollback.
    recovered from a spool. Unknown outcomes must not repair or replay. Keep the
    locally tested sibling/cursor/shared-budget invariants under real integration.
    Existing live formatter fallbacks have not been removed.
-5. Bind approval prompts to their actual confirmed message receipts and the
-   trusted PR 3 owner ingress. Neither ticket enrollment nor model prose may
-   authorize an external action. Prove duplicate callbacks, changed candidates,
-   crashes and unknown prompt delivery without granting approval.
+5. Integrate the prepared approval bridge with the real single send owner and
+   trusted PR 3 ingress. Pin gate/client capabilities; verify complete displayed
+   text, actual button-bearing receipts and raw callbacks through Khadang.
+   Revalidate source/grants before execution, not just enrollment, and demonstrate
+   the locally tested duplicate/candidate/crash/unknown invariants across real
+   identities. Keep platform-owner approval separate from company employee work
+   before enabling the v8 membership expansion. Tickets and prose cannot approve.
 6. Join component snapshots/paused restore, later health/status reporting and
    owner-authorized canary/deployment. Only then evaluate live adoption. This
    foundation does not complete PR 6 or the full 20-step PC readiness goal.
