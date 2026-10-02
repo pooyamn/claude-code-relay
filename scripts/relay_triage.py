@@ -71,4 +71,15 @@ def jev(kind, title, details, timeout=8):
 
 
 def triage(kind, title, details):
-    return jev(kind, title, details) or rules(kind, title, details)
+    """Rules are a floor: Jev may raise the priority, never lower it. Otherwise a
+    model reply of "P3" would silently override the rule that marks "relay down /
+    every topic / messages lost" as P1 and suppress the alert (finding from the
+    2026-10-01 survey of jev-gate, which applies the same "only tighten" rule)."""
+    r = rules(kind, title, details)
+    j = jev(kind, title, details)
+    if not j:
+        return r
+    prio = min(r["priority"], j["priority"])          # "P1" < "P2" < "P3"
+    k = "bug" if "bug" in (r["kind"], j["kind"]) and prio != "P3" else j["kind"]
+    return {"kind": k, "priority": prio, "target": "support" if k == "bug" else "cto",
+            "by": "jev+rules" if prio == r["priority"] != j["priority"] else "jev"}

@@ -236,14 +236,17 @@ Intervene: reply to a bus line; `/pause`, `/resume`, `/stop all`. A watchdog ale
 Built and tested: Telegram long-poll and routing, media, voice, rich tables, progress bubble, Codex via daemon, bind/unbind/cancel; ccrelay MCP (`list_sessions`, `send_message`, `message_log`, `report_issue`, `list_issues`, `comment_issue`), bus log, bus and issues topics; Codex observer; `talk-to-sessions` skill.
 Built here, not yet installed (2026-10-01; scheduling and live use wait for the PC): triage (`relay_triage.py`, rules tested, Jev path waiting for the key); health check (`health_check.py`, dry run found real problems: gateway send timeouts, the hung DAPLink drive); history collector and search (`history/history.py`: 126k messages from 226 sessions ingested in 26 s, secrets masked including known secret values, hybrid search verified); backup packager (`history/backup.py`: first full package 385 MB, encrypted and verified to decrypt; upload waits for the R2 key).
 
-Needed, in order:
-1. Router as `relay`; fail-closed authorisation; action socket with uid check.
-2. Durable inbound spool and outbox; Codex queue race fix; send timeout treated as unknown.
+Needed, in order (prior art per item: `docs/research/2026-10-01-prior-art.md`):
+1. Router as `relay`; fail-closed authorisation; action socket with uid check; liveness watchdog, exit on sustained 409, singleton lock (ccbot).
+2. Durable inbound spool (persist + fsync before advancing the offset); durable outbox for messages with `stored → delivering → submitted / unknown / failed`, idempotency keys, in-flight marked `unknown` on restart and never blindly retried (agent-wire); Codex queue race fix; send timeout treated as unknown.
+2b. Delivery receipts for replies: the watcher tails the transcript and advances only after each Telegram send is confirmed; the Stop hook stays the turn-finished signal, tagged with the submission (ccgram, claude_codex_bridge). Bracketed paste for typed input (ccbot).
 3. `report_issue`, `list_issues`, `comment_issue`; issues topic; health-check script and timer; Jev triage with rule fallback.
 4. Publication flow, SHA-bound review status, per-repo merge serialisation.
 5. Session registry with desired/observed state; resume by id; boot units.
-6. Scheduler, status board, approvals, `cto` weekly proposals.
-7. History collector, local SQLite (FTS5 + sqlite-vec) with local embeddings, daily encrypted backup, pruning.
+6. Outbound scheduler with persisted per-operation cooldowns, status dropped and content kept during floods, per-group spacing (ccbot, tmux-duck, ccgram); status board; approvals; `cto` weekly proposals.
+7. History collector, local SQLite (FTS5 + sqlite-vec) with local embeddings, daily encrypted backup, pruning; chunk long messages before embedding, weighted fusion and strong-match shortcut, an eval set with Farsi queries, then a local reranker (qmd).
+8. qmd as the §11 knowledge server for markdown corpora.
+9. Deterministic deny hook: hard rules, then allowlist, then (optional, observe mode) Jev (jev-gate).
 
 ## 13a. Acceptance tests and metrics
 
