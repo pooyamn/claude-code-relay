@@ -97,6 +97,9 @@ def runnable(admission, current, scope, now, active):
 
 def known_quota_blocked(admission, request, source, now):
     """Only a fresh retained negative can exclude an owner, never invent quota."""
+    from .quota_estimates import known_bound_blocked
+    if known_bound_blocked(admission, request, now):
+        return True
     account = admission._account(request["provider"], request["account_id"])
     if account is None:
         return False

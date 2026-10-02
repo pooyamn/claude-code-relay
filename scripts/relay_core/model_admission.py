@@ -80,8 +80,9 @@ class StopReceipt:
 
 
 def receipt_body(receipt):
+    from .quota_estimates import EstimatedQuotaReceipt
     body = asdict(receipt)
-    if type(receipt) is QuotaReceipt:
+    if type(receipt) in {QuotaReceipt, EstimatedQuotaReceipt}:
         body["windows"] = [{**asdict(window), "accounted_attempts": list(window.accounted_attempts)} for window in receipt.windows]
     elif type(receipt) is ActivityReceipt:
         body["active_sessions"] = list(receipt.active_sessions)
@@ -138,12 +139,18 @@ class ModelAdmission:
         self.ledger._check_lock()
         if self.ledger.connection.execute("SELECT schema,policy_digest FROM model_metadata").fetchall() != [(SCHEMA, self._policy_digest())]:
             raise Denied("unsupported admission component/policy; preserve state for reviewed migration")
+        from .quota_estimates import enabled, rows
+        if enabled(self.ledger):
+            rows(self)
 
     def _policy_digest(self):
         body = self.policy.body()
         if self.ledger.connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='model_dispatch_metadata'").fetchone():
             from .model_dispatch import metadata
             body = {"pacing_policy": body, "dispatch_policy": metadata(self.ledger)[0].body()}
+        from .quota_estimates import enabled, metadata
+        if enabled(self.ledger):
+            body = {"base_policy": body, "quota_estimate_policy": metadata(self.ledger).body()}
         return fingerprint(body)
 
     def _source(self, scope):
@@ -199,7 +206,14 @@ class ModelAdmission:
         return body
 
     def _save_account(self, provider, account_id, last, eligible, quota):
-        body = {"provider": provider, "account_id": account_id, "last_auto_ms": last, "next_auto_ms": eligible, "quota": receipt_body(quota)}
+        from .quota_estimates import EstimatedQuotaReceipt
+        quota_body = receipt_body(quota)
+        if type(quota) is EstimatedQuotaReceipt:
+            account = self._account(provider, account_id)
+            if account is None or fingerprint(account["quota"]) != quota.anchor_digest:
+                raise Denied("verified estimate baseline changed; do not replace it with an estimate")
+            quota_body = account["quota"]
+        body = {"provider": provider, "account_id": account_id, "last_auto_ms": last, "next_auto_ms": eligible, "quota": quota_body}
         self.ledger.connection.execute("INSERT OR REPLACE INTO model_accounts VALUES (?,?,?,?,?,?)", (
             provider, account_id, last, eligible, canonical_bytes(body), fingerprint(body)))
 
@@ -283,6 +297,7 @@ class ModelAdmission:
         source = self._source(scope)
         activity = self.observe_activity(strict_json(canonical_bytes(observer_input)))
         quota = self.observe_quota(strict_json(canonical_bytes(observer_input)))
+        unavailable_quota = quota
         digest = fingerprint(scope)
         with self.ledger._transaction():
             if self._scope(peer, intent_id, attempt_id, plan, diagnoses)[1] != scope:
@@ -309,7 +324,12 @@ class ModelAdmission:
                 return self._wait(action, "session_busy", now)
             if len(active) >= 3:
                 return self._wait(action, "global_activity_cap", now)
-            if type(quota) is not QuotaReceipt or quota.scope_digest != digest or quota.complete is not True or \
+            from .quota_estimates import EstimatedQuotaReceipt, resolve, committed as estimate_committed
+            if type(quota) is not QuotaReceipt or not now - self.policy.quota_max_age_ms <= integer(quota.observed_ms, 0) <= now:
+                quota, reason = resolve(self, scope, unavailable_quota, now)
+                if reason:
+                    return self._wait(action, reason, now)
+            if type(quota) not in {QuotaReceipt, EstimatedQuotaReceipt} or quota.scope_digest != digest or quota.complete is not True or \
                     (quota.provider, quota.account_id, quota.model_id) != (request["provider"], request["account_id"], request["model_id"]) or \
                     not now - self.policy.quota_max_age_ms <= integer(quota.observed_ms, 0) <= now or \
                     type(quota.windows) is not tuple or not 1 <= len(quota.windows) <= 16:
@@ -336,6 +356,8 @@ class ModelAdmission:
             # changes neither last-start time nor reserved/executed capacity.
             self._save_account(quota.provider, quota.account_id, account["last_auto_ms"] if account else None, account["next_auto_ms"] if account else 0, quota)
             allocations, gap = {}, self.policy.minimum_gap_ms
+            if type(quota) is EstimatedQuotaReceipt:
+                gap = max(gap, self.quota_estimates.policy.minimum_gap_ms)
             for key, window in windows.items():
                 if window.reset_ms <= now:
                     return self._wait(action, "quota_refresh_required", now)
@@ -376,13 +398,21 @@ class ModelAdmission:
             reason = gate(self, peer, current, scope, source, activity, expected_revision, diagnoses, now)
             if reason:
                 return self._wait(action, reason, self.ledger._clock())
+            if type(quota) is EstimatedQuotaReceipt:
+                refreshed, reason = resolve(self, scope, unavailable_quota, self.ledger._clock())
+                if reason:
+                    return self._wait(action, reason, self.ledger._clock())
+                if refreshed != quota:
+                    raise Denied("usage bound or verified baseline changed during admission")
             if self._source(scope) != source:
                 raise Denied("source/owner grant changed during priority verification")
             if self._scope(peer, intent_id, attempt_id, plan, diagnoses)[1] != scope:
                 raise Denied("admission scope changed during priority verification")
             final_now = self.ledger._clock()
             if _deadline(deadline) <= final_now or any(window.reset_ms <= final_now for window in windows.values()) or \
-                    final_now - activity.observed_ms > self.policy.activity_max_age_ms or final_now - quota.observed_ms > self.policy.quota_max_age_ms:
+                    final_now - activity.observed_ms > self.policy.activity_max_age_ms or final_now - quota.observed_ms > self.policy.quota_max_age_ms or \
+                    type(quota) is EstimatedQuotaReceipt and (final_now - quota.observed_ms > self.quota_estimates.policy.usage_bound_max_age_ms or \
+                                                               final_now - quota.provider_observed_ms > self.quota_estimates.policy.anchor_max_age_ms):
                 return self._wait(action, "admission_observation_expired", final_now)
             eligible = admission_gate(self.ledger, current, final_now, request=request)
             if final_now < eligible:
@@ -402,6 +432,7 @@ class ModelAdmission:
             self.ledger._save_root(updated, "diagnostic_attempt_admitted" if diagnostic else "model_attempt_admitted", {"attempt_id": attempt_id, "source": asdict(source)})
             if diagnostic:
                 diagnoses._notice(updated, scope["binding"], action.fields["parameters"]["material_digest"], "diagnosis_attempted", action.id)
+            estimate_committed(self, action.id, attempt_id, quota)
             committed(self.ledger, action.id, attempt_id)
             self.ledger.connection.execute("DELETE FROM model_waits WHERE intent_id=?", (action.id,))
             self.ledger.checkpoint("before_model_admission_commit")

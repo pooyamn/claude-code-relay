@@ -16,7 +16,9 @@ controller enrolls immutable model intents bound to the current root, role,
 execution, native session, runtime/adapter digests and provider/account/model.
 Intake can retain work before execution is eligible. A stored intent grants no
 model call; exact admission requires independently verified current source grants,
-all-source activity/fencing and complete applicable quota windows.
+all-source activity/fencing and complete applicable quota windows. The explicitly
+enrolled estimate path below may use a retained verified baseline and independently
+bounded usage when current telemetry is missing; it does not invent an allowance.
 
 One SQLite commit records the exact outbox attempt, account pacing, conservative
 window allocations, retained activity lease and once-only root charge. A wait
@@ -97,10 +99,58 @@ attribution and the live priority driver remain unconnected; receipt booleans al
 not authenticate a human. Steering an existing turn and stop/pause controls must
 remain separate from new-turn pacing when the runtime driver is integrated.
 
-Missing, stale, incomplete or mismatched quota holds work with a labeled reason;
-an elapsed reset time requires a fresh provider observation rather than inventing
-availability. The required bounded conservative fallback for missing telemetry
-is still pending. No paid fallback, model change or purchase path exists.
+Without the explicitly enrolled estimate path, missing or stale quota holds work
+with a labeled reason. Incomplete, mismatched or changed stale observations cannot
+be relabeled as outages to bypass negative evidence. An elapsed reset time requires
+a fresh provider observation rather than inventing availability. No paid fallback,
+model change or purchase path exists.
+
+## Bounded quota estimates
+
+`quota_estimates.py` joins the common admission ledger. Its policy explicitly
+sets maximum baseline age, usage-proof age, starts per applicable window and a
+minimum gap. Examples leave those values unconfigured; test numbers are not
+owner-approved runtime defaults. Enrollment pins the estimate policy into the
+composite admission digest. Runtime activation remains disabled.
+
+Fallback requires a retained verified provider/account/model observation covering
+every requested window, before its actual reset and within the configured baseline
+age. A protected reader must establish a fresh upper bound on consumption not
+covered by retained reservations, from that exact baseline, under the all-source
+launch fence. Unknown outside use, missing baseline or proof, account/window
+mismatch and expired evidence hold the original intent without spending a turn.
+There is no cold-start guessed quota or synthetic window reset.
+
+Admission adds the bounded unreserved consumption to the verified used amount,
+then subtracts uncovered attempt reservations and the existing 10% reserve.
+Every applicable window and model pool still gates execution. Fresh known
+exhaustion uses normal quota admission, not fallback; a later outage cannot lower
+the retained negative baseline. Estimated quota is labeled `conservative_estimate`
+and retains both the provider's original timestamp and the usage-proof timestamp.
+It never replaces or refreshes the provider baseline in account state.
+
+The finite estimate-start count applies to owner requests too. All sessions and
+models sharing an account/window use the same retained history; fresh observation
+of the same window, role changes, releases and restart cannot replenish it.
+Actual fresh provider telemetry can permit normal starts independently of that
+fallback count. It does not erase estimate history. Estimates use shared pacing,
+with their explicit minimum gap, and retain the ordinary root/cap/source gates.
+Waits do not spend execution budget or count as no-progress handoffs.
+
+The usage bound and baseline are reread after priority evaluation; changes deny
+execution. Their ages are also checked at the final admission clock, closing a
+reproduced expiry race. One commit stores the estimate receipt/history with the
+original outbox attempt, root charge, account reservation and activity lease.
+Missing estimate history is detected against retained model attempts rather than
+resetting the counter. Post-commit recovery holds activity and never grants that
+attempt again.
+
+This prepares the guarded transaction path, not a real all-source usage ceiling.
+Typed test receipts are synthetic. Protected external-usage readers, compatible
+provider provenance, explicit approved policy and real pre-turn fencing remain
+activation gates. Where consumption cannot be bounded, the system must keep the
+task held and report uncertainty; a start-count limit alone cannot guarantee the
+owner's reserve.
 
 ## Durable owner-first dispatch offers
 
@@ -169,6 +219,8 @@ reports unavailable runtime/probe/fence/grant/stop integration. Its three numeri
 pacing/freshness values remain unset. Owner-priority activation and dispatch policy
 configuration are also explicitly false. Runtime commands are unavailable. The test
 runner copies its source/template through explicit allowlists; none is installed.
+Quota-estimate activation, policy configuration and real usage-bound verification
+are also reported as unavailable.
 
 Register `ccrelay.model_admission.v1` with the full-system recovery inventory.
 Capture a consistent root/outbox SQLite cohort including `model_metadata`,
@@ -189,6 +241,12 @@ sequence, pinned plans, initial source proofs, original intent links and the
 composite admission policy digest in that same consistent cohort. Preserve
 cancelled/attempted history and held model attempts. There is no separate dispatch
 database, and restoring an offer never proves execution or tool quiescence.
+
+Include `ccrelay.quota_estimates.v1` metadata and complete attempt history in
+the same cohort, with labeled estimate receipts, verified provider baselines,
+usage proofs, window/reset identities and the composite policy digest. Restore
+cannot replenish per-window estimate-start counts or refresh baseline timestamps;
+real usage must be reverified before another estimated turn.
 
 ## Verification and remaining gates
 
@@ -239,9 +297,22 @@ credentials, network access or increased child timeouts. This is focused
 regression evidence, not a replacement for the historical full-suite runs or
 target acceptance.
 
+Twenty quota-estimate cases cover absent/stale/expired baselines, every applicable
+window, bounded outside usage, reserve preservation, shared gap/start limits,
+owner requests, model changes, fresh negative evidence, replay and missing
+history. Usage changes during priority evaluation and proof expiry at the final
+clock cannot grant execution. Two actual isolated process deaths straddle the
+common attempt commit: estimate history and the original root/account/slot/outbox
+bundle roll back or survive together, without replenishing counts or replaying
+the attempt. The clean staged-source run passed all 794 core tests in 199 serial
+sandbox batches, the isolation probe and all four legacy suites, without host
+home/credentials/network access or increased child timeouts. The strict staged
+secret scan passed. Quota, usage and source facts remain synthetic; this is not
+native-provider or target-PC acceptance.
+
 Remaining integration includes protected owner/company grants, real all-source
 native pre-turn controls and quiescence, compatible subscription/window adapters,
-the protected priority producer/driver and explicit pending policy, bounded missing-telemetry estimates, the passive status
+the protected priority producer/driver and explicit pending policy, real usage ceilings and approved estimate policy, the passive status
 bridge, protected diagnostic producers/current result application, real capacity/native-retry classification,
 steering and checkpoint-continuation adapters, and encrypted target restore.
 Existing native sessions, bots, credentials and services remain unchanged.
