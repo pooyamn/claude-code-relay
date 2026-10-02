@@ -6,6 +6,11 @@ sessions, subscriptions, Telegram polling and the remote-control daemon remain
 untouched. The [20-PR roadmap](../../docs/agentic-pc-20-pr-roadmap.md) tracks the
 remaining launch, authorization, backup/restore and target acceptance work.
 
+Telegram integration tests use Khadang. HamalBot's existing configuration,
+bindings, credentials, poller and services stay untouched until Pouya explicitly
+authorizes a change. Verify the test bot's identity and existing poller ownership
+before using it; testing is not permission for a production-bot cutover.
+
 ## Safe commands now
 
 ```sh
