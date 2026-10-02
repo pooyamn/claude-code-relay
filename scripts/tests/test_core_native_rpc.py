@@ -166,6 +166,7 @@ class RPCTests(unittest.TestCase):
 
     def test_duplicate_keys_nonfinite_utf8_depth_and_invalid_events_are_not_dropped(self):
         variants = (b'{"method":"warning","method":"warning"}\n',
+                    '{"method":"warning","params":{}}'.encode("utf-16") + b"\n",
                     b'{"method":"warning","params":{"value":NaN}}\n',
                     b'{"method":"warning","params":{"value":1e999}}\n',
                     b'{"method":"warning","params":{"value":"\xff"}}\n',
@@ -407,6 +408,8 @@ class RPCTests(unittest.TestCase):
 
 
 class JoinedResumeTests(unittest.TestCase):
+    wire_type = RPCFixture
+
     def test_durable_resume_uses_initialized_real_pipe_and_lost_ack_is_never_replayed(self):
         for lose_ack in (False, True):
             with self.subTest(lose_ack=lose_ack), tempfile.TemporaryDirectory() as temporary:
@@ -419,7 +422,7 @@ class JoinedResumeTests(unittest.TestCase):
                         closing(open_outbox(folder / "outbox", policy_digest=authority.policy.digest)) as ledger:
                     registry.enroll(CONTROLLER, enrollment())
                     ledger.store(resume_action(registry._row("builder.task"), "resume-1"), CONTEXT)
-                    wire = RPCFixture()
+                    wire = self.wire_type()
                     try:
                         wire.initialize()
                         def provider(peer):
@@ -439,6 +442,7 @@ class JoinedResumeTests(unittest.TestCase):
                         wire.peer.finish()
                         self.assertEqual(result["state"], "unknown" if lose_ack else "confirmed")
                         self.assertEqual(len(observations), 0 if lose_ack else 1)
+                        self.assertEqual(len(wire.authorized), 1)
                         native = FakeResume(folder / "provider.sqlite")
                         try:
                             self.assertEqual(native.count(), 1)

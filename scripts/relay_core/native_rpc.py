@@ -1,6 +1,6 @@
-"""Pinned JSONL app-server connection on owned handles, not daemon discovery.
+"""Pinned app-server RPC on owned stdio/UnixWS handles, not daemon discovery.
 
-The protected launcher supplies exclusive nonblocking stdio handles and real
+The protected launcher supplies exclusive nonblocking handles and real
 runtime/UID/generation verification. No process launch, login, connect, automatic
 reconnect/retry, server-request approval or live entry point exists here.
 """
@@ -53,7 +53,7 @@ def _decode(raw):
             raise Denied("non-finite native JSON number")
         return number
     try:
-        value = json.loads(raw, object_pairs_hook=pairs, parse_float=floating,
+        value = json.loads(raw.decode("utf-8"), object_pairs_hook=pairs, parse_float=floating,
                            parse_constant=lambda _: (_ for _ in ()).throw(Denied("non-finite native JSON number")))
     except (ValueError, UnicodeError, RecursionError):
         raise Denied("malformed native JSON frame") from None
@@ -126,9 +126,15 @@ class JSONLChannel:
         body = _encode(message)
         if len(body) > self.max_frame:
             raise Denied("native output frame exceeds bound; no truncation")
+        self._write_bytes(body + b"\n", deadline)
+
+    def prepare(self, deadline, verify):
+        """Stdio has no transport handshake; the runtime gate still applies."""
+        verify()
+
+    def _write_bytes(self, body, deadline):
         with self.write_lock:
             offset = 0
-            body += b"\n"
             while offset < len(body):
                 self._wait(self.fds[1], selectors.EVENT_WRITE, deadline)
                 try:
@@ -177,7 +183,8 @@ class JSONLChannel:
 
 class CodexRPC:
     def __init__(self, channel, *, verify_transport, transport_digest, initialize_digest, authorize, capture, authorize_reply):
-        if type(channel) is not JSONLChannel or not all(callable(value) for value in (verify_transport, authorize, capture, authorize_reply)):
+        from .native_ws import UnixWSChannel
+        if type(channel) not in (JSONLChannel, UnixWSChannel) or not all(callable(value) for value in (verify_transport, authorize, capture, authorize_reply)):
             raise Denied("owned channel, protected identity/admission/capture/reply gates required")
         self.channel, self.verify_transport = channel, verify_transport
         self.transport_digest, self.initialize_digest = _hash(transport_digest), _hash(initialize_digest)
@@ -260,6 +267,7 @@ class CodexRPC:
             raise Denied("native connection already initialized or busy")
         try:
             deadline = time.monotonic() + self.channel.timeout
+            self.channel.prepare(deadline, self._current)
             response = self._exchange("initialize", {"clientInfo": dict(client_info)}, request_id, deadline)
             if "error" in response or type(response.get("result")) is not dict or fingerprint(response["result"]) != self.initialize_digest:
                 raise Denied("native initialization/version contract differs")

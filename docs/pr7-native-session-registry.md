@@ -109,7 +109,8 @@ This adapter implements JSONL stdio, not the existing Mac daemon's Unix
 WebSocket transport. The upstream contract requires one `initialize` request,
 its successful reply and then `initialized` before other requests. Supporting
 stdio does not replace the required isolated native-app/daemon topology or prove
-app visibility. A pinned WebSocket adapter and target acceptance remain gates.
+app visibility. The Unix adapter below is also disabled; target transport
+acceptance remains a gate.
 [Codex App Server](https://learn.chatgpt.com/docs/app-server).
 
 RPC replies match both request ID value and type. Notifications and server
@@ -146,6 +147,42 @@ without replay. Provider behavior, runtime pins, event capture and admission
 remain synthetic; no native process, login, bot or service was used as a fixture.
 The full suite was not rerun for this slice. This is preparation, not PR 7
 completion or target runtime activation.
+
+## Prepared Unix WebSocket connection
+
+`native_ws.py` adds WebSocket framing to the same RPC gates on an explicitly
+supplied, already-connected Unix stream. It does not discover a home socket,
+connect, start a daemon or fall back to stdio/TCP. The protected launcher must
+still authenticate the actual peer UID/runtime generation and reviewed endpoint.
+Descriptor checks and HTTP Upgrade are not role authentication. The read-only
+target plan records this separate transport as inactive.
+
+The upgrade checks HTTP status, Upgrade/Connection headers and the challenge
+response before sending native initialization. Redirects, duplicate/malformed
+headers and unrequested extensions/subprotocols are refused. Framed JSON is
+strict UTF-8; client messages and control replies are masked. Fragmented messages
+and partial headers/bodies survive idle waits, with aggregate byte/frame bounds.
+Ping/pong is transport maintenance, not native approval. A partial control write
+poisons the connection rather than becoming a harmless idle timeout. Close/EOF
+leaves any pending native outcome unknown and cannot prove descendants stopped.
+
+This is preparation for the upstream Unix WebSocket contract, which remains
+experimental and unsupported for production workloads. Reviewed runtime/version
+pins and compatibility acceptance are still required; offline framing does not
+establish native-app access or a compliant role-isolated subscription topology.
+[Codex App Server](https://learn.chatgpt.com/docs/app-server).
+
+All 55 focused sandbox checks pass: the preceding 37 RPC/resume/planner checks
+and 18 new WebSocket checks. Actual anonymous Unix socket pairs exercise the
+upgrade, masked writes, fragmentation, idle events, control frames, protocol
+rejection and explicit authorized replies. The same durable resume fixture now
+runs over both transports, including accepted resume with a lost acknowledgment
+and no replay. No real native daemon, socket path, login, model or bot was a
+fixture. An initial oversized-header fixture attempted to keep writing after
+the correct early cutoff; it now supplies exactly the header ceiling without
+a delimiter and verifies refusal. The full suite was not rerun. Protected
+launcher/observer/capture/admission wiring, Claude controls and target acceptance
+remain pending; no live transport was activated.
 
 ## Read only target preparation
 

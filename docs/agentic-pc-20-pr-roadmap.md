@@ -259,6 +259,16 @@ those tests. Protected launcher/observer/event wiring, pinned WebSocket support,
 both tools' isolated app access and target acceptance remain required. No live
 entry point or automated turn was enabled; PR 7 remains in preparation.
 
+Unix transport preparation: `native_ws.py` adds verified HTTP Upgrade and bounded
+WebSocket framing on an explicit connected Unix stream, reusing the initialized
+RPC and approval gates. There is no home-socket discovery, TCP/stdio fallback or
+reconnect. All 55 focused WS/RPC/resume/planner checks pass with real anonymous
+sockets/pipes and synthetic provider/identity/admission evidence, including exact
+resume with a lost reply over either transport. The upstream transport remains
+experimental; production support, isolated native-app topology, protected runtime
+observer/launcher/event wiring and target acceptance are not inferred from these
+tests. No live daemon or bot changed; PR 7 is still in preparation.
+
 ## PR 8 Root tasks and atomic work ownership
 
 Depends on: PRs 1, 2 and 7.

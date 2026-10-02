@@ -92,12 +92,12 @@ class PipePeer:
 
 
 class RPCFixture:
-    def __init__(self, **limits):
-        self.peer = PipePeer(**limits)
+    def __init__(self, *, peer_type=PipePeer, transport_digest=TRANSPORT_DIGEST, **limits):
+        self.peer = peer_type(**limits)
         self.authorized, self.events, self.authorized_replies = [], [], []
-        self.pin = TRANSPORT_DIGEST
+        self.pin = transport_digest
         self.rpc = CodexRPC(self.peer.channel, verify_transport=lambda _: self.pin,
-                            transport_digest=TRANSPORT_DIGEST, initialize_digest=fingerprint(INITIALIZED),
+                            transport_digest=transport_digest, initialize_digest=fingerprint(INITIALIZED),
                             authorize=self.authorize, capture=self.capture, authorize_reply=self.authorize_reply)
 
     def authorize(self, method, parameters, *, request_id):
