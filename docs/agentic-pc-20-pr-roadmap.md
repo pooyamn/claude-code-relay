@@ -161,6 +161,19 @@ suite passes 397 core tests and four legacy suites. The socket-group template an
 optional broker flag are preparation only, not live changes. Actual WSL UID/IPC,
 native-source and current root/company checks remain required; PR 6 is not done.
 
+Telegram-local recovery preparation: `telegram_snapshot.py` freezes queue and
+grant writers together and captures committed SQLite state, original uploads,
+sealed responses, interrupted forensic files and the outbound policy. A complete
+file manifest is published last; read-only inspection rejects missing, altered,
+linked, unlisted or unsupported state. Restoration creates a new private tree
+without activating a sender, renewing permissions or resetting attempts/cursors.
+Joined fixtures and eight actual process-death cases preserve unknown outcomes
+without resending, grant history and repair/receipt links. The combined copied-source
+suite passes 425 core tests and all four legacy suites. External broker/native/
+company/policy/artifact hashes are references, not capture or authority proof.
+Encrypted joined archives and clean-machine recovery remain PRs 12–13 work;
+actual target OS and current-context gates remain required before PR 6 cutover.
+
 ## PR 7 Native session registry and role launcher
 
 Depends on: PRs 2, 5 and 6.

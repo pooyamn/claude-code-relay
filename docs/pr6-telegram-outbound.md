@@ -1,7 +1,7 @@
 # PR 6 Telegram send scheduler and receipt preparation
 
 The protected outbound foundation, bounded format/media repair and current
-source-grant dispatch checks are prepared
+source-grant dispatch checks and Telegram-local recovery snapshots are prepared
 and tested offline. They give Telegram sends one durable queue, keep every
 required reply chunk, and advance watcher offsets only with a complete confirmed
 receipt set. This preparation does not convert
@@ -326,7 +326,9 @@ with its complete issuance/revocation/renewal history; pinned policy, including
 the broker binding-read policy/client/server artifacts; adapter artifact and
 trusted stream/registry evidence. Keep incomplete spool
 files for inspection. The base outbox's database-only snapshot is not a complete
-Telegram component backup. Restore paused, revalidate identity/versions and
+Telegram component backup. `telegram_snapshot.py` now prepares the local part
+described below; the joined full-system archive remains PR 12 work.
+Restore paused, revalidate identity/versions and
 reconcile external evidence before permitting execution. Runtime lock metadata
 is diagnostic data, not proof of restored ownership; reacquire the numeric-bot
 lock and verify its live kernel process generation.
@@ -340,6 +342,55 @@ reconstruct permission from the bundle or an old boolean. Database-only source
 snapshots do not establish full-system/clean-machine recovery. A backed-up
 binding/read-policy tuple is not a fresh broker observation or current source
 permission; restore paused and revalidate it through the protected channel.
+
+### Prepared Telegram component snapshots
+
+The protected driver calls `capture()` between requests, with upload and response
+writers quiesced. It holds the queue's lifetime lock and freezes grant and queue
+SQLite writers in a fixed order. Separate read connections use SQLite's backup
+API to include committed WAL state without waiting on their own write
+transactions. New destination databases select exclusive locking before backup
+and leave WAL mode before sealing; no shared-memory or WAL sidecars are exported.
+This uses SQLite's documented [exclusive WAL mode](https://www.sqlite.org/wal.html#use_of_wal_without_shared_memory).
+It does not change the live databases' journal or locking modes.
+
+The new private tree contains both databases, all sealed response bodies and
+attempt envelopes, all immutable uploads, retained interrupted `.pending` files
+and the exact outbound policy. Original names/MIME types, repair recipes and
+links, stream identities/cursors, attempts, cooldowns and grant history remain
+in their original databases. Missing referenced upload bytes, changing files,
+unrecognized components, links or unsupported schemas refuse completion; the
+source bytes and visibly incomplete destination are retained. A sealed manifest
+is published last, with each file's length/hash and explicit forensic-only labels
+for interrupted files. Existing destinations are never overwritten.
+
+`inspect_snapshot()` performs read-only inventory, hash, policy and database
+integrity/format checks. `restore_snapshot()` copies verified bytes into a new
+private tree and publishes a final `restore.json` receipt; it never opens a native
+runtime, sends a message, renews a grant, resets a cursor or starts a service.
+The receipt's paused label is diagnostic, not an execution fence: the recovery
+coordinator must keep services stopped and reacquire live ownership only after
+review. Unsupported owner IDs/versions require reviewed migration, not a silent
+permission rewrite.
+
+The manifest identifies a recovery cohort and requires external broker registry,
+native source registry, company/root context, adapter artifact and binding-read
+policy digests. These are references only: their bytes, authenticity, coordinated
+capture, current authorization and external outcomes still require separate
+verification. This local snapshot is unencrypted and is not a full-machine
+disaster-recovery archive. PR 12 must join it with the other components and
+encryption; PR 13 must demonstrate complete clean-machine restoration.
+
+Offline fixtures exercise joined recovery, preserved revocation/renewal history,
+original uploads/response envelopes and authorized repair links, an independent
+writer blocked during both database copies, and eight actual scratch-process
+deaths around capture/restore publication. An uncertain accepted send remains
+unknown after restore and is not resent; a sealed captured response can reconcile
+its original attempt without network traffic. The clean combined commit candidate
+passes 425 core tests and all four legacy suites; a strict staged secret scan
+finds no leaks. No live component state, credentials, scheduler or service was
+changed by this recovery preparation. These checks do not establish target WSL
+durability, real identity isolation or full-system recovery.
 
 Unknown schemas or policy changes require explicit reviewed migration. Do not
 delete ledgers, clear offsets/cooldowns, replace uncertain intents or reclaim a
@@ -384,6 +435,7 @@ sender beside the new owner is not a rollback.
    the locally tested duplicate/candidate/crash/unknown invariants across real
    identities. Keep platform-owner approval separate from company employee work
    before enabling the v8 membership expansion. Tickets and prose cannot approve.
-6. Join component snapshots/paused restore, later health/status reporting and
+6. Join the prepared Telegram-local snapshots with the other protected components
+   and verify paused full-system restore, later health/status reporting and
    owner-authorized canary/deployment. Only then evaluate live adoption. This
    foundation does not complete PR 6 or the full 20-step PC readiness goal.
