@@ -194,8 +194,8 @@ Sessions message each other only through the ccrelay MCP server (built and teste
 | Tool | Does |
 |---|---|
 | `list_sessions()` | sessions you can message, their tool, reachable or not |
-| `send_message(to, text, reply_to?)` | store, deliver, log; returns id and state |
-| `message_log(limit?)` | recent inter-session messages |
+| `send_message(intent_id, to, text, reply_to, mode, expected_turn_id)` | enroll a stable authenticated intent; returns its actual delivery state, not a claim that storage is model input |
+| `message_status(id)`, `message_log(limit?, before_id?)` | participant-scoped state and bounded pages of complete messages |
 | `publish()` | open the PR for the current checkpoint (§8) |
 | `lease(path, minutes)`, `release(path)` | unmergeable-file leases |
 | `request_action(kind, details)` | email, payment, post: becomes an Approve button |
@@ -203,10 +203,12 @@ Sessions message each other only through the ccrelay MCP server (built and teste
 
 - Identity in the target design: the router authenticates the caller's local security identity and binds it to an allowed role and a launcher-registered session. A directory, sender field, or message header does not authenticate the role. Folder-derived identity in the current MCP implementation must be replaced before enforcing reviewer or CTO privileges.
 - Header `[from <session> · task <root-id> · hop N · id <id>]` is written by the server; the receiver answers with `reply_to`. The router binds the task root from the admitted turn, not a caller-chosen header.
-- Delivery: Claude via one JSON line on its inbox socket (`/tmp/cc-socks/<pid>.sock`); Codex via `codex queue --thread <id>`, or `turn/steer` for urgent.
-- States per message: `stored`, `delivered`, `failed`; retries for failed; duplicates dropped by id.
+- Delivery uses a protected, pinned native adapter with exact-session evidence and confirmed input acceptance. The legacy implementation's raw Claude inbox socket and `codex queue` paths are not target authorization or receipt mechanisms. Pouya's messages to an active session steer its exact expected turn; unsupported or stale steering is retained and reported, never converted to queued follow-up. An inactive session needs an explicitly admitted start.
+- States per intent: `stored`, `delivering`, `submitted`, `unknown`, `confirmed`, `failed`; an unsubmitted intent may also be held with a reason. Stable intent IDs and parameter fingerprints deduplicate enrollment. A committed claim binds one attempt and exact adapter plan before any effect; identical replay grants no execution. Interrupted submissions stay unknown until verified evidence reconciles them. Failed intents are terminal; any policy-authorized replacement retains negative evidence. Confirmation means input accepted, not task completed.
 - Hop limit 3, counted by the server, is a per-chain guard only. The task-wide budgets and progress checks in §5 also apply across newly started chains. If the target is not running, the message is parked and Pouya is alerted. Nothing auto-starts.
 - Claude's native `SendMessage` to other sessions is denied by permission rule, so nothing bypasses the log.
+
+Local PR 5 preparation and pending integration gates are documented in [the durable delivery runbook](pr5-durable-delivery.md). The protected MCP client can enroll held intents and inspect participant-scoped status; no native delivery is enabled. Its three-hop guard requires confirmed parent messages and inherited-root admission, but does not establish the task-wide progress watchdog.
 
 Codex observer (built 2026-10-01): the relay stays attached to every Codex thread through the daemon. Turns it did not start (the ChatGPT app, messages from other sessions) are mirrored into the session's topic, labelled "📱 From the ChatGPT app" or "📨 Message from <session>", followed by the reply; a turn that answered only through tools ends with "✓ Done".
 

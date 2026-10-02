@@ -28,7 +28,7 @@ MAX_FRAME = 65536
 IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\Z")
 METHODS = {
     "whoami": "message", "list_sessions": "message", "message_log": "message",
-    "send_message": "message", "report_issue": "report_issue", "list_issues": "report_issue",
+    "send_message": "message", "message_status": "message", "report_issue": "report_issue", "list_issues": "report_issue",
     "comment_issue": "report_issue", "publish": "publish", "review_publication": "review",
     "request_merge": "request_merge", "request_action": "request_action",
     "request_deploy": "request_deploy", "propose_memory": "propose_memory",

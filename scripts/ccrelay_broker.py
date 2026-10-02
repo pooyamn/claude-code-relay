@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Protected Linux action broker. PR 2 enables identity/introspection only.
+"""Protected Linux action broker with durable, held message enrollment.
 
 No model, provider, Telegram, GitHub, approval or deployment adapters are
-enabled here. Later PRs add scoped handlers and durable intent/receipt gates.
+enabled here. Message storage/logging is not queued or delivered model input.
 Do not launch this against live state as part of local conformance tests.
 """
 import argparse
@@ -17,9 +17,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from relay_core.bindings import BindingRegistry
 from relay_core.identity import Authority, Denied, Policy, exact, identifier, protected_path
 from relay_core.broker_wire import receive_request, send_response
+from relay_core.messaging import BrokerMessages
+from relay_core.outbox import DeliveryLedger
 
 
-def dispatch(authority, peer, request, *, control=False):
+def dispatch(authority, peer, request, *, control=False, messages=None):
     if control:
         exact(request, {"schema", "request_id", "method", "args"})
         if request["schema"] != "ccrelay.broker_control.v1":
@@ -32,6 +34,8 @@ def dispatch(authority, peer, request, *, control=False):
             return authority.revoke(peer, request["args"]["session_id"])
         raise Denied("unsupported launcher control operation")
     actor = authority.authorize(peer, request)
+    if request["method"] in {"send_message", "message_status", "message_log"} and messages is not None:
+        return messages.dispatch(actor, request["method"], request["args"])
     if request["method"] == "whoami":
         exact(request["args"], set())
         return {"ok": True, "role": actor.role_id, "session": actor.session_id,
@@ -69,6 +73,8 @@ def main():
     protected_path(lock_path, owners={0, policy.broker_uid}, private=True)
     fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     authority = Authority(policy, registry)
+    ledger = DeliveryLedger(args.state_dir, owner_uid=policy.broker_uid, policy_digest=policy.digest)
+    messages = BrokerMessages(authority, ledger)
     with selectors.DefaultSelector() as selector:
         listeners = []
         try:
@@ -93,14 +99,14 @@ def main():
                             peer, request = receive_request(connection)
                             if type(request) is dict:
                                 request_id = identifier(request.get("request_id"))
-                            result = dispatch(authority, peer, request, control=key.data)
+                            result = dispatch(authority, peer, request, control=key.data, messages=messages)
                         except (Denied, ValueError, OSError):
                             # Never log private arguments or proc/config paths.
                             result = {"ok": False, "error": "request denied; required identity or operation gate unavailable"}
                         try:
                             send_response(connection, {**result, "request_id": request_id})
                         except (Denied, OSError):
-                            pass  # no effectful handler to replay in PR 2
+                            pass  # Caller inspects/replays SAME stable intent; no adapter resubmission.
         finally:
             for listener, path in listeners:
                 listener.close()
@@ -108,6 +114,7 @@ def main():
                 if path.exists() and path.is_socket():
                     path.unlink()
             registry.close()
+            ledger.close()
             os.close(lock_fd)
 
 

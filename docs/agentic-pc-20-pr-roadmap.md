@@ -8,7 +8,7 @@ Build testable security and delivery foundations first. Introduce the builder wi
 
 Pouya requested sequential implementation for PC readiness and authorized committing and pushing verified changes. Repository publication is separate from deployment: no GitHub PRs, live deployments, credential changes or migration have been performed by this implementation run. Local implementation/test evidence is distinct from target-PC acceptance. Unrelated uncommitted edits and runtime/media files are excluded from this series.
 
-PR 1 is locally implemented. PRs 2–4 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel/runtime integration still pending; evidence and limits are recorded below. PRs 5–20 remain to be implemented. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
+PR 1 is locally implemented. PRs 2–5 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel/runtime integration still pending; evidence and limits are recorded below. PRs 6–20 remain to be implemented. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
 
 ## Existing code to extend
 
@@ -90,6 +90,8 @@ Depends on: PRs 1 through 4.
 Give messages and external actions stable intent IDs, attempt IDs and parameter fingerprints. Persist submit/receipt/unknown states before and after adapter calls; reconcile uncertain outcomes using evidence instead of blind retry. Route MCP delivery through the broker and retain the existing hop guard. For Pouya's messages to an active session, prefer steering with the exact expected turn ID, honoring his steering preference; an inactive session has no turn to steer. If an active-turn steer is unsupported or races completion, retain the message and report the state rather than silently changing it into queued follow-up. A new turn still needs admission.
 
 Done when: duplicated sends, process crashes and missing acknowledgments do not repeat a confirmed action; unresolved non-idempotent actions remain unknown. Stale-turn steering cannot land in a different turn. Persistence may buffer intake, but is not presented as a queued model interaction.
+
+Local preparation (2026-10-02): `relay_core/outbox.py`, `messaging.py` and `runtime_delivery.py` implement a private durable intent/attempt/plan/evidence ledger, kernel-authenticated held MCP enrollment, participant-scoped paginated logs, confirmed-parent hop checks and a no-fallback exact-turn Codex steering adapter. Actual process deaths at eight storage/submission/receipt boundaries and a non-idempotent fake provider test recovery without uncertain resubmission. The protected broker can store/inspect messages but does not invoke native or external adapters. [PR 5 evidence and recovery](pr5-durable-delivery.md) records remaining Telegram owner-ingress, Claude/pinned native transport, inherited-root/admission, reconciliation and target-OS gates; input acceptance is not completed work. Legacy live wiring and unrelated protocol edits remain unchanged.
 
 ## PR 6 One Telegram scheduler and reply receipts
 

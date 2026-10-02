@@ -44,7 +44,11 @@ still required; it is not replaced by a common-home copy.
   each registration to the canonical digest of the entire loaded policy.
 - `systemd/ccrelay-broker.service`: inert protected broker service with no
   activation section. The policy must be root-owned, and workers cannot edit
-  the deployed artifact, policy, registry or launcher socket.
+  the deployed artifact, policy, registry or launcher socket. The prepared
+  broker also owns the private durable message/action outbox. Its MCP client
+  enrolls held messages and exposes participant-scoped status/log pages, not
+  queued or delivered native input. [PR 5 evidence and recovery](../../docs/pr5-durable-delivery.md)
+  lists the pending native transport, owner-ingress and admission gates.
 - `identities/owner-policy.json.example` and `deployment-policy.json.example`:
   disabled exact-owner/channel and protected classification/bootstrap policies.
   Their owner/bot/chat/topic IDs are invented, not live configuration. Routine
