@@ -20,6 +20,7 @@ from relay_core.native_image import SCHEMA as IMAGE_SCHEMA
 from relay_core.native_settings import SCHEMA as SETTINGS_SCHEMA
 from relay_core.native_capture import SCHEMA as CAPTURE_SCHEMA
 from relay_core.native_epochs import SCHEMA as EPOCH_SCHEMA
+from relay_core.native_observe import SCHEMA as OBSERVE_SCHEMA
 
 
 def configuration(raw):
@@ -54,6 +55,8 @@ def plan():
             "resume_permissions_schema": SETTINGS_SCHEMA, "resume_permissions_check_activated": False,
             "native_capture_schema": CAPTURE_SCHEMA, "native_capture_activated": False,
             "native_control_epoch_schema": EPOCH_SCHEMA, "native_control_epochs_activated": False,
+            "native_observer_schema": OBSERVE_SCHEMA, "native_observer_activated": False,
+            "native_loaded_context_verifier_available": False,
             "role_profiles_not_active_sessions": sorted(policy.roles), "admission_available": False,
             "pending": ["pinned protected Codex and Claude observation/transports and exact-ID resume",
                         "target UID/cgroup/process-generation and role-isolated subscription topology",

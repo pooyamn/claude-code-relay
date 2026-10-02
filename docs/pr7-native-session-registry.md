@@ -471,9 +471,10 @@ verified subscription/mediation contract, not trust a ticket alone.
 Before every native control mutation, the protected driver must invalidate the
 old epoch durably and bind any resulting baseline to that exact control attempt.
 This helper does not submit controls or reconcile an uncertain native action;
-the existing outbox still owns those outcomes. The exact-resume adapter and
-registry do not yet consume this component automatically. Full driver/observer
-integration remains the next gate; the planner reports epochs inactive.
+the existing outbox still owns those outcomes. The prepared observer below now
+consumes epoch tickets, but the exact-resume adapter does not establish them
+automatically. Real protected driver integration remains a gate; the planner
+reports epochs inactive.
 
 Include the new private ledger, its SQLite WAL/consistent backup and complete
 epoch/frame history in the encrypted recovery inventory alongside native-frame
@@ -495,6 +496,51 @@ real-provider proof. No live daemon, native session, bot or model was changed.
 The clean staged-source run passed all 228 focused epoch, capture, settings,
 registry, outbox, artifact, identity and transport checks in 57 serial sandbox
 batches. The full suite remains deferred to the next milestone.
+
+### Joined exact native observation
+
+`native_observe.py` prepares `ccrelay.codex_observation.v1`, joining the existing
+registry to one captured `thread/read` with `includeTurns: true`, a current control
+epoch and separate protected loaded-context evidence. It verifies the exact
+execution thread ID and worktree, not the conversation tree's `sessionId`.
+The pinned Codex 0.160.0 generated schema supplies runtime status and turn IDs;
+the [app-server read contract](https://learn.chatgpt.com/docs/app-server) does not
+make that response evidence of loaded instructions, MCP tools or permissions.
+
+The mandatory loaded-context verifier must independently inspect those facts.
+Its sealed `native-context/context.json` receipt binds the current probe,
+binding, source, connection, typed epoch and captured read artifact to measured
+runtime/tool/permission digests. The registry compares those digests with its
+reviewed enrollment. There is no default verifier or fallback that copies the
+expected values. Sealing a claim alone does not prove it was measured; a real
+protected verifier is still unavailable, as the inactive planner reports.
+
+Epoch checks bracket the native read and context verification. Settings/control
+changes and registry revisions during the probe reject the result. An active
+thread requires one unambiguous in-progress turn; idle means a loaded available
+thread, not stopped tools. `notLoaded`, `systemError` and incomplete active
+snapshots never establish pause or writer-stop proof. The observer does not
+launch, resume, fork, discover a session or start a model turn.
+
+The existing registry history retains compact captured-read, epoch and context
+references through the optional observation `evidence` field. Older normalized
+observations remain compatible with absent evidence; they do not become native
+proof. Add the complete context artifacts to the encrypted recovery inventory
+alongside captured frames/payloads, epoch history, registry/outbox and their source
+cohort. Restoration preserves history but clears readiness; neither replay nor
+old context authorizes continuation. No database migration or live activation
+occurs in this slice.
+
+Nineteen new sandbox checks use actual JSONL pipes, anonymous UnixWS, sealed
+artifacts and registry persistence. They cover exact identity, status ambiguity,
+events during read, changed context scope/contracts, verifier mutation, owner
+pause and recovery. Kernel/source and loaded-context measurements are synthetic,
+not real provider/target evidence. Verified subscription/control mediation,
+actual loaded-context measurement, all-source admission, Claude observation and
+clean-machine encrypted restore remain gates. Live sessions and bots are unchanged.
+The clean staged-source candidate passed all 247 focused native, registry,
+artifact, identity and outbox checks in 62 serial sandbox batches. The full suite
+remains deferred to the next milestone; earlier milestone counts are historical.
 
 ## Read only target preparation
 

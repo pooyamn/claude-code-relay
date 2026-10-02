@@ -12,11 +12,11 @@ from relay_core.native_epochs import NativeControlEpochs
 POLICY_DIGEST = fingerprint({"synthetic_epoch_policy": "NOT-LINUX-ENFORCEMENT"})
 
 
-def open_epochs(folder, *, checkpoint=lambda _: None):
+def open_epochs(folder, *, checkpoint=lambda _: None, policy_digest=POLICY_DIGEST):
     Path(folder).mkdir(mode=0o700, parents=True, exist_ok=True)
     source = fingerprint({"synthetic_capture_source": "NOT-KERNEL-PROOF"})
     with mock.patch("relay_core.outbox.protected_path", side_effect=lambda path, **_: Path(path)):
-        return NativeControlEpochs(folder, owner_uid=os.geteuid(), policy_digest=POLICY_DIGEST,
+        return NativeControlEpochs(folder, owner_uid=os.geteuid(), policy_digest=policy_digest,
                                    current_source=lambda _: source, checkpoint=checkpoint)
 
 

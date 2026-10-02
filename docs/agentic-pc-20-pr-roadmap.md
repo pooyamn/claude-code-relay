@@ -322,10 +322,22 @@ changes, delayed replies and restoration invalidate older observation tickets;
 matching notifications cannot revive unknown or closed state. Twenty-five new
 real-pipe/UnixWS sandbox checks include three actual synthetic-driver deaths,
 without another provider resume. This is a freshness prerequisite, not native
-readiness or completed observation. Protected driver/observer integration,
+readiness or completed observation. Real protected driver/observer integration,
 verified subscription/mediation, full loaded-context/OS evidence and encrypted
 restore acceptance remain pending; epochs stay inactive and live bots unchanged.
 [Epoch evidence and recovery](pr7-native-session-registry.md#durable-settings-and-control-epochs).
+
+Joined-observer preparation: `native_observe.py` connects the registry to a
+captured exact-thread read, fresh control epochs and a mandatory independently
+measured loaded-context receipt. Settings changes and owner controls reject stale
+probes; idle/unloaded/error status never proves stopped writers. Compact evidence
+is retained in registry history and restoration clears readiness. Nineteen new
+pipe/UnixWS/state checks use synthetic context/source facts, not native target
+proof; all 247 focused clean-staged checks pass in 62 serial sandbox batches.
+The actual context verifier, protected control baseline integration,
+subscription/mediation, Claude, admission and encrypted restore remain pending.
+The planner explicitly reports the verifier unavailable and observer inactive;
+no live bot/model changed. [Observation and recovery contract](pr7-native-session-registry.md#joined-exact-native-observation).
 
 ## PR 8 Root tasks and atomic work ownership
 

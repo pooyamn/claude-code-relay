@@ -63,6 +63,7 @@ class NativeObservation:
     tool_contract_digest: str
     permission_digest: str
     capabilities: tuple
+    evidence: object = None  # Historical/normalized fixtures have no native proof.
 
 
 class NativeSessionRegistry(DeliveryLedger):
