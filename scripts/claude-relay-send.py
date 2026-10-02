@@ -1759,16 +1759,12 @@ def _md_rows(lines):
 def render_reply(text):
     """Prepare a reply for delivery.
 
-    Rich mode (richMessages on): a MARKDOWN table goes through untouched -- OpenClaw
-    turns it into a native RichBlockTable, and fencing it would only hide it from the
-    converter. A BOX-DRAWING table is converted to markdown first, because the
-    converter reads markdown and nothing else: passed through as-is it would land in
-    Telegram's proportional font with the columns collapsed. Claude Code draws box
-    tables constantly, so that is the common path, not a corner.
-
-    Flag off (or a box table we can't parse): fence it, which at least keeps it
-    monospace. That is a degraded fallback, not a fix -- a wide one still wraps on a
-    narrow screen. Prose, stray `|` and already-fenced content are untouched either way."""
+    Direct bot delivery receives markdown table strings (box grids converted).
+    OpenClaw delivery gets fixed-width fenced rows, even with richMessages on,
+    honoring the requested horizontal scrolling instead of wrapped native cells.
+    The rich flag still controls message caps; the transport selects table form.
+    Unparseable grids remain fenced; prose and existing fences are preserved.
+    """
     rich = rich_enabled()
     bot = _bot()
     body = []
@@ -1780,7 +1776,7 @@ def render_reply(text):
         # hand it over as markdown (a box table converted first), not fenced.
         if bot:
             md = payload if _MDROW.match(payload[0]) else _box_to_md(payload)
-            body.append(md if md else "```\n" + "\n".join(payload) + "\n```")
+            body.append("\n".join(md) if md else "```\n" + "\n".join(payload) + "\n```")
             continue
         # Deliberately NOT a native RichBlockTable, even with rich mode on.
         # Telegram wraps table cells to the screen, so a wide table arrives

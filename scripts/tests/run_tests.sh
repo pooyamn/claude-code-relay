@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Run the whole relay test suite. No network, no tmux, no Telegram.
-#   bash tests/run_tests.sh
+# Inner legacy suite (uses mocks, but does not itself enforce OS isolation).
+# Developer entry point: python3 scripts/tests/run_isolated.py
+# That copies sources/state into scratch and runs this file in an OS sandbox.
 set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 rc=0

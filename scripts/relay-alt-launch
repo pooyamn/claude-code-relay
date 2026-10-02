@@ -17,7 +17,7 @@ kimi's -c is per-directory already, so it keeps using it.
 """
 import hashlib, json, os, shlex, shutil, socket, sqlite3, sys
 
-D = "/Users/pouya/.openclaw/workspace/scripts"
+D = os.path.dirname(os.path.abspath(__file__))
 OC_DB = os.path.expanduser("~/.local/share/opencode/opencode.db")
 
 def opencode_resume_flag(folder):

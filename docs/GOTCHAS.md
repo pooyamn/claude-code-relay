@@ -18,7 +18,13 @@ input, undelivered replies), so a broken change looks exactly like a quiet syste
    is what finally explained `freeze: Language Unknown`.
 4. **One destructive change at a time, with the rollback identified first**
    (`scripts/openclaw-restore-stable`, `~/.openclaw/backups/*.STABLE`).
-5. **When the user says it's broken, believe them over your model.** Every pushback
+5. **Tests need enforced isolation, not only mocks.** Run
+   `python3 scripts/tests/run_isolated.py`: it copies source to scratch and denies
+   host home/credential and network access before testing. The old helper tests
+   write sibling state/config files, and the old alt launcher read a hard-coded
+   live directory even in a copied fixture. Its path now follows its own script.
+   Linux sandbox execution still requires target validation; no unsafe fallback.
+6. **When the user says it's broken, believe them over your model.** Every pushback
    ("the buttons worked before", "limit is free", "it's not responding") was correct
    while a plausible theory said otherwise.
 

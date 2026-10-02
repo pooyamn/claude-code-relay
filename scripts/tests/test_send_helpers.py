@@ -91,7 +91,7 @@ m.deliver("x" * (m.TG_LIMIT + 50))
 check("deliver chunks a >cap reply", len(sent) == 2)
 check("deliver chunks stay within cap", all(len(s) <= m.TG_LIMIT for s in sent))
 
-# --- rich mode: bigger cap, and tables must survive untouched ----------------
+# --- OpenClaw transport: tables scroll in monospace in both flag modes -------
 def _mode(path):
     os.environ["RELAY_CFG"] = path
     m._RICH_CACHE.update(t=0.0, v=None)      # drop the TTL cache between modes
@@ -99,16 +99,18 @@ _mode(_RICH_CFG)
 check("rich mode detected", m.rich_enabled() is True)
 check("rich raises the cap", m.text_limit() == m.TG_RICH_LIMIT)
 _tbl = "Intro\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\nOutro"
-check("rich passes a table through unfenced",
-      m.render_reply(_tbl) == _tbl.strip() and "```" not in m.render_reply(_tbl))
+check("OpenClaw rich preserves table values in a scrolling fence",
+      "```" in m.render_reply(_tbl) and "A  B" in m.render_reply(_tbl)
+      and "1  2" in m.render_reply(_tbl))
 sent.clear()
 m.deliver("x" * 5000)
 check("rich sends 5k as ONE message", len(sent) == 1)
 _mode(_PLAIN_CFG)
 check("plain mode detected", m.rich_enabled() is False)
 check("plain keeps the 4096 cap", m.text_limit() == m.TG_LIMIT)
-check("plain fences a table but keeps its rows",
-      "```" in m.render_reply(_tbl) and "| A | B |" in m.render_reply(_tbl))
+check("OpenClaw plain fences a table and retains aligned values",
+      "```" in m.render_reply(_tbl) and "A  B" in m.render_reply(_tbl)
+      and "1  2" in m.render_reply(_tbl))
 
 # --- box-drawing tables: the shape Claude Code actually emits -----------------
 # The converter reads markdown only, so a box table passed through in rich mode
@@ -117,13 +119,29 @@ check("plain fences a table but keeps its rows",
 _box = "\u250c\u2500\u2500\u2500\u252c\u2500\u2500\u2500\u2510\n\u2502 a \u2502 b \u2502\n\u251c\u2500\u2500\u2500\u253c\u2500\u2500\u2500\u2524\n\u2502 1 \u2502 2 \u2502\n\u2514\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2518"
 _mode(_RICH_CFG)
 _rb = m.render_reply(_box)
-check("rich converts a box table to markdown",
-      _rb.startswith("| a | b |") and "|---|---|" in _rb)
+check("OpenClaw rich converts a box table to scrolling aligned values",
+      "```" in _rb and "a  b" in _rb and "1  2" in _rb)
 check("no box glyphs survive in rich mode", "\u2502" not in _rb and "\u250c" not in _rb)
 _art = "\u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2510\n\u2502 ART  \u2502\n\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2518"
 check("un-gridded box art falls back to a fence", "```" in m.render_reply(_art))
 _mode(_PLAIN_CFG)
 check("plain still fences a box table", "```" in m.render_reply(_box))
+
+# The direct bot transport has its own native-rich path. Use a synthetic bot
+# marker only; rendering must never load real credentials or send anything.
+_mode(_RICH_CFG)
+_real_bot = m._bot
+m._bot = lambda: object()
+try:
+    _native_md = m.render_reply(_tbl)
+    _native_box = m.render_reply(_box)
+    check("native bot markdown retains header/data without a fence",
+          "```" not in _native_md and "| A | B |" in _native_md and "| 1 | 2 |" in _native_md)
+    check("native bot converts box rows without losing header/data",
+          "```" not in _native_box and "| a | b |" in _native_box and "| 1 | 2 |" in _native_box)
+finally:
+    m._bot = _real_bot
+_mode(_PLAIN_CFG)
 
 # --- CHROME must not eat table DATA rows -------------------------------------
 # Regression: `│` was in the banner character class, so every "│ a │ b │" row was
