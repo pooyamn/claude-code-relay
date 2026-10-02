@@ -188,9 +188,9 @@ Streamlining
 ## 10. Session history
 
 - Claude's 30-day transcript deletion is off (`cleanupPeriodDays: 3650`), so nothing is lost before it is backed up.
-- A collector follows Claude transcripts, Codex sessions and `bus.jsonl`, tracks how far it has read in each file, and uploads:
-  - raw files, encrypted before upload, to Cloudflare R2 (complete record, secrets included);
-  - a searchable copy (sessions, messages, tool calls; long tool outputs capped; secrets masked) to either Cloudflare D1 or a local SQLite database rebuilt from R2 (decision pending).
+- A collector follows Claude transcripts, Codex sessions and `bus.jsonl`, tracks how far it has read in each file, and writes a **local database**: SQLite with FTS5 full-text search and sqlite-vec vector search (one file, no server), holding sessions, messages and tool calls, long tool outputs capped, secrets masked.
+- Embeddings are computed locally by a small open embedding model (no API keys); on the Windows PC it uses the GPU if there is one. The same database serves the knowledge search layer (§11).
+- **Daily cloud backup**: a consistent snapshot of the database (`VACUUM INTO`) plus the day's new raw transcripts, encrypted before upload, to object storage. Raw transcripts keep secrets; the snapshot has them masked. The database can always be rebuilt from the raw files.
 - Local pruning only after the upload is verified by checksum, only for sessions idle 30+ days, never a session pinned by a relay topic or in the registry; every deletion logged.
 - Measured volume (2026-10-01): about 0.5 GB/month compressed raw and 0.4 GB/month searchable at today's pace; 2–3x with ten agents (estimate).
 
@@ -225,7 +225,7 @@ Needed, in order:
 4. Publication flow, SHA-bound review status, per-repo merge serialisation.
 5. Session registry with desired/observed state; resume by id; boot units.
 6. Scheduler, status board, approvals, `cto` weekly proposals.
-7. History collector, encryption, pruning.
+7. History collector, local SQLite (FTS5 + sqlite-vec) with local embeddings, daily encrypted backup, pruning.
 
 ## 14. Migration order
 
@@ -238,7 +238,7 @@ Needed, in order:
 ## 15. Open items
 
 1. Build on the Mac VM and migrate, or directly on the Windows PC.
-2. Searchable history in Cloudflare D1, or local SQLite with only the encrypted raw files in R2.
+2. Backup target for the daily snapshot: Cloudflare R2 (free 10 GB, then $0.015/GB-month) or Azure Blob Storage; needs a bucket and an access key.
 
 ## Appendix: verified facts (2026-10-01, Claude Code 2.1.287, Codex 0.159.3)
 
