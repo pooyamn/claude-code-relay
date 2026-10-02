@@ -2,8 +2,10 @@
 
 The shared admission ledger is prepared offline. It joins model-attempt claims,
 root turn charges, activity leases and account reservations in one transaction.
-It preserves the approved three-active-session cap and 10% owner reserve. No
-native runtime, subscription probe, worker endpoint or live scheduler is enabled;
+It also retains capacity waits, shared cooldowns and once-only replacement
+proposals in that database. It preserves the approved three-active-session cap
+and 10% owner reserve. No native runtime, subscription probe, worker endpoint or
+live scheduler is enabled;
 PR 9 is not accepted until every real turn source passes its pre-turn boundary.
 
 ## Shared admission and task budgets
@@ -76,6 +78,27 @@ an elapsed reset time requires a fresh provider observation rather than inventin
 availability. The required bounded conservative fallback for missing telemetry
 is still pending. No paid fallback, model change or purchase path exists.
 
+## Capacity retries and shared admission
+
+`capacity_journal.py` retains one original job, captured failure time, exact
+negative receipt, finite retry allowance and original deadline across replacement
+intents. Failure/wait/cooldown/report and proposal/outbox commits are atomic.
+Account-wide cooldowns apply across models; model cooldowns apply across roles
+using that model. A provider minimum longer than local backoff is not shortened.
+Duplicate evidence, restart or changed role cannot replenish retry limits.
+
+Stored replacements grant no execution. Shared admission rechecks the exact
+requested proposal, current negative/no-native-retry evidence, cancellation and
+deadline before charging a turn. They need fresh source approval, quota/reserve
+capacity and verified stop evidence for any retained activity lease. The original
+owner-request flag cannot make an automatic retry a fresh owner request.
+
+Unknown input acceptance, native retries and partly executed failed turns remain
+held rather than replayed. Fresh-input journal preparation is not steering or
+checkpoint-continuation support; both native paths remain required. Passive
+report intents are stored, not delivered. A recovered input-acceptance notice
+does not mean task completion. [Retry evidence and recovery](model-capacity-retries.md).
+
 ## Planning and recovery
 
 `ccrelay_admission.py --plan` reads only the disabled repository example and
@@ -85,12 +108,14 @@ runner copies its source/template through explicit allowlists; none is installed
 
 Register `ccrelay.model_admission.v1` with the full-system recovery inventory.
 Capture a consistent root/outbox SQLite cohort including `model_metadata`,
-`model_accounts`, `model_attempts` and `model_waits`, all related outbox receipts,
-root history, account/window provenance and authenticated runtime mappings.
-Unknown component versions are refused before root recovery; a changed pacing
-policy requires reviewed migration. Compatible readers must preserve held leases,
-unknown attempts, pacing and estimates. An older reader that lacks the admission
-boundary is not an authorized runtime. Joined encrypted clean-target restore is
+`model_accounts`, `model_attempts` and `model_waits`, plus the
+`ccrelay.capacity_journal.v1` metadata/jobs/failures/cooldowns, linked replacement
+and report intents, all related outbox receipts, root history, account/window
+provenance and authenticated runtime mappings. Unknown component versions are
+refused before root recovery; changed pacing or retry policies require reviewed
+migration. Compatible readers must preserve held leases, unknown attempts,
+cooldowns, retry history, pacing and estimates. An older reader that lacks the
+admission boundary is not an authorized runtime. Joined encrypted clean-target restore is
 still pending; these tables are not a complete disaster-recovery implementation.
 
 ## Verification and remaining gates
@@ -104,15 +129,22 @@ post-commit preserves it as held/unknown without another execution grant. SQLite
 files, locks and deaths are real; all kernel/source/provider observations are
 explicitly synthetic, not native or distinct-UID PC acceptance.
 
-The clean staged-source milestone passed all 724 core tests in 181 serial sandbox
-batches, the isolation probe and all four legacy suites. Candidate code ran only
+The preceding shared-admission milestone (`c75bfe4`) passed all 724 core tests
+in 181 serial sandbox batches, the isolation probe and all four legacy suites. Candidate code ran only
 inside the OS sandbox, without host home/credential/network access or increased
 child timeouts; the unrelated user-owned protocol edits were excluded. The strict
 staged secret scan passed. This is regression evidence, not live native admission.
 
+The subsequent capacity-journal preparation passed 386 clean-staged focused
+root/diagnosis/admission/retry/native/storage checks in 97 serial sandbox batches,
+including 18 new journal cases and four actual failure/proposal commit deaths.
+Cancellation during a quota probe and elapsed expiry at the final admission clock
+cannot obtain another attempt or root charge. This is a focused regression run,
+not a new full-suite milestone; all source/provider observations remain synthetic.
+
 Remaining integration includes protected owner/company grants, real all-source
 native pre-turn controls and quiescence, compatible subscription/window adapters,
 owner-priority dispatch, bounded missing-telemetry estimates, the passive status
-bridge, joined diagnostic admission, durable capacity retries/shared cooldowns,
-and encrypted target restore. Existing native sessions, bots, credentials and
-services remain unchanged.
+bridge, joined diagnostic admission, real capacity/native-retry classification,
+steering and checkpoint-continuation adapters, and encrypted target restore.
+Existing native sessions, bots, credentials and services remain unchanged.

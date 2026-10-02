@@ -219,7 +219,7 @@ class ModelAdmission:
             raise Denied("model plan differs from the exact source/account/runtime binding")
         root = self.ledger.root(action.fields["root_task_id"])
         return current, {"action": action.to_dict(), "attempt_id": identifier(attempt_id), "plan": plan, "root": root.to_dict(),
-                         "binding": binding, "owner_control": self.ledger.owner_control(root.id), "policy_digest": fingerprint(self.policy.body())}
+                         "binding": binding, "context": current["context"], "owner_control": self.ledger.owner_control(root.id), "policy_digest": fingerprint(self.policy.body())}
 
     def _wait(self, action, reason, now, eligible=None):
         body = {"intent_id": action.id, "reason": reason, "observed_ms": now, "next_eligible_ms": eligible,
@@ -233,6 +233,12 @@ class ModelAdmission:
         action = current["record"]
         if action.fields["attempt_id"] is not None:
             return self.ledger.claim(intent_id, attempt_id, plan, expected_revision=expected_revision)
+        from .capacity_journal import admission_gate
+        with self.ledger._transaction():
+            now = self.ledger._clock()
+            eligible = admission_gate(self.ledger, current, now)
+            if now < eligible:
+                return self._wait(action, "shared_capacity_wait", now, eligible)
         observer_input = strict_json(canonical_bytes(scope))
         source = self.verify_source(strict_json(canonical_bytes(observer_input)))
         activity = self.observe_activity(strict_json(canonical_bytes(observer_input)))
@@ -242,10 +248,15 @@ class ModelAdmission:
                 type(source.owner_requested) is not bool or type(source.owner_reserve_granted) is not bool:
             raise Denied("independent current source/owner grant required")
         _digest(source.source_digest)
+        if current["context"].get("capacity_retry") is not None and source.owner_requested:
+            raise Denied("automatic retry is not a fresh owner request; explicit reserve grant required")
         with self.ledger._transaction():
             if self._scope(peer, intent_id, attempt_id, plan)[1] != scope:
                 raise Denied("root, intent or authority changed during admission observations")
             now = self.ledger._clock()
+            eligible = admission_gate(self.ledger, current, now)
+            if now < eligible:
+                return self._wait(action, "shared_capacity_wait", now, eligible)
             root = self.ledger.root(action.fields["root_task_id"])
             control = scope["owner_control"]
             if root.fields["state"] not in {"open", "active"} or not control["known"] or control["desired_state"] != "running" or \
@@ -328,6 +339,9 @@ class ModelAdmission:
             if _deadline(current["context"]["deadline"]) <= final_now or any(window.reset_ms <= final_now for window in windows.values()) or \
                     final_now - activity.observed_ms > self.policy.activity_max_age_ms or final_now - quota.observed_ms > self.policy.quota_max_age_ms:
                 return self._wait(action, "admission_observation_expired", final_now)
+            eligible = admission_gate(self.ledger, current, final_now)
+            if final_now < eligible:
+                return self._wait(action, "shared_capacity_wait", final_now, eligible)
             self._save_account(quota.provider, quota.account_id, now if not source.owner_requested else account["last_auto_ms"] if account else None,
                 max(account["next_auto_ms"] if account else 0, now + gap) if not source.owner_requested else account["next_auto_ms"] if account else 0, quota)
             self.ledger._update(claimed, plan=plan)

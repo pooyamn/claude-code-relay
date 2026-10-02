@@ -83,6 +83,12 @@ class WorkOwnership(DeliveryLedger):
             if len(admission) != 1 or admission[0][0] != ADMISSION_SCHEMA:
                 raise Denied("unsupported joined admission schema; preserve database before root recovery")
             _digest(admission[0][1])
+        if self.connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='capacity_metadata'").fetchone():
+            from .capacity_journal import SCHEMA as CAPACITY_SCHEMA
+            capacity = self.connection.execute("SELECT schema,policy_digest FROM capacity_metadata").fetchall()
+            if len(capacity) != 1 or capacity[0][0] != CAPACITY_SCHEMA:
+                raise Denied("unsupported joined capacity schema; preserve database before recovery")
+            _digest(capacity[0][1])
         metadata = self.connection.execute("SELECT schema,next_fence,last_wall_ms FROM work_metadata").fetchall()
         if len(metadata) != 1 or metadata[0][0] != SCHEMA:
             raise Denied("unsupported work ownership schema; preserve for migration")

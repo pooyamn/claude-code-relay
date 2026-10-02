@@ -9,6 +9,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from relay_core.identity import Denied, exact, integer, strict_json
 from relay_core.model_admission import SCHEMA
+from relay_core.capacity_journal import SCHEMA as CAPACITY_SCHEMA
 
 
 def configuration(raw):
@@ -33,11 +34,12 @@ def plan():
             "active_cap": 3, "owner_reserve_percent": 10, "work_state_dir": cfg["work_state_dir"],
             "pacing_values_configured": all(cfg[key] is not None for key in ("minimum_gap_ms", "quota_max_age_ms", "activity_max_age_ms")),
             "all_source_fence_available": False, "quota_adapter_available": False, "source_verifier_available": False, "stop_verifier_available": False,
+            "capacity_journal_schema": CAPACITY_SCHEMA, "capacity_retry_activated": False, "capacity_verifier_available": False,
             "pending": ["protected owner/company source grants and task/native controller integration",
                         "all-source native-app/goal pre-turn fence and independently observed tool quiescence",
                         "pinned account/model/window quota provenance and explicit pacing/estimate policy",
                         "owner-priority dispatch, bounded missing-telemetry estimates and passive status bridge",
-                        "joined diagnostic and durable capacity-retry/cooldown admission",
+                        "joined diagnostic admission and real capacity/steering/continuation/native-retry adapters",
                         "joined encrypted recovery, distinct-UID WSL and real provider acceptance"]}
 
 
