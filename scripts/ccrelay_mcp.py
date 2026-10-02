@@ -2,9 +2,11 @@
 """ccrelay MCP server: lets a Claude Code or Codex session message other sessions.
 
 Stdio MCP (JSON-RPC 2.0, one JSON object per line), stdlib only. Both tools
-spawn it with the session's working directory as cwd, so the CALLER is the
-relay session whose bound folder contains that cwd. A session cannot pick its
-own sender name: identity comes from where it runs, not from an argument.
+spawn it with the session's working directory as cwd, so the legacy CALLER is
+the relay session whose bound folder contains that cwd. This is a routing hint,
+NOT authenticated identity: same-UID code can change cwd or shared state. Do
+not use this legacy server for reviewer, merge, approval or deploy authority.
+The isolated target uses ccrelay_broker_mcp.py and protected kernel bindings.
 
 Tools
   list_sessions()                        sessions you can message

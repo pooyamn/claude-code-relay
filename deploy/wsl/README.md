@@ -1,55 +1,75 @@
-# Moving the relay to WSL2 (no OpenClaw)
+# Preparing the role-isolated WSL2 relay
 
-ccrelayd replaces OpenClaw for the relay: it polls the bot, routes each
-chat/topic to its bound folder, and calls the same backend. Everything else
-(tmux sessions, watchers, codex over the remote-control daemon) is unchanged.
+Design v7 requires separate local identities, not the old common `pouya` home.
+The PC kit is preparation, not an approved installer or cutover. Existing Mac
+sessions, subscriptions, Telegram polling and the remote-control daemon remain
+untouched. The [20-PR roadmap](../../docs/agentic-pc-20-pr-roadmap.md) tracks the
+remaining launch, authorization, backup/restore and target acceptance work.
 
-## What stops working
+## Safe commands now
 
-Only OpenClaw's own assistant: DMs with the bot, unbound groups, heartbeats and
-its cron jobs (nightly mail digest, grand-plan watcher, anthropic-auth-sync).
-Bound topics keep working.
+```sh
+python3 deploy/wsl/identity-plan.py --dry-run
+bash deploy/wsl/setup-wsl.sh plan
+bash deploy/wsl/pull-from-mac.sh --dry-run
+python3 scripts/tests/run_isolated.py
+```
 
-## Before you start
+The planner only reads example templates and existing account/group metadata.
+It reports desired identities and rejects UID/name/home/group collisions; it
+does not provision, install, enable, copy credentials, SSH or change config.
+The old `root`, `user`, `enable` and bulk-copy/final-copy paths exit before any
+operation. Their implementation remains below the guard as an audit reference,
+not as instructions to bypass the new design. Consistent per-role migration is
+still required; it is not replaced by a common-home copy.
 
-- The Windows PC must reach the bench Mac (same LAN or Tailscale). The Mac VM is
-  reached through it (`ProxyJump`, see `pull-from-mac.sh`), and `ssh bench`
-  needs a new `HostName`: `192.168.64.1` exists only from inside the Mac's VM network.
-- Decide the bot: keep the current one (its token from `~/.openclaw/openclaw.json`,
-  `channels.telegram.botToken`) so every chat stays as it is, or move to a new one
-  and re-add it to each group. Only ONE program may poll a bot token at a time.
+## Prepared artifacts
 
-## Steps
+- `identities/ccrelay.sysusers.conf`: example UID allocation for router, broker,
+  publisher, backup, memory, deploy coordinator and five initial role identities.
+  Account and supplementary-group state must be audited on the target before
+  applying a reviewed artifact. No worker gets sudo, Docker or another role's
+  private group.
+- `identities/ccrelay.tmpfiles.conf`: private native homes, worktree/state roots
+  and component directories; protected root-owned policy/code roots.
+- `identities/broker-policy.json.example`: role/capability ceilings and explicit
+  launcher grants. The all-zero per-role policy digests are example placeholders
+  to replace with reviewed role-policy digests; the broker independently binds
+  each registration to the canonical digest of the entire loaded policy.
+- `systemd/ccrelay-broker.service`: inert protected broker service with no
+  activation section. The policy must be root-owned, and workers cannot edit
+  the deployed artifact, policy, registry or launcher socket.
+- `identities/session.service.in`: incomplete trusted-launcher template, not a
+  runnable unit. PR 7 supplies the exact native command, measured resource
+  profile and verified readiness. Each execution needs its own root-controlled
+  non-delegated cgroup; namespaces/cgroup migration cannot be worker-controlled.
 
-1. **Windows:** `wsl --install -d Ubuntu-24.04`, then in elevated PowerShell run
-   `keep-wsl-alive.ps1` (boot task + no idle timeout + no sleep).
-2. **WSL, as root:** `sudo bash setup-wsl.sh root`, then in PowerShell
-   `wsl --shutdown` and reopen (systemd and the `pouya` user with home
-   `/Users/pouya` take effect).
-3. **WSL, as pouya:** `bash setup-wsl.sh user`, then log in by hand:
-   `claude`, `codex login`, `gh auth login`.
-4. **Copy the data** (Mac stays live): add the `oldvm` ssh alias, then
-   `bash pull-from-mac.sh oldvm`. Fix `Host bench` in `~/.ssh/config`.
-5. **Config:** copy `prod.json.example` to `~/.config/ccrelay/prod.json`, fill
-   in your user id and the open chats (today: `-1004395661179`), and put
-   `CCRELAY_BOT_TOKEN=<token>` in `~/.config/ccrelay/env-prod` (chmod 600).
-6. **Cutover** (about 15 min):
-   1. Wait until no relay turn is running.
-   2. On the Mac: stop and disable the OpenClaw gateway
-      (`launchctl bootout gui/$(id -u)/ai.openclaw.gateway`), so it stops polling.
-   3. `bash pull-from-mac.sh oldvm --final`
-   4. `bash setup-wsl.sh enable`
-   5. Pair the ChatGPT app with the new machine: `codex remote-control pair`.
-   6. Send one message in every bound topic; each must resume its existing
-      session (same history), not start a new one.
-7. **Rollback** for a week: stop `ccrelayd` on WSL, start the gateway on the Mac.
+The legacy `systemd/` user units, `prod.json.example` and `keep-wsl-alive.ps1`
+are historical references. Do not activate them or Windows tasks during this
+preparation. No service/scheduler/configuration change is implied by a commit.
 
-## Files
+## Migration still to prove
 
-| File | Purpose |
-|---|---|
-| `setup-wsl.sh` | packages, user, wsl.conf, claude/codex/gh, whisper.cpp, services |
-| `pull-from-mac.sh` | rsync of workspace, `.claude`, `.codex`, ssh, ccrelay config |
-| `export-openclaw-bindings.py` | OpenClaw bindings to ccrelayd's bindings file |
-| `systemd/` | ccrelayd, openrouter proxy, codex-daemon and stale-env timers |
-| `keep-wsl-alive.ps1` | keeps the distro running on Windows |
+1. Choose a disposable Linux/WSL environment and verify distinct-UID filesystem,
+   process, socket, group, namespace and cgroup boundaries there. Unit mocks on
+   the Mac do not prove this. See [PR 2 evidence and runbook](../../docs/pr2-identity-broker.md).
+2. Prove per-role subscription login and native-app visibility with the exact
+   provider sessions. Do not copy a shared credential home or expose a common
+   writer/control socket to workers. Preserve phone/native apps and voice/media
+   capabilities through the admitted adapters; unsupported topology is a gate,
+   not permission to silently fall back or remove a capability.
+3. Snapshot existing state consistently into private quarantine, inspect the
+   manifest, and map each session/worktree to its role home deliberately. Dirty
+   files, exact provider IDs, approvals and unknown actions must survive. Plain
+   rsync of live SQLite/WAL files does not establish a consistent snapshot.
+4. Restore paused, validate permissions/identity/runtime versions and reconcile
+   external outcomes before admitting work. No SSH keys, provider logins or
+   router/GitHub/R2 credentials are bulk-copied into worker homes.
+5. Obtain owner authorization for the exact cutover artifacts and bot choice.
+   Only one poller may own a token. Canary, then migrate one role at a time with
+   recorded compatible rollback checkpoints. Never restart/kill the Mac Codex
+   daemon or change the bench/VPN as part of this work.
+
+Actual deployment commands, configuration merging and rollback drills belong
+to the later protected deployment/restore/target-acceptance PRs. Target readiness
+and approval of live cutover are separate decisions.

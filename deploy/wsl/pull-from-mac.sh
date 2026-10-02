@@ -16,6 +16,14 @@
 # rebuilt here), ~/.codex/packages (macOS codex binaries) and the codex daemon's
 # runtime files (pids, sockets, locks belong to the old machine).
 set -euo pipefail
+IDENTITY_PLAN_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ "${1:-}" = "--dry-run" ]; then
+  exec python3 "$IDENTITY_PLAN_DIR/identity-plan.py" --dry-run
+fi
+echo "Blocked: legacy bulk credential/common-home copy is not role-isolated. No SSH or copy attempted. Use --dry-run; consistent scoped migration remains pending." >&2
+exit 64
+# Historical copy mechanism is retained below for audit only. PRs 12/13/20
+# supply consistent snapshots, per-role placement and approved cutover.
 SRC="${1:?ssh host alias for the Mac VM}"
 FINAL="${2:-}"
 R=(rsync -aH --info=progress2 --partial)

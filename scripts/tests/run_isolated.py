@@ -22,16 +22,25 @@ LEGACY_SOURCES = (
     "claude-relay-send.py", "relay-extract-message.py", "relay-turn-done",
     "claude-tui-backend-multi", "relay-alt-launch",
 )
+BROKER_SOURCES = ("ccrelay_broker.py", "ccrelay_broker_mcp.py")
+DEPLOY_SOURCES = (
+    "identity-plan.py", "setup-wsl.sh", "pull-from-mac.sh",
+    "identities/ccrelay.sysusers.conf", "identities/ccrelay.tmpfiles.conf",
+    "identities/broker-policy.json.example", "identities/session.service.in",
+    "systemd/ccrelay-broker.service",
+)
 
 
 def copy_sources(source: Path, target: Path) -> None:
     target.mkdir()
-    for name in LEGACY_SOURCES:
+    for name in (*LEGACY_SOURCES, *BROKER_SOURCES):
         path = source / name
         if path.is_symlink() or not path.is_file():
             raise RuntimeError(f"not a regular source file: {name}")
         shutil.copy2(path, target / name)
     for name in ("tests", "relay_core"):
+        if (source / name).is_symlink() or not (source / name).is_dir():
+            raise RuntimeError(f"not a regular source directory: {name}")
         destination = target / name
         destination.mkdir()
         for path in sorted((source / name).rglob("*")):
@@ -41,6 +50,13 @@ def copy_sources(source: Path, target: Path) -> None:
                 copied = destination / path.relative_to(source / name)
                 copied.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(path, copied)
+    for name in DEPLOY_SOURCES:
+        path = source.parent / "deploy" / "wsl" / name
+        if any(parent.is_symlink() for parent in (path, *path.parents)) or not path.is_file():
+            raise RuntimeError(f"not a regular deployment source: {name}")
+        copied = target.parent / "deploy" / "wsl" / name
+        copied.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, copied)
     # Synthetic native resolver config, never a copy of host model settings.
     for token, backend in (("ox", "opencode"), ("ik3", "kimi")):
         (target / f"relay-claude-settings-{token}.json").write_text(

@@ -1,0 +1,23 @@
+{
+  "schema": "ccrelay.broker_policy.v1",
+  "broker_uid": 23001,
+  "client_gid": 23200,
+  "controllers": [{"uid": 0, "roles": ["builder", "reviewer", "cto", "support", "ceo"]}],
+  "roles": [
+    {"schema": "ccrelay.role.v1", "id": "builder", "revision": 0, "uid": 23100, "enabled": true,
+     "capabilities": ["message", "report_issue", "propose_memory", "publish", "request_action"],
+     "policy_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"},
+    {"schema": "ccrelay.role.v1", "id": "reviewer", "revision": 0, "uid": 23101, "enabled": true,
+     "capabilities": ["message", "report_issue", "propose_memory", "review"],
+     "policy_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"},
+    {"schema": "ccrelay.role.v1", "id": "cto", "revision": 0, "uid": 23102, "enabled": true,
+     "capabilities": ["message", "report_issue", "propose_memory", "request_merge"],
+     "policy_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"},
+    {"schema": "ccrelay.role.v1", "id": "support", "revision": 0, "uid": 23103, "enabled": true,
+     "capabilities": ["message", "report_issue", "propose_memory", "publish", "request_deploy"],
+     "policy_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"},
+    {"schema": "ccrelay.role.v1", "id": "ceo", "revision": 0, "uid": 23104, "enabled": true,
+     "capabilities": ["message", "report_issue", "propose_memory", "request_action"],
+     "policy_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}
+  ]
+}

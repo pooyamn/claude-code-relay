@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Prepare an Ubuntu 24.04 WSL2 distro to run the relay (ccrelayd), no OpenClaw.
+# Legacy common-home installer retained for audit, NOT target-v7 provisioning.
+# Only the read-only identity plan is currently admitted by this entry point.
+# Target role-isolated installation/activation remains a PR 20 acceptance gate.
 #
 #   sudo bash setup-wsl.sh root      # once, as root: packages, user, wsl.conf
 #   (in PowerShell)  wsl --shutdown   # so systemd + the default user take effect
@@ -10,6 +12,14 @@
 # cwds all hold absolute paths; keeping the home path identical means none of
 # them need rewriting and every topic resumes its existing session.
 set -euo pipefail
+IDENTITY_PLAN_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ "${1:-}" = "plan" ]; then
+  exec python3 "$IDENTITY_PLAN_DIR/identity-plan.py" --dry-run
+fi
+echo "Blocked: legacy common-home setup conflicts with design v7. No changes applied. Use: bash $0 plan" >&2
+exit 64
+# Historical mechanism below is unreachable. Do not bypass this gate: revise
+# provisioning through protected identities, reviewed artifacts and PC tests.
 U=pouya
 H=/Users/$U
 HERE="$(cd "$(dirname "$0")" && pwd)"

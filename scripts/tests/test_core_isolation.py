@@ -39,7 +39,7 @@ class RunnerTests(unittest.TestCase):
             root = Path(directory)
             source = root / "source"
             source.mkdir()
-            for name in runner.LEGACY_SOURCES:
+            for name in (*runner.LEGACY_SOURCES, *runner.BROKER_SOURCES):
                 (source / name).write_text("fixture source", encoding="utf-8")
             (source / "tests").mkdir()
             (source / "relay_core").mkdir()
@@ -47,7 +47,12 @@ class RunnerTests(unittest.TestCase):
             (source / "tests" / "personal.json").write_text("SYNTHETIC SHOULD NOT COPY", encoding="utf-8")
             (source / "relay-work").mkdir()
             (source / "relay-work" / "token.env").write_text("SYNTHETIC SHOULD NOT COPY", encoding="utf-8")
-            target = root / "copied"
+            for name in runner.DEPLOY_SOURCES:
+                template = root / "deploy" / "wsl" / name
+                template.parent.mkdir(parents=True, exist_ok=True)
+                template.write_text("fixture source", encoding="utf-8")
+            target = root / "output" / "scripts"
+            target.parent.mkdir()
             runner.copy_sources(source, target)
             self.assertFalse((target / "relay-work").exists())
             self.assertFalse((target / "tests" / "personal.json").exists())

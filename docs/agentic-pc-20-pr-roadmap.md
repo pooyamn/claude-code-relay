@@ -8,7 +8,7 @@ Build testable security and delivery foundations first. Introduce the builder wi
 
 Pouya requested sequential implementation for PC readiness and authorized committing and pushing verified changes. Repository publication is separate from deployment: no GitHub PRs, live deployments, credential changes or migration have been performed by this implementation run. Local implementation/test evidence is distinct from target-PC acceptance. Unrelated uncommitted edits and runtime/media files are excluded from this series.
 
-PR 1 is locally implemented; its verification is recorded below. PRs 2–20 remain to be implemented. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
+PR 1 is locally implemented. PR 2 code/template preparation is implemented, with target-OS acceptance still pending; its evidence and limits are recorded below. PRs 3–20 remain to be implemented. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
 
 ## Existing code to extend
 
@@ -53,6 +53,10 @@ Depends on: PR 1.
 Add target-WSL provisioning templates for `relay`, isolated worker roles, reviewer/CTO/support and protected component identities. Protect homes, credentials, runtime sockets, policy and worktrees. Introduce a broker authenticating peer UID and trusted session bindings; the stdio MCP client submits scoped requests rather than reading shared privileged state or choosing its identity through cwd. Unregistered sessions and empty allowlists fail closed. Revise the unsafe common-home assumptions in the migration kit without running it.
 
 Done when: different role UIDs cannot read or attach to each other's state, spoof a privileged role, rewrite mappings or submit a privileged request by changing directory. A reviewed bootstrap can register only its permitted role/session.
+
+Local preparation (2026-10-01): `relay_core/identity.py`, `bindings.py` and `broker_wire.py` plus thin Linux broker/stdio-client entry scripts implement explicit policy ceilings, kernel peer/per-message credential requirements, root-controlled cgroup/process-generation bindings, private immutable SQLite registration/revocation and fail-closed schemas. Only authenticated introspection is enabled; authorization of a role is not permission to execute an external operation without the later gates. The WSL kit supplies isolated identity/home/component templates and a read-only collision/group planner. Legacy shared-home setup/bulk-copy paths now exit before performing any change. No live service, native login or configuration was altered.
+
+Verification, component snapshot requirements, migration and rollback are in [the PR 2 evidence/runbook](pr2-identity-broker.md). All four legacy suites and 64 core tests pass. Mac isolated tests exercise synthetic kernel/permission observations, protocol/descriptor/slow-fragment rejection and actual SQLite persistence; they are not distinct-UID Linux/WSL acceptance. The target OS/security and native-runtime topology gates remain pending and no PR 2 capability is trusted for live use yet.
 
 ## PR 3 Owner authorization and protected deployment
 

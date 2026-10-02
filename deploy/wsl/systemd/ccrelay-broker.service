@@ -1,0 +1,32 @@
+[Unit]
+Description=ccrelay protected identity/action broker (not enabled by preparation)
+After=local-fs.target
+ConditionPathExists=/etc/ccrelay/broker-policy.json
+
+[Service]
+Type=simple
+User=ccrelay-broker
+Group=ccrelay-clients
+SupplementaryGroups=ccrelay-broker
+ExecStart=/usr/bin/python3 -I /opt/ccrelay/scripts/ccrelay_broker.py --policy /etc/ccrelay/broker-policy.json --state-dir /var/lib/ccrelay-broker --runtime-dir /run/ccrelay-broker
+RuntimeDirectory=ccrelay-broker
+RuntimeDirectoryMode=0750
+StateDirectory=ccrelay-broker
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectControlGroups=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX
+ReadWritePaths=/var/lib/ccrelay-broker /run/ccrelay-broker
+# ProtectProc=invisible would hide the worker observations this service needs.
+# Restart/reconciliation and activation are reviewed later; no Install section.
