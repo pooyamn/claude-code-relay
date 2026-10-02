@@ -1,0 +1,8 @@
+{
+  "schema": "ccrelay.telegram_outbound_config.v1",
+  "enabled": false,
+  "test_bot": "khadang",
+  "policy_path": "/etc/ccrelay-outbound/policy.json",
+  "state_dir": "/var/lib/ccrelay-outbound",
+  "asset_dir": "/var/lib/ccrelay-outbound-assets"
+}

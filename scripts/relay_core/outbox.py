@@ -81,9 +81,11 @@ class DeliveryLedger:
                     self.connection.execute("""CREATE TABLE evidence (
                         id TEXT PRIMARY KEY, intent_id TEXT NOT NULL, attempt_id TEXT NOT NULL,
                         digest TEXT NOT NULL, body BLOB NOT NULL)""")
+                    self._initialize_component()
             metadata = self.connection.execute("SELECT schema,policy_digest FROM metadata").fetchall()
             if metadata != [("ccrelay.outbox.v1", policy_digest)]:
                 raise Denied("unsupported outbox schema/policy; preserve database for migration")
+            self._validate_component()
             self.connection.execute("PRAGMA synchronous=FULL")
             self.connection.execute("PRAGMA journal_mode=WAL")
             if new:
@@ -94,6 +96,12 @@ class DeliveryLedger:
         except Exception:
             self.close()
             raise
+
+    def _initialize_component(self):
+        """Reviewed subclasses may initialize their tables in the SAME new-DB transaction."""
+
+    def _validate_component(self):
+        """Validate component schema before WAL/recovery can mutate existing state."""
 
     def close(self):
         if self.connection is not None:
@@ -159,6 +167,16 @@ class DeliveryLedger:
         return {"record": record, "context": context, "plan": plan, "plan_digest": row[12], "hold_reason": row[13]}
 
     def store(self, record, context):
+        with self._transaction():
+            result = self._enroll(record, context)
+            self.checkpoint("before_store_commit")
+        self.checkpoint("after_store_commit")
+        return self.load(result["record"].id)
+
+    def _enroll(self, record, context):
+        """Protected transaction-local enrollment for atomic producer bundles."""
+        if not self.connection.in_transaction:
+            raise Denied("enrollment must be inside the protected transaction")
         if record.kind not in {"message", "external_action"} or record.fields["state"] != "stored" or record.revision != 0:
             raise Denied("only a new unsubmitted delivery intent may be enrolled")
         identifier(record.id)
@@ -171,19 +189,16 @@ class DeliveryLedger:
         # Keep frame-size aligned with broker transport for every persisted part.
         if any(len(value) > 65536 for value in (record.encode(), canonical_bytes(context))):
             raise Denied("outbox intent/context exceeds protected frame size")
-        with self._transaction():
-            old = self.load(record.id)
-            if old is not None:
-                if intent_payload(record.kind, old["record"].fields) != intent_payload(record.kind, record.fields) or \
-                        canonical_bytes(old["context"]) != canonical_bytes(context):
-                    raise Denied("stable intent ID reused for different parameters/provenance")
-                return old
-            self.connection.execute("INSERT INTO intents VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (
-                record.id, record.kind, data["root_task_id"],
-                data.get("from_session_id", data.get("requested_by_session_id")), data.get("to_session_id"),
-                "stored", 0, None, record.encode(), canonical_bytes(context), fingerprint(context), None, None, None))
-            self.checkpoint("before_store_commit")
-        self.checkpoint("after_store_commit")
+        old = self.load(record.id)
+        if old is not None:
+            if intent_payload(record.kind, old["record"].fields) != intent_payload(record.kind, record.fields) or \
+                    canonical_bytes(old["context"]) != canonical_bytes(context):
+                raise Denied("stable intent ID reused for different parameters/provenance")
+            return old
+        self.connection.execute("INSERT INTO intents VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (
+            record.id, record.kind, data["root_task_id"],
+            data.get("from_session_id", data.get("requested_by_session_id")), data.get("to_session_id"),
+            "stored", 0, None, record.encode(), canonical_bytes(context), fingerprint(context), None, None, None))
         return self.load(record.id)
 
     def _update(self, record, *, plan=None, hold=None):
@@ -211,7 +226,7 @@ class DeliveryLedger:
             self._update(current["record"])
         return self.load(intent_id)
 
-    def claim(self, intent_id, attempt_id, plan, *, expected_revision):
+    def claim(self, intent_id, attempt_id, plan, *, expected_revision, commit_hook=None):
         """Trusted driver only, AFTER all gates. Replay returns may_execute=False."""
         identifier(attempt_id)
         with self._transaction():
@@ -233,6 +248,8 @@ class DeliveryLedger:
                 changes["authorization_id"] = plan["authorization_id"]
             claimed = transition(record, "delivering", expected_revision=expected_revision, **changes)
             self._update(claimed, plan=plan)
+            if commit_hook is not None:
+                commit_hook(claimed, plan)
             self.checkpoint("before_claim_commit")
         self.checkpoint("after_claim_commit")
         return {"may_execute": True, **self.load(intent_id)}
@@ -293,7 +310,7 @@ class DeliveryLedger:
                 type(evidence["payload"]) is not dict or len(canonical_bytes(evidence)) > 65536:
             raise Denied("bounded provider evidence required")
 
-    def reconcile(self, evidence):
+    def reconcile(self, evidence, *, commit_hook=None):
         """Trusted adapter's verified evidence only; no worker-supplied receipt."""
         exact(evidence, {"schema", "id", "intent_id", "intent_digest", "attempt_id", "plan_digest",
                          "outcome", "provider_reference", "payload"})
@@ -322,6 +339,8 @@ class DeliveryLedger:
                 changes["receipt_id"] = evidence["id"]
             final = transition(record, state, expected_revision=record.revision, **changes)
             self._update(final)
+            if commit_hook is not None:
+                commit_hook(final, evidence)
             self.checkpoint("before_receipt_commit")
         self.checkpoint("after_receipt_commit")
         return self.load(record.id)

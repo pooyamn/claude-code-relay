@@ -218,6 +218,8 @@ Sessions message each other only through the ccrelay MCP server (built and teste
 
 Local PR 5 preparation and pending integration gates are documented in [the durable delivery runbook](pr5-durable-delivery.md). The protected MCP client can enroll held intents and inspect participant-scoped status; no native delivery is enabled. Its three-hop guard requires confirmed parent messages and inherited-root admission, but does not establish the task-wide progress watchdog.
 
+PR 6's offline foundation supplies a common protected Telegram producer gateway, ordered durable reply bundles, a single paced send owner and captured attempt-bound receipts. A watcher offset advances only when all required chunks are confirmed in the same transaction. Unknown requests are held for evidence, never blindly resent. Safe format/media repair, trusted producer/owner prompt wiring, complete component backup and real Khadang/WSL acceptance still gate live adoption; existing Mac send paths and HamalBot wiring remain unchanged. [PR 6 preparation and pending acceptance](pr6-telegram-outbound.md).
+
 Codex observer (built 2026-10-01): the relay stays attached to every Codex thread through the daemon. Turns it did not start (the ChatGPT app, messages from other sessions) are mirrored into the session's topic, labelled "📱 From the ChatGPT app" or "📨 Message from <session>", followed by the reply; a turn that answered only through tools ends with "✓ Done".
 
 ## 7. Enforcement

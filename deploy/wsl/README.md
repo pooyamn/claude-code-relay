@@ -16,6 +16,7 @@ before using it; testing is not permission for a production-bot cutover.
 ```sh
 python3 deploy/wsl/identity-plan.py --dry-run
 python3 scripts/ccrelay_intake.py --plan
+python3 scripts/ccrelay_outbound.py --plan
 bash deploy/wsl/setup-wsl.sh plan
 bash deploy/wsl/pull-from-mac.sh --dry-run
 python3 scripts/tests/run_isolated.py
@@ -69,6 +70,14 @@ still required; it is not replaced by a common-home copy.
   runnable unit. PR 7 supplies the exact native command, measured resource
   profile and verified readiness. Each execution needs its own root-controlled
   non-delegated cgroup; namespaces/cgroup migration cannot be worker-controlled.
+- `identities/outbound-policy.json.example` and `outbound-config.json.example`:
+  disabled Khadang send preparation with invented bot/chat/timing values, no
+  rate-limit retry grants and no live startup path. Private outbound, sealed
+  asset and host-wide send-owner directories are inert tmpfiles templates.
+  `ccrelay_outbound.py --plan` reads no keys and sends nothing.
+  [PR 6 evidence and remaining gates](../../docs/pr6-telegram-outbound.md) covers
+  receipt-bound offsets, safe format/media repair, trusted producer/owner UI
+  wiring and real Khadang/WSL acceptance. All live direct senders stay unchanged.
 
 The legacy `systemd/` user units, `prod.json.example` and `keep-wsl-alive.ps1`
 are historical references. Do not activate them or Windows tasks during this

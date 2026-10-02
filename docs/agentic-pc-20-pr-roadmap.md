@@ -8,14 +8,14 @@ Build testable security and delivery foundations first. Introduce the builder wi
 
 Pouya requested sequential implementation for PC readiness and authorized committing and pushing verified changes. Repository publication is separate from deployment: no GitHub PRs, live deployments, credential changes or migration have been performed by this implementation run. Local implementation/test evidence is distinct from target-PC acceptance. Unrelated uncommitted edits and runtime/media files are excluded from this series.
 
-PR 1 is locally implemented. PRs 2–5 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel/runtime integration still pending; evidence and limits are recorded below. PRs 6–20 remain to be implemented. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
+PR 1 is locally implemented. PRs 2–5 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel/runtime integration still pending; evidence and limits are recorded below. PR 6's outbound scheduler/receipt foundation is prepared offline; safe format repair, trusted producer wiring and target integration remain pending. PRs 7–20 remain to be implemented. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
 
 ## Existing code to extend
 
 - Routing, Telegram formatting, session watchers, Codex observation and MCP messaging already exist in `scripts/`; do not plan their wholesale replacement.
 - The legacy `scripts/ccrelayd.py` advances the Telegram offset before handling, and its per-topic queues are in memory. PR 4 prepares a separate protected durable intake for the target; native/media/action adapters are still required before cutover. The legacy live Mac deployment is not automatically converted.
 - `scripts/ccrelay_mcp.py:128` derives the caller from cwd. It cannot establish reviewer/CTO authority under the target threat model.
-- `scripts/relay_tg.py` has direct sends and call-local rate-limit sleeps. A durable router-wide scheduler and reply receipts are not yet established.
+- The legacy `scripts/relay_tg.py` still has direct sends and call-local rate-limit sleeps. PR 6 prepares a durable scheduler/receipt foundation separately; no live sender cutover is established.
 - `history/history.py` already collects/searches transcripts; `history/backup.py` packages transcript increments and a search DB snapshot. Extend these into full-system recovery rather than duplicating them.
 - `scripts/health_check.py` and `scripts/relay_triage.py` exist but are not a complete admitted support workflow. The current WSL kit assumes a common user/home and needs revision for the role-isolated design.
 - The working tree includes unrelated Codex protocol edits. Preserve them and establish their test baseline before overlapping adapter work; do not label them shipped from this planning read.
@@ -100,6 +100,8 @@ Depends on: PRs 4 and 5.
 Move every send/edit/media/bus/status/approval path behind a durable outbound scheduler. Prioritize approvals/alerts, final replies and then passive traffic; persist per-operation cooldowns and coalesce expendable status without dropping content. Watchers advance reply cursors only after all required chunks have confirmed receipts, tied to their exact submission/turn. Preserve rich tables, attachments, voice and mirrored app turns.
 
 Done when: simulated floods, partial chunk delivery, rate limits and restarts preserve content and reply offsets. Ambiguous Telegram acknowledgments remain visible; no claim of universal exactly-once delivery is made where the remote service supplies no such primitive.
+
+Local foundation: `telegram_scheduler.py`, `telegram_outbound.py` and `telegram_producers.py` prepare one private durable queue, atomic ordered reply bundles, priority/pacing, bounded negative-evidence flood replacements, sealed original response/attempt bindings and receipt-bound stream offsets. Rich tables, classic code, immutable uploads, voice, media groups and full captions use the common protected producer gateway in offline tests. Fourteen real scratch-process crash boundaries test persistence and a non-idempotent fake provider. `ccrelay_outbound.py --plan` and disabled examples perform no live I/O. [PR 6 evidence and remaining gates](pr6-telegram-outbound.md) records safe format/media repair, authenticated producer and owner-prompt integration, exclusive Khadang/WSL proof, complete component backup and live cutover work. No legacy sender or HamalBot wiring was changed; PR 6 remains in preparation.
 
 ## PR 7 Native session registry and role launcher
 
