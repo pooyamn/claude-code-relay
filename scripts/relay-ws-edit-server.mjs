@@ -50,6 +50,8 @@ ws.on('message',(b)=>{let m;try{m=JSON.parse(b)}catch(e){return}
      elog(tag+" ok (edits="+edits+" dropped="+dropped+")");
    }
    if(tag.startsWith("send")){ out({reqid:tag.split(":")[1], messageId:String(pay.messageId??''), ok}); }
+   if(tag.startsWith("edit:")){ out({reqid:tag.split(":")[1], ok:!!ok && !warn, error:warn ? String(warn).slice(0,160) : undefined}); }
+   if(tag.startsWith("delete:")){ out({reqid:tag.split(":")[1], ok:!!ok && !warn}); }
  }});
 ws.on('error',(e)=>{ elog("WSERR "+e.message); out({error:e.message}); process.exit(1); });
 const rl=readline.createInterface({input:process.stdin});
@@ -57,9 +59,9 @@ rl.on('line',(line)=>{ let o; try{o=JSON.parse(line)}catch(e){return}
  if(!ready) return;
  if(o.op==='send'){ const p={channel:'telegram',to:TARGET,threadId:THREAD,message:o.text,idempotencyKey:key()}; if(o.silent)p.silent=true; req('send',p,"send:"+(o.reqid||"")); elog("SEND len="+(o.text||'').length); }
  else if(o.op==='edit'){
-   if(Date.now()<pausedUntil){ dropped++; return; }   // respect flood pause
-   edits++; req('message.action',{channel:'telegram',action:'edit',idempotencyKey:key(),params:{to:TARGET,threadId:THREAD,messageId:String(o.mid),message:o.text}},"edit#"+edits); }
- else if(o.op==='delete'){ req('message.action',{channel:'telegram',action:'delete',idempotencyKey:key(),params:{to:TARGET,threadId:THREAD,messageId:String(o.mid)}},"delete"); }
+   if(Date.now()<pausedUntil){ dropped++; if(o.reqid) out({reqid:o.reqid,ok:false,error:'edit cooldown active'}); return; }   // respect flood pause
+   edits++; req('message.action',{channel:'telegram',action:'edit',idempotencyKey:key(),params:{to:TARGET,threadId:THREAD,messageId:String(o.mid),message:o.text}},o.reqid ? 'edit:'+o.reqid : "edit#"+edits); }
+ else if(o.op==='delete'){ req('message.action',{channel:'telegram',action:'delete',idempotencyKey:key(),params:{to:TARGET,threadId:THREAD,messageId:String(o.mid)}},o.reqid ? 'delete:'+o.reqid : "delete"); }
  else if(o.op==='quit'){
    // DRAIN before exiting. An edit is fire-and-forget (no ack to the caller), so at
    // quit time one can still be in flight in `pend`. Exiting immediately orphans it:

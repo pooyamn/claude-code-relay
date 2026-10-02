@@ -442,6 +442,15 @@ class ProducerTests(TelegramFixture):
 
 
 class FormattingTests(unittest.TestCase):
+    def test_a_fenced_single_long_line_terminates_and_every_chunk_fits(self):
+        probe = "import json,relay_tg; p=relay_tg._split_for_html('```py\\n'+'x'*12000+'\\n```'); print(json.dumps({'count':len(p),'max':max(len(relay_tg.md_to_html(s)) for s in p),'characters':sum(s.count('x') for s in p)}))"
+        result = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr[-2000:])
+        output = json.loads(result.stdout)
+        self.assertGreater(output["count"], 2)
+        self.assertLessEqual(output["max"], 4096)
+        self.assertEqual(output["characters"], 12000)
+
     def test_rich_tables_and_classic_code_are_ordered_without_live_calls(self):
         operations = text_operations("Before\n\n| A | B |\n|---|---|\n| left | right |\n\n```py\nprint('hello')\n```\nAfter", -1003, 5)
         self.assertEqual([op["method"] for op in operations], ["sendRichMessage", "sendMessage", "sendMessage"])

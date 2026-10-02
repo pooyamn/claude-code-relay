@@ -227,13 +227,17 @@ def _split_for_html(md, limit=TG_LIMIT):
     plain cap with a margin; this only catches the rare reply whose escaping
     (&amp;, tags) pushes it over, by halving on a line boundary."""
     h = md_to_html(md)
-    if len(h) <= limit:
+    if len(h.encode("utf-16-le")) // 2 <= limit:
         return [md]
-    lines = md.split("\n")
-    if len(lines) < 2:
-        return [md[:len(md) // 2], md[len(md) // 2:]]
-    mid = len(lines) // 2
-    a, b = "\n".join(lines[:mid]), "\n".join(lines[mid:])
+    if len(md) < 2:
+        raise ValueError("render budget cannot fit a single source character")
+    middle = len(md) // 2
+    boundaries = [md.rfind("\n", 0, middle), md.find("\n", middle)]
+    usable = [point for point in boundaries if len(md) // 4 < point < 3 * len(md) // 4]
+    cut = min(usable, key=lambda point: abs(point - middle)) if usable else middle
+    # Prefer a nearby newline, but never repeatedly cut before the same long
+    # fenced line. Keeping the newline also preserves original source bytes.
+    a, b = md[:cut], md[cut:]
     # keep a code fence balanced across the cut
     if a.count("```") % 2:
         a, b = a + "\n```", "```\n" + b

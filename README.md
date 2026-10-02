@@ -197,6 +197,7 @@ global `~/.kimi-code/AGENTS.md` rule tells kimi to read it before doing anything
 | `scripts/relay-claude-settings-<name>.json` | optional ALT-model settings (e.g. `kimi`, `k3`) — routes that model to another gateway |
 | `scripts/relay-claude-settings-ik3.json` | native-backend declaration: `cc model ik3` drives the `kimi` binary (no secret — kimi uses its own OAuth) |
 | `scripts/relay-ws-edit-server.mjs` | fast WS transport for the live progress bubble (drains edits on quit) |
+| `scripts/relay_codex_bubble.py` | thread-scoped Codex history and one rolling live bubble with tool actions, elapsed footer and acknowledged edits |
 | `scripts/reap-dead-bindings.py` | remove bindings whose chat or workspace is gone, plus the config they leave behind |
 | `scripts/relay-block-senduserfile` | PreToolUse hook: deny `SendUserFile` (no client in a relay session) and point at the send-file skill |
 | `scripts/openclaw-newcc-plugin/` | OpenClaw plugin: pre-agent `/newcc` `/unbind` `/ccstatus` |
@@ -209,12 +210,13 @@ global `~/.kimi-code/AGENTS.md` rule tells kimi to read it before doing anything
 Pure unit/routing tests, no tmux/Telegram/network required:
 
 ```bash
-bash scripts/tests/run_tests.sh
+python3 scripts/tests/run_isolated.py
 ```
 
 - `test_extract.py` — message extraction across real OpenClaw prompt shapes (context block, `Current message:` + reply, first-message, legacy envelopes).
 - `test_backend.sh` — backend routing: `/cc` → `/model` forwarding, numeric chat id + topic thread split, message extraction. Uses a stub for the TUI hop (`RELAY_GROUP_CMD`).
 - `test_send_helpers.py` — `progress_snapshot` (the live streamed view), menu parsing, thread addressing.
+- `test_core_codex_bubble.py` — messages/questions, active tools, thread isolation, one-message rolling tails, elapsed footers, late acknowledgments and restart handling, using a fake transport inside the OS sandbox.
 
 ## Gotchas
 

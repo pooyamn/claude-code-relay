@@ -36,6 +36,93 @@ input bar visible. Reading that as idle meant the watcher never set `was_busy`, 
 idle-delivery path never fired, and **replies were never delivered** — the session
 answered into the void. `BUSY` now matches both. Don't "simplify" it back.
 
+## Codex bubbles need item history and exact event scope
+
+On 2026-10-02, DUT topic 53 missed the MCU-routing commentary and the PB15
+question visible in the native app. The native history contains that question
+at 06:47 PDT as an `agentMessage` with `delivery: "async"`. The old adapter kept
+only its newest message, ignored the question marker, and posted text only
+when the turn ended. A later comment overwrote the question. Tools were shown
+only after completion and reduced to labels such as "running a command";
+resume responses containing an active turn's prior items were ignored.
+
+The outbound log also records a software-review reply in DUT topic 53 at
+06:40:43. Its native source is a different review thread. The old notification
+parser had no thread or turn filter, so foreign item/completion events could
+replace the DUT message or clear its busy state. Reject unscoped, foreign and
+stale-turn events before changing any connection or display state.
+
+`relay_codex_bubble.py` retains user messages (including native-app prompts
+and steering), assistant messages, asynchronous questions and visible
+tool actions in native item order. Starts and completions amend the same item;
+resume snapshots restore prior activity. Tool output and private reasoning are
+not published. Following the owner's final presentation choice, live delivery
+uses one acknowledged text-message ID, continually amended with the newest
+part of that history. `Working (elapsed)` stays at the bottom; a terminal turn
+amends the same bubble with its terminal state. The tail is budgeted against
+rendered HTML in UTF-16, including emoji, escaping, balanced code fences and
+the footer. Full history is retained in the native records rather than emitted
+as a growing set of live continuation messages. The full-history multipage
+renderer remains available for explicit recovery, not the default live view.
+Media still attaches separately without duplicating final prose.
+
+Cumulative content cannot use the disposable edit path: that path drops edits
+while its helper is in a cooldown. The new edit path requires a matching
+positive acknowledgment. A pending send/edit is persisted before the effect;
+an absent acknowledgment holds newer operations for reconciliation instead of
+marking the text delivered or making a blind replacement send. A gateway
+response can arrive after the foreground eight-second wait: the transport now
+keeps the same request in flight and polls its late acknowledgment, without a
+second send/edit. On restart, the sole watcher may reconcile an exact persisted
+same-ID/same-payload edit before admitting newer content. Unknown sends are
+still held rather than replayed. A held update is **not** proof that Telegram
+received it. The complete native history remains the source for recovery;
+full protected scheduler integration is still pending.
+
+The [official app-server reference](https://learn.chatgpt.com/docs/app-server)
+documents agent-message phases, authoritative completed items and user-input
+requests. Local isolated tests cover the screenshot-shaped regression, active
+tool display, event isolation, same-ID edits, single-message rolling limits,
+elapsed footer, late acknowledgments and restart reconciliation. Live bot acceptance is a separate gate;
+these tests do not establish it or authorize changing bot wiring.
+
+The owner subsequently authorized activation specifically for DUT topic 53.
+Khadang (`TheKhadangBot`, test topic 5) accepted one canary message (ID 98),
+two cumulative edits and a same-ID restart/no-change edit. No model turn was
+started. On 2026-10-02 at 07:23 PDT only the DUT watcher was restarted with
+the patched live files; its connection uses the existing native daemon and
+thread. Bot credentials, topic bindings and the native Codex process were not
+changed. A recoverable backup of the three replaced files is under
+`relay-work/dut-bubble-backup.cgCfOX` in the live scripts directory.
+
+The reported prompt "Have you updated the source? Pushed?" is present in DUT's
+native history at 07:03:57 PDT (relay input) and 07:19:06 PDT (app input).
+Do not replay it as a supposed lost input: it was processed, and native replies
+exist. At inspection the old DUT watcher had no daemon connection while idle;
+the updated watcher stays subscribed to the bound native thread.
+
+The real app-started "Push it" turn ended at 07:22 PDT, before activation, and
+had no Telegram delivery record. It was recovered from native item history into
+DUT message 4755, with a positive same-ID edit acknowledgment. Its source and
+schematic push was **not** repeated, and no model turn was started. The watcher
+then resumed that recorded bubble and acknowledged another same-ID edit. This
+establishes real-content delivery through the existing DUT gateway, separately
+from the Khadang canary.
+
+The owner also requested the fix in Ai Dispatch topic 816, then changed the
+presentation to one rolling message. Its watcher was activated separately,
+preserving the native model turn. Seven continuation messages created during
+the initial full-history rollout (13445–13451) were deleted only after positive
+acknowledgments; the complete activity remains in native history. Message 13444
+was retained and acknowledged with the bounded tail and elapsed footer.
+Khadang accepted two further same-ID edits of message 98 exercising that rolling
+view, with no additional message or model turn. Bot wiring and credentials
+remain unchanged; only the two explicitly requested watchers were restarted.
+The subsequent live DUT turn is tracked in message 4757 on the same native
+thread. After the rolling-view activation both live routes retained one message
+ID with no pending edit in their durable state. Isolated verification ended
+with all four legacy suites and 279 core tests passing.
+
 ## Model switching: relaunch, don't type `/model`
 
 Live `/model <name>` is **gated** on a large cached conversation ("re-read the full

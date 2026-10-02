@@ -303,7 +303,7 @@ _IMG_RE = re.compile(r"!?\[[^\]]*\]\(([^)\s]+)\)"
 _ATTACH_LINE = re.compile(r"(?m)^[ \t]*\U0001F4CE[ \t]*(?:\[[^\]]*\]\()?(/[^\s)]+)\)?[^\n]*$")
 
 
-def deliver_with_media(text, folder, explicit_only=False):
+def deliver_with_media(text, folder, explicit_only=False, media_only=False):
     """Send a reply that references local files, with the FILES attached.
 
     codex answers with markdown image links to real paths
@@ -339,7 +339,7 @@ def deliver_with_media(text, folder, explicit_only=False):
                 alt = whole[2:whole.index("]")].strip()
             paths.append((cand, alt))
     if not paths:
-        return deliver(text)
+        return True if media_only else deliver(text)
 
     out = os.path.join(folder, "media", "outbound") if folder else None
     try:
@@ -373,7 +373,7 @@ def deliver_with_media(text, folder, explicit_only=False):
     body = _ATTACH_LINE.sub(lambda m: "" if m.group(1) in attached else m.group(0), text or "")
     body = _MD_IMG_RE.sub(_drop_if_attached, body)
     body = re.sub(r"\n{3,}", "\n\n", body).strip()
-    ok = deliver(body) if body else True
+    ok = deliver(body) if body and not media_only else True
     for src, alt in paths[:6]:                  # a cap: a runaway list is not a gallery
         send_path = src
         if out and not src.startswith(out):
@@ -386,8 +386,9 @@ def deliver_with_media(text, folder, explicit_only=False):
         try:
             img = os.path.splitext(send_path)[1].lower() in (
                 ".png", ".jpg", ".jpeg", ".gif", ".webp")
-            caption = "" if body else (alt or os.path.basename(src))
-            tg_send_media(send_path, caption, document=not img)
+            caption = "" if body and not media_only else (alt or os.path.basename(src))
+            if not tg_send_media(send_path, caption, document=not img):
+                ok = False
         except Exception as e:
             deliver(f"⚠️ Couldn't attach {os.path.basename(src)}: {e}")
     return ok
@@ -410,18 +411,19 @@ def tg_delete(msg_id):
 
 def tg_edit(msg_id, text):
     if not (msg_id and CHAT_ID):
-        return
+        return False
     bot = _bot()
     if bot:
         import relay_tg
         _, r = _botcall(relay_tg.edit_text, bot, CHAT_ID, msg_id, text)
         _oplog("EDIT", msg_id, text, r)
-        return
+        return r.returncode == 0
     r = subprocess.run(["openclaw", "message", "edit", "--channel", "telegram",
                         "--target", CHAT_ID, *_thread_args(), "--message-id", str(msg_id),
                         "--message", text[:text_limit()]],
                        capture_output=True, text=True)
     _oplog("EDIT", msg_id, text, r)
+    return r.returncode == 0
 
 EDIT_SERVER = os.path.join(os.path.dirname(STATE_DIR), "relay-ws-edit-server.mjs")
 
@@ -591,6 +593,85 @@ class _WS:
             self.proc.stdin.flush()
         except Exception:
             pass
+
+    def edit_confirmed(self, mid, text):
+        """A cumulative bubble must observe the edit ACK, not just enqueue it.
+
+        A timeout retains the in-flight request and polls its late ACK instead
+        of treating a slow gateway as lost delivery or starting another request.
+        """
+        if not (self.ok and mid):
+            return False
+        if self.bot:
+            import relay_tg
+            _, r = _botcall(relay_tg.edit_text, self.bot, self.target, mid, text)
+            _oplog("EDIT", mid, text, r)
+            return r.returncode == 0
+        self._n += 1
+        rid = f"e{self._n}"
+        self.proc.stdin.write(json.dumps({"op": "edit", "mid": str(mid), "text": text,
+                                          "reqid": rid}) + "\n")
+        self.proc.stdin.flush()
+        return self._confirmed_receipt(rid)
+
+    def send_confirmed(self, text, silent=True):
+        if not self.ok:
+            return ""
+        if self.bot:
+            return self.send(text, silent)
+        self._n += 1
+        rid = f"s{self._n}"
+        self.proc.stdin.write(json.dumps({"op": "send", "text": text, "silent": silent,
+                                          "reqid": rid}) + "\n")
+        self.proc.stdin.flush()
+        return self._confirmed_receipt(rid, want_message=True)
+
+    def _confirmed_receipt(self, rid, want_message=False):
+        from relay_codex_bubble import PendingDelivery
+        def result(line):
+            try:
+                reply = json.loads(line)
+            except Exception:
+                return None
+            if reply.get("reqid") != rid:
+                return None
+            if reply.get("ok") is not True:
+                return False
+            return (reply.get("messageId") or False) if want_message else True
+        def poll():
+            while True:
+                try:
+                    line = self._q.get_nowait()
+                except queue.Empty:
+                    return None if self.proc.poll() is None else False
+                if line is None:
+                    return False
+                value = result(line)
+                if value is not None:
+                    return value
+        end = time.time() + 8
+        while time.time() < end:
+            line = self._line(end)
+            if not line:
+                break
+            value = result(line)
+            if value is not None:
+                return value
+        raise PendingDelivery(poll)
+
+    def delete_confirmed(self, mid):
+        if not (self.ok and mid):
+            return False
+        if self.bot:
+            import relay_tg
+            value, result = _botcall(relay_tg.delete, self.bot, self.target, mid)
+            _oplog("DELETE", mid, "", result)
+            return result.returncode == 0 and value is True
+        self._n += 1
+        rid = f"d{self._n}"
+        self.proc.stdin.write(json.dumps({"op": "delete", "mid": str(mid), "reqid": rid}) + "\n")
+        self.proc.stdin.flush()
+        return self._confirmed_receipt(rid)
 
     def close(self):
         # The server DRAINS in-flight edits before exiting, so waiting for the process
@@ -849,6 +930,8 @@ def cxp():
         spec = importlib.util.spec_from_file_location("relay_codex_proto", path)
         _CXP = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(_CXP)
+        from relay_codex_bubble import install
+        install(_CXP)
     return _CXP
 
 _OC_API = None
@@ -2448,7 +2531,8 @@ def watch():
     last_done_mt = last_done_mt or 0
     stream, menu_sig, was_busy, idle_stable, overlay_stable = None, None, False, 0, 0
     _cxconn = None                 # codex app-server connection, owned by this loop
-    _cx_announced = 0              # turn_seq of the last outside turn announced
+    _cx_bubble, _cx_bubble_turn, _cx_bubble_ws = None, "", None
+    _cx_bubble_finished = False
     _cxblocked_since, _cxblocked_told = None, False
     api_tick, stream_last_text = 0, ""
     while True:
@@ -2559,38 +2643,54 @@ def watch():
                             f"{_cxconn.error or 'unknown error'}")
                     break                        # leave it queued; retry next pass
                 cxp().drop(SESSION, 1)           # only now is it safely handed over
-            if _cxconn.busy and _cxconn.external and _cx_announced != _cxconn.turn_seq \
-                    and (_cxconn.user_text or _cxconn.message or _cxconn.delta):
-                # A turn this relay did not start. Say where it came from, once,
-                # so the reply that follows has context in the topic.
-                _cx_announced = _cxconn.turn_seq
-                ut = _cxconn.user_text or "(prompt not available)"
-                mm = re.match(r"\[from ([^\]·]+?) ·", ut)
-                if mm:
-                    head = f"📨 **Message from {mm.group(1).strip()}**"
-                    ut = re.sub(r"\n\n\(Reply with the ccrelay send_message tool.*$", "", ut, flags=re.S)
-                else:
-                    head = "📱 **From the ChatGPT app**"
-                deliver(f"{head}\n{ut[:3000]}")
-                write_last_prompt(ut[:500])
+            # One cumulative turn view: comments, questions and actual tool
+            # activity stay in these bubbles. No separate origin/final text
+            # messages and no live-window tail truncation on the Codex path.
+            native_thread, native_turn, status, body = _cxconn.bubble_snapshot()
+            if STREAM and native_turn:
+                from relay_codex_bubble import BubblePages, BubbleState
+                import relay_tg
+                state = BubbleState(STATE_DIR, native_thread, native_turn, CHAT_ID, THREAD_ID)
+                # Don't replay an old completed turn after a watcher restart.
+                # A recorded bubble can be reconciled; an active turn is new
+                # visible work and its full resume snapshot must be shown.
+                if status == "inProgress" or _cx_bubble_turn == native_turn or state.ids:
+                    if _cx_bubble_turn != native_turn:
+                        if _cx_bubble_ws:
+                            _cx_bubble_ws.close()
+                        w = _WS(CHAT_ID, THREAD_ID)
+                        if not w.ok:
+                            w.close()
+                        _cx_bubble_ws = w if w.ok else None
+                        _cx_bubble = BubblePages(
+                            state,
+                            (lambda text, transport=w: transport.send_confirmed(text, silent=True)) if w.ok else
+                            (lambda text: tg_send(text, silent=True)),
+                            w.edit_confirmed if w.ok else tg_edit,
+                            relay_tg._split_for_html, reconcile_edits=True,
+                            rolling=True, started_at=_cxconn.view.started_at)
+                        _cx_bubble_turn, _cx_bubble_finished = native_turn, False
+                    if not _cx_bubble_finished:
+                        try:
+                            confirmed = _cx_bubble.update(body, status, force=status != "inProgress")
+                            if confirmed and status != "inProgress":
+                                if _cx_bubble_ws:
+                                    _cx_bubble_ws.close()
+                                _cx_bubble_finished = True
+                        except Exception as error:
+                            # Never turn a failed/unknown delivery into silence
+                            # or a second send. Receipt recovery remains visible.
+                            print(f"Codex bubble held for {native_turn}: {error}", file=sys.stderr)
             if _cxconn.busy:
                 was_busy = True
-                if stream is None and STREAM:
-                    w = _WS(CHAT_ID, THREAD_ID)
-                    stream = _Stream(read_last_prompt(), w if w.ok else None)
-                if stream:
-                    try:
-                        stream.update_text(_cxconn.live_text())
-                    except Exception:
-                        pass
                 continue
-            reply = _cxconn.take_final()
+            reply = _cxconn.take_final() if not STREAM or _cx_bubble_finished else ""
             if reply:
                 h = dedup_key(reply)
                 if h and h != delivered:
                     if stream and stream.ws:
                         stream.ws.close()
-                    if deliver_with_media(reply, folder):
+                    if deliver_with_media(reply, folder, media_only=STREAM):
                         delivered = h
                         save_delivered(h)
                 stream, was_busy = None, False
