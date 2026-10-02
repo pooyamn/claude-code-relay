@@ -8,7 +8,7 @@ Build testable security and delivery foundations first. Introduce the builder wi
 
 Pouya requested sequential implementation for PC readiness and authorized committing and pushing verified changes. Repository publication is separate from deployment. A separately authorized legacy Mac Khadang test release is active; no GitHub PRs, protected PC capabilities, credential changes or production/HamalBot migration have been performed by this implementation run. Local implementation/test evidence is distinct from target-PC acceptance. Unrelated uncommitted edits and runtime/media files are excluded from this series.
 
-PR 1 is locally implemented. PRs 2–5 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel/runtime integration still pending; evidence and limits are recorded below. PR 6's outbound foundation, bounded format/media repair, receipt-bound owner-prompt bridge, current source-grant dispatch and Telegram-local recovery are prepared offline; real protected producer/context wiring and target integration remain pending. PR 7's native registry foundation is prepared as a dependency for that wiring, without completing PR 6 or its own native/launcher gates. PRs 8–20 remain to be implemented, apart from separately requested early preparations noted below. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
+PR 1 is locally implemented. PRs 2–5 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel/runtime integration still pending; evidence and limits are recorded below. PR 6's outbound foundation, bounded format/media repair, receipt-bound owner-prompt bridge, current source-grant dispatch and Telegram-local recovery are prepared offline; real protected producer/context wiring and target integration remain pending. PR 7's native registry and launch-bundle foundations are prepared as dependencies for that wiring, without completing PR 6 or its own native/launcher gates. PRs 8–20 remain to be implemented, apart from separately requested early preparations noted below. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
 
 ## Existing code to extend
 
@@ -196,6 +196,19 @@ strict staged secret screening passes without repository allowlists.
 required transport/controller/WSL, worktree/launcher, capacity normalization,
 company, admission and recovery integration. No sessions were launched or resumed;
 PRs 6 and 7 remain in preparation.
+
+Launch-bundle preparation: `native_launch.py` validates explicit owner-scoped
+specifications against the supplied installed broker policy, pins instruction,
+skill, native/MCP configuration and measurement artifacts, and seals deterministic
+candidate instructions and resource fragments. Complete skill artifacts retain
+licenses and executable flags without running code. Role-private worktree and
+Git common-directory paths are required, but have not been created or observed.
+The bundle is always prepared/not-ready/not-admitted; sealing is not review
+approval. Worktree creation/reuse, applying generated files, real native startup,
+measured resource enforcement and authorized admission remain required.
+All 467 core checks and four legacy suites pass on the clean staged candidate,
+including 20 launch-bundle checks and two actual artifact-publication deaths.
+Strict staged secret screening passes without repository allowlists.
 
 ## PR 8 Root tasks and atomic work ownership
 

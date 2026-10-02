@@ -9,6 +9,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from relay_core.identity import Denied, Policy, exact, strict_json
 from relay_core.native_sessions import SCHEMA
+from relay_core.native_launch import PACKAGE_SCHEMA
 
 
 def configuration(raw):
@@ -32,10 +33,12 @@ def plan():
             "automatic_turns_enabled": False, "native_calls": False, "state_changes": False,
             "identity_values_are_examples": True, "state_dir": cfg["state_dir"], "protected_owner_uid": policy.broker_uid,
             "broker_policy_digest": policy.digest, "registry_schema": SCHEMA, "scope": cfg["scope"],
+            "launch_package_schema": PACKAGE_SCHEMA, "launch_package_activated": False, "resource_limits_enforced": False,
             "role_profiles_not_active_sessions": sorted(policy.roles), "admission_available": False,
             "pending": ["pinned protected Codex and Claude observation/transports and exact-ID resume",
                         "target UID/cgroup/process-generation and role-isolated subscription topology",
-                        "worktree/launch/instruction/skill manifests and resource profiles",
+                        "worktree creation/reuse and applying verified launch/instruction/skill bundles",
+                        "measured target resource profiles and independently observed enforcement",
                         "independent native control receipts and actual app visibility",
                         "normalized native capacity/auth/quota/unknown outcomes",
                         "PR 8 root ownership and PR 9 all-source pre-turn admission",
