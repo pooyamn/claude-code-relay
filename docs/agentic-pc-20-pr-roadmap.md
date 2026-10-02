@@ -39,8 +39,12 @@ prepares scoped registration, homogeneous tool menus, a labeled mixed-forum
 union and current-topic `/help`; Telegram has no topic command scope. Explicit
 commands are normalized, owner-gated and rechecked against the current backend,
 never used to bypass company authority or send unsupported controls as model
-text. [Prepared command discovery and activation limits](native-telegram-commands.md).
-The live Khadang daemon and HamalBot wiring remain unchanged.
+text. [Command discovery, deployment and activation limits](native-telegram-commands.md).
+After explicit test-deployment authorization, a separate legacy Mac Khadang
+release now runs the router and its two test-topic watchers; Telegram registration
+and an exact native goal read are verified. All 400 core tests and four legacy
+suites pass. HamalBot and the native daemon are unchanged. Human control/UI
+receipts and protected PC/company/admission/recovery acceptance remain pending.
 
 - Routing, Telegram formatting, session watchers, Codex observation and MCP messaging already exist in `scripts/`; do not plan their wholesale replacement.
 - The legacy `scripts/ccrelayd.py` advances the Telegram offset before handling, and its per-topic queues are in memory. PR 4 prepares a separate protected durable intake for the target; native/media/action adapters are still required before cutover. The legacy live Mac deployment is not automatically converted.

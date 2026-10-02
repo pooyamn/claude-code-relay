@@ -96,8 +96,9 @@ chat's bound session types; mixed forums show a labeled union because Telegram
 has no topic command scope. `/help` is specific to the current topic. Owner
 checks still apply independently of menu visibility, and unsupported Codex
 controls never become model prompts. [Registration, activation gates and
-verification](docs/native-telegram-commands.md). This preparation is not enabled
-on the live Khadang daemon and does not change HamalBot wiring.
+verification](docs/native-telegram-commands.md). Command registration is active
+on the legacy Mac Khadang test router; protected PC acceptance remains pending.
+HamalBot wiring is unchanged.
 
 ## Telegram rich messages (tables that actually line up)
 

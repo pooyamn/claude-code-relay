@@ -1,9 +1,10 @@
 # Native Telegram command menus
 
-Prepared in repository code on 2026-10-02. This feature registers the relay's
-implemented controls as Telegram bot commands and adapts discovery to the bound
-session types. It has not been activated on the live Khadang daemon. HamalBot
-wiring, native sessions, credentials, bindings and allowlists are unchanged.
+Activated on the legacy Mac Khadang test router on 2026-10-02, after Pouya
+authorized testing and deployment. Telegram confirmed registration and readback
+of the implemented controls, with discovery adapted to the bound session types.
+This is not protected PC deployment. HamalBot wiring and installed shared
+scripts, credentials, bindings and allowlists are unchanged.
 
 ## Session commands
 
@@ -104,6 +105,62 @@ user-owned protocol edits. The strict staged secret scan passed; a read-only
 repository preview against the existing test config performed no token/network
 access or state mutations; it read only configuration, bindings and backend markers.
 
-Actual bot-menu rendering, native control effects, language overrides and live
-Khadang activation remain unverified. No menu test is evidence of a completed
-PC integration, safe goal continuation or company authorization boundary.
+## Khadang deployment and recovery
+
+The missing live menu was a deployment gap: the running router still loaded the
+old shared installation, its config lacked `command_menu_bot`, and Telegram
+returned empty default, group, chat, administrator and owner-member menus.
+Pushing repository code did not install it into that running process.
+
+The reviewed release is `/Users/pouya/.config/ccrelay/khadang-release.JgVvNO`,
+with launcher changes from commit `9406f3a`. Its router and sender load the new
+menu/goal/bubble modules. `claude-relay-group` now resolves helpers from its own
+release, rather than escaping to hardcoded shared scripts. Three new sandbox
+tests exercise release-local Codex routing, including paths with spaces. The
+final clean staged-source suite passed 400 core tests and all four legacy suites;
+the strict staged secret scan passed. The initial launcher fixtures failed
+because their PATH omitted macOS's `/sbin/md5`; correcting the fixture PATH
+retained the existing hash/key mechanism and passed both real shell checks.
+
+Only the `ccrelayd-test` router and the watchers for Claude topic 2 and Codex
+topic 5 in the Khadang test forum were replaced. The old poller was verified
+gone before the new one started. The native Codex daemon, the Claude TUI and
+all other watchers stayed running. The release uses the existing private runtime
+state/code registry and model settings; templates are retained as `.repo-example`
+files. The installed protocol helper was copied unchanged into the release,
+preserving the user-owned edits without committing them. Existing shared
+scripts and OpenClaw configuration hashes remained unchanged.
+
+The test config retains its original token-file path, bindings, state and owner
+allowlist, adding only `"command_menu_bot": "TheKhadangBot"`. Its before-copy
+is `test.before.json` inside the release. Telegram verified the exact bot, the
+help-only chat menu and all ten owner-member commands. Pouya's group membership
+was verified; owner-member English and Persian scopes returned no override.
+The running router refreshes discovery automatically without another poller.
+Typing `/` in a topic exposes command suggestions; `/help` is topic-specific.
+A separate native `thread/goal/get` read matched the existing Codex test thread
+and validated the returned goal with no mutation or model inference.
+Two silent activation notices received exact-topic Telegram acknowledgments:
+message 149 in Claude topic 2 and message 150 in Codex topic 5. These confirm
+bot-message routes, not a human command, native mutation or phone rendering.
+
+For a reviewed restart, use this release's `scripts/ccrelayd.py` with the existing
+`~/.config/ccrelay/test.json`, and launch the two test watchers from the same
+release. First inspect running processes, queued work and the current config;
+never start a competing poller or restart the native daemon. Menu-only readback
+or reconciliation uses the one-shot command above from this release, not an
+uninstalled repository preview.
+
+Rollback is a scoped return of the test router/watchers to their previous shared
+scripts after verifying the replacement processes have stopped. Preserve the
+runtime state, bindings, native threads, bubble receipts and goal SQLite journal,
+including unknown controls. Merge the before-config rather than overwriting
+subsequent edits. Registered commands must be reconciled with the handlers
+actually installed; returning to the old router is not evidence that its new
+goal/help handlers work. Do not touch HamalBot or reset native goals to roll back.
+
+Actual phone rendering and end-to-end human command effects still need receipts;
+native goal mutations were not exercised against an existing task. Other
+language/menu overrides cannot be globally enumerated. PC role isolation,
+admission, company authority and full clean-machine recovery remain unverified.
+Menu registration and a native status read do not establish those boundaries.

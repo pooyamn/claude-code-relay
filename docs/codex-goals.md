@@ -1,6 +1,8 @@
 # Native Codex goal controls and rolling status
 
-Prepared in repository code on 2026-10-02; not deployed to live watchers or bots.
+Prepared in repository code on 2026-10-02 and activated only on the legacy Mac
+Khadang test watcher after Pouya authorized testing and deployment. Protected PC
+integration and live mutation acceptance remain pending.
 The installed Codex CLI is 0.160.0. Its generated standard (not experimental)
 schema includes `thread/goal/get`, `thread/goal/set`, `thread/goal/clear`,
 `thread/goal/updated` and `thread/goal/cleared`. A separate read-only daemon
@@ -94,8 +96,14 @@ reconcile native state, unknown controls and grants before continuation.
 Local in-memory bubble notices are not a durable Telegram receipt; the PR 6
 protected sender/intake integration is still required.
 
-Live activation requires an exclusive verified Khadang test route, owner-issued
-controls with native/UI receipts, compatibility and pause/current-turn evidence,
+The Khadang test activation uses a separate release, with the old poller stopped
+before replacement and only the two test watchers restarted. The native daemon,
+Claude TUI and Hamal installation remain unchanged. Telegram command registration
+and a no-inference native goal read were verified; this does not verify goal
+mutation or pause/current-turn behavior. [Deployment and rollback](native-telegram-commands.md#khadang-deployment-and-recovery).
+
+Protected target activation still requires owner-issued controls with native/UI
+receipts, compatibility and pause/current-turn evidence,
 protected target integration and clean-target restore acceptance. Do not start a
 second poller, modify HamalBot wiring, restart the native daemon or use a bound
 model session as a fixture. Rollback removes the adapter activation, not native
