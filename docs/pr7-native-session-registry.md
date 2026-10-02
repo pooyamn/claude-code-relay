@@ -184,6 +184,43 @@ a delimiter and verifies refusal. The full suite was not rerun. Protected
 launcher/observer/capture/admission wiring, Claude controls and target acceptance
 remain pending; no live transport was activated.
 
+## Prepared Linux native sender identity
+
+`native_peer.py` supplies an optional `KernelUnixPeer` for the prepared Unix
+transport. A protected launcher must select this credentialed path, not use the
+plain framing fixture as an identity proof. The gate fixes the exact protected
+binding and native process epoch, reuses the broker's `Authority` checks for role
+UID, execution cgroup and surviving leader, and refuses policy/binding drift.
+It borrows an explicit nonblocking descriptor without owning or discovering one.
+
+Connection-time `SO_PEERCRED` alone is insufficient when a socket is forwarded.
+The gate enables `SO_PASSCRED` and uses the broker's shared bounded `recvmsg`
+helper to require exactly matching `SCM_CREDENTIALS` on every HTTP/WebSocket
+chunk. Missing, duplicated, truncated, foreign or unexpected ancillary data is
+refused. Incoming descriptors are closed, including when an earlier credential
+entry is malformed. Current binding/process identity is checked again after the
+read, so revocation cannot turn received bytes into evidence. A verifier bound
+to this gate rejects an uncredentialed channel instead of falling back to reads
+without sender evidence. Unsupported platforms have no UID fallback.
+[Linux Unix socket credentials](https://man7.org/linux/man-pages/man7/unix.7.html).
+
+The peer digest records sender identity only. It does not prove executable bytes,
+effective native settings/context, provider entitlement, admission or native-app
+visibility. The controller must use the production kernel/proc observer and
+reviewed launch inputs, not a worker-supplied `Authority` or normalized fixture.
+Executable/configuration observation, launcher/event integration and target
+acceptance remain required. The read-only plan keeps this gate inactive; no
+native process, daemon, bot or service was changed.
+
+All 89 focused sandbox checks pass: 12 new peer checks, 22 existing identity/wire
+checks and the preceding 55 transport/resume/planner checks. Actual anonymous
+sockets and SQLite are used, but Linux credentials, options and proc observations
+are explicitly substituted on this Mac. The initial fixture correctly failed
+because its PID belonged to another builder execution; a child inside the intended
+unit now represents the valid path, and the foreign execution remains a rejection
+case. These tests validate integration and refusal, not real distinct-UID Linux
+isolation. The full suite and native target acceptance were not run for this slice.
+
 ## Read only target preparation
 
 Run `/usr/bin/python3 scripts/ccrelay_native.py --plan` to inspect inert examples.

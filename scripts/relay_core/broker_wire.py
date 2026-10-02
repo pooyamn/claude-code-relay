@@ -11,7 +11,35 @@ import struct
 import time
 
 from .contracts import canonical_bytes
-from .identity import Denied, MAX_FRAME, Peer, peer_credentials, strict_json
+from .identity import Denied, MAX_FRAME, Peer, integer, peer_credentials, strict_json
+
+
+def receive_credentialed_chunk(connection, peer, max_bytes):
+    """One chunk from the exact kernel sender; never accept transferred FDs."""
+    integer(max_bytes)
+    if type(peer) is not Peer or max_bytes > MAX_FRAME + 1:
+        raise Denied("bounded kernel-authenticated receive required")
+    body, ancillary, flags, _ = connection.recvmsg(
+        max_bytes, socket.CMSG_SPACE(12) + socket.CMSG_SPACE(256))
+    credentials, unexpected = [], False
+    for level, kind, value in ancillary:
+        if level == socket.SOL_SOCKET and kind == socket.SCM_CREDENTIALS and len(value) == 12:
+            try:
+                credentials.append(Peer(*struct.unpack("3i", value)))
+            except Denied:
+                # Still inspect/close any SCM_RIGHTS entries later in this
+                # ancillary list before refusing malformed credentials.
+                unexpected = True
+        else:
+            unexpected = True
+            if level == socket.SOL_SOCKET and kind == socket.SCM_RIGHTS:
+                descriptors = array.array("i")
+                descriptors.frombytes(value[:len(value) - len(value) % descriptors.itemsize])
+                for descriptor in descriptors:
+                    os.close(descriptor)
+    if flags & (socket.MSG_CTRUNC | socket.MSG_TRUNC) or unexpected or credentials != [peer]:
+        raise Denied("missing, transferred or mismatched kernel message credentials")
+    return body
 
 
 def receive_request(connection, *, timeout=3):
@@ -23,21 +51,7 @@ def receive_request(connection, *, timeout=3):
         if remaining <= 0:
             raise Denied("broker frame deadline expired")
         connection.settimeout(remaining)
-        body, ancillary, flags, _ = connection.recvmsg(
-            min(8192, MAX_FRAME + 1 - size), socket.CMSG_SPACE(12) + socket.CMSG_SPACE(256))
-        credentials, unexpected = [], False
-        for level, kind, value in ancillary:
-            if level == socket.SOL_SOCKET and kind == socket.SCM_CREDENTIALS and len(value) == 12:
-                credentials.append(Peer(*struct.unpack("3i", value)))
-            else:
-                unexpected = True
-                if level == socket.SOL_SOCKET and kind == socket.SCM_RIGHTS:
-                    descriptors = array.array("i")
-                    descriptors.frombytes(value[:len(value) - len(value) % descriptors.itemsize])
-                    for descriptor in descriptors:
-                        os.close(descriptor)
-        if flags & (socket.MSG_CTRUNC | socket.MSG_TRUNC) or unexpected or credentials != [peer]:
-            raise Denied("missing, transferred or mismatched kernel message credentials")
+        body = receive_credentialed_chunk(connection, peer, min(8192, MAX_FRAME + 1 - size))
         if not body:
             raise Denied("incomplete broker frame")
         chunks.append(body)

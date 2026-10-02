@@ -23,9 +23,14 @@ _HEADER_LIMIT = 16384
 
 
 class UnixWSChannel(JSONLChannel):
-    def __init__(self, fd, *, timeout_ms, max_frame_bytes):
+    def __init__(self, fd, *, timeout_ms, max_frame_bytes, kernel_peer=None):
         super().__init__(fd, fd, timeout_ms=timeout_ms, max_frame_bytes=max_frame_bytes)
         self._unix_stream()
+        if kernel_peer is not None:
+            from .native_peer import KernelUnixPeer
+            if type(kernel_peer) is not KernelUnixPeer or kernel_peer.fd != fd:
+                raise Denied("exact Linux native peer gate required")
+        self.kernel_peer = kernel_peer
         self.upgraded = False
         self.fragments, self.fragment_size = None, 0
         self.fragment_frames = 0
@@ -46,11 +51,14 @@ class UnixWSChannel(JSONLChannel):
     def current(self):
         super().current()
         self._unix_stream()
+        if self.kernel_peer is not None:
+            self.kernel_peer.current()
 
     def _read_more(self, deadline, *, maximum):
         self._wait(self.fds[0], selectors.EVENT_READ, deadline)
         try:
-            body = os.read(self.fds[0], min(65536, maximum - len(self.buffer)))
+            limit = min(65536, maximum - len(self.buffer))
+            body = self.kernel_peer.receive(limit) if self.kernel_peer is not None else os.read(self.fds[0], limit)
         except BlockingIOError:
             return
         if not body:

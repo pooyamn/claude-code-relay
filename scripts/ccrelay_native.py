@@ -15,6 +15,7 @@ from relay_core.native_setup import SCHEMA as SETUP_SCHEMA
 from relay_core.native_resume import ADAPTER as RESUME_ADAPTER
 from relay_core.native_rpc import TRANSPORT as RPC_TRANSPORT
 from relay_core.native_ws import TRANSPORT as WS_TRANSPORT
+from relay_core.native_peer import SCHEMA as PEER_SCHEMA
 
 
 def configuration(raw):
@@ -44,6 +45,7 @@ def plan():
             "resume_adapter": RESUME_ADAPTER, "resume_adapter_activated": False,
             "rpc_transport": RPC_TRANSPORT, "rpc_transport_activated": False,
             "websocket_transport": WS_TRANSPORT, "websocket_transport_activated": False,
+            "kernel_peer_schema": PEER_SCHEMA, "kernel_peer_activated": False,
             "role_profiles_not_active_sessions": sorted(policy.roles), "admission_available": False,
             "pending": ["pinned protected Codex and Claude observation/transports and exact-ID resume",
                         "target UID/cgroup/process-generation and role-isolated subscription topology",

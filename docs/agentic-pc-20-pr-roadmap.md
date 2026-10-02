@@ -269,6 +269,16 @@ experimental; production support, isolated native-app topology, protected runtim
 observer/launcher/event wiring and target acceptance are not inferred from these
 tests. No live daemon or bot changed; PR 7 is still in preparation.
 
+Kernel sender preparation: `native_peer.py` joins Unix WebSocket reads to the
+existing broker UID/cgroup/process-generation authority and shared per-chunk
+credential checks. Forwarded, revoked or wrong-execution traffic cannot supply
+native evidence; rejected incoming descriptors are closed. No directory/header
+identity or non-Linux fallback is accepted. All 89 focused peer/identity/transport/
+resume/planner checks pass with real sockets/SQLite and substituted Linux kernel
+facts. This establishes no target identity, binary/settings proof or admission.
+The gate remains inactive; protected native observation/launcher integration and
+actual target acceptance are still required.
+
 ## PR 8 Root tasks and atomic work ownership
 
 Depends on: PRs 1, 2 and 7.
