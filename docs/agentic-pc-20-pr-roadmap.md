@@ -12,6 +12,17 @@ PR 1 is locally implemented. PRs 2–5 code/template preparation is implemented,
 
 ## Existing code to extend
 
+Design expansion (2026-10-02): [design v8](agentic-pc-design.md) also requires
+human employees from different companies to use Khadang. Preserve the 20-PR
+sequence, but extend contracts, protected identity/membership, intake, task
+steering, approvals, retrieval/history and publication with company/project/topic
+scope and actual human attribution. Pouya remains platform owner; employee
+participation does not grant owner approval authority or his 10% reserve. The
+existing local PR 1–5 preparation is not a completed multi-company boundary.
+Revisit those contracts and demonstrate design acceptance test 14 before
+enabling employee grants. Onboarding/delegation and topic trigger choices remain
+pending; this requirement does not change live bot allowlists or bindings.
+
 - Routing, Telegram formatting, session watchers, Codex observation and MCP messaging already exist in `scripts/`; do not plan their wholesale replacement.
 - The legacy `scripts/ccrelayd.py` advances the Telegram offset before handling, and its per-topic queues are in memory. PR 4 prepares a separate protected durable intake for the target; native/media/action adapters are still required before cutover. The legacy live Mac deployment is not automatically converted.
 - `scripts/ccrelay_mcp.py:128` derives the caller from cwd. It cannot establish reviewer/CTO authority under the target threat model.

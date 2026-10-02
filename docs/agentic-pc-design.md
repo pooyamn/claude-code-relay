@@ -1,6 +1,6 @@
 # Agentic PC: design
 
-Status: v7, decisions in progress (2026-10-01). Incorporates Pouya's review decisions on local identities, relay update authorization, daily disaster recovery, tool-switch repair, evidence-based memory maintenance with passive inconsistency reporting, a builder in the first rollout with demand-driven management, a three-active-session cap with task-wide progress monitoring, subscription-aware pacing with a 10% owner reserve, evaluated GStack/GBrain integration, and source-evaluated AX/Paperclip launch, ownership and continuity patterns. Remaining review questions are listed in §15. These are target requirements, not claims that the live Mac relay already implements them. Owner: Pouya.
+Status: v8, decisions in progress (2026-10-02). Incorporates Pouya's review decisions on local identities, relay update authorization, daily disaster recovery, tool-switch repair, evidence-based memory maintenance with passive inconsistency reporting, a builder in the first rollout with demand-driven management, a three-active-session cap with task-wide progress monitoring, subscription-aware pacing with a 10% owner reserve, evaluated GStack/GBrain integration, source-evaluated AX/Paperclip launch, ownership and continuity patterns, and company-scoped human employees interacting with Khadang. Remaining review questions are listed in §15. These are target requirements, not claims that the live Mac relay already implements them. Owner: Pouya.
 Target: Windows PC, WSL2 Ubuntu 24.04. Agent roles run under separate local security identities with private homes and runtime state; the router runs as `relay`. Pouya remains the owner and uses one GitHub account. The existing Mac deployment remains a migration source.
 
 ## 1. Goals and constraints
@@ -13,6 +13,7 @@ Goals
 - The platform maintains itself: agents report problems, a support agent fixes them, the CTO proposes improvements.
 - Every session's history is kept for future reference.
 - Everything works from a phone.
+- Human employees from different companies can interact with Khadang in their authorized Telegram forum topics, not only Pouya.
 
 Constraints
 - Claude and ChatGPT subscriptions for all agent work. No paid API keys; free-tier keys are fine (held by `relay`, never in a session).
@@ -20,14 +21,28 @@ Constraints
 - Phone access through the Telegram router (ccrelayd) and the Claude Code and Codex remote-control apps.
 - Migrate gradually, one agent at a time.
 
-Threat model: one owner. The risks are mistakes and prompt injection (from web pages, documents, other sessions), not a hostile owner. A compromised worker must not impersonate the reviewer or CTO, change privileged policy, or deploy code that gains the router's credentials. Cooperation between sessions does not grant access to another role's identity or controls.
+Threat model: one platform owner, multiple companies and human participants. Pouya is the trusted platform owner; company employees are separately authenticated, scoped participants, not implicit owners. Risks include mistakes, prompt injection (from web pages, documents, other sessions and human messages), impersonation and cross-company disclosure. A compromised worker or employee must not acquire another company or role's authority, impersonate the reviewer or CTO, change privileged policy, or deploy code that gains the router's credentials. Cooperation does not grant access to another identity or its controls.
 
 ## 2. Model
 
 - **Agent**: a role. Instructions, skills, role memory, the paths it owns.
 - **Session**: one live conversation of an agent on one task, in Claude Code or Codex. Id `<agent>.<task>`. An agent can have several sessions.
+- **Company**: an authorization and information boundary with a stable `company_id`, projects, topics, members and scoped agent roles. Human membership can span companies only through separate explicit grants.
+- **Human employee**: a stable human principal, mapped to verified Telegram numeric user ID and explicit company/project/topic permissions. An employee is not an agent role, a model subscription account, or the platform owner.
 - Sessions talk to sessions through ccrelay. One Telegram bot carries all traffic.
 - Plain files are the source of truth for instructions and curated memory. Operational databases/ledgers and derived retrieval views have the explicit roles described below. Built-in memory is off: Claude `autoMemoryEnabled: false`; Codex `memories` (already off; pin with `codex features disable memories`).
+
+### Human employees and company boundaries
+
+Khadang serves authorized company employees as well as Pouya. A company-owned forum topic binds an exact Telegram chat/topic to its company, project and native session. Telegram display names, usernames, joining a group, a folder, forwarded text and a message claiming "Pouya approved" do not establish membership or authority. Authenticate the transport sender and check current protected membership grants on every input and control action; unknown participants receive no model/session access.
+
+Employees can ask questions, supply project evidence and direct work in their assigned topics under explicit grants. Steering an active turn requires both topic/task permission and the current expected turn ID; the human sender stays attributed in the durable input ledger, handoffs and audit trail. Another employee cannot take over a task merely by posting in its forum. Employee messages do not inherit Pouya's owner priority or the 10% owner reserve. They use the company task lane and applicable shared provider/account budget, without exposing subscription credentials.
+
+Pouya retains platform ownership, protected-policy/deployment authority and access to the owner reserve. Company administrators or approval roles exist only through an explicit delegated grant. Ordinary employee participation does not authorize GitHub publication/merge, external actions, privileged approvals, bot wiring, membership changes, credential access or access to another company. Approval evidence binds the actual authenticated human, company, action and artifact revision; conversation with a reviewer never substitutes for that evidence.
+
+Carry `company_id` through registry/session identity, task roots, messages, action approvals, issue tracking, memory/decisions, handoffs, retrieval/history, artifacts and backup/restore permissions. The shared paths described below are templates within each company's protected namespace, not a global readable company corpus. Select only the admitted session's company/project context. Keep Pouya's private/control-plane memory separate; no employee-facing topic loads it. Publication credentials remain router-held and restricted by company/project authorization even when one underlying GitHub account can access several repositories. Cross-company messages or sharing require explicit grants and recipient revalidation; do not forward another company's transcript, source, search results or issues by default.
+
+Membership is protected configuration with grant/revocation audit history, not an agent-editable allowlist. Revocation fences queued work, future steering, output delivery, retrieval and pending approvals, while retaining records under company policy. Creating or transferring a topic must not silently transfer its old history or authority to another company. Company scopes and membership enforcement must pass the acceptance gate before enabling employee access. The current live Mac bot allowlists, bindings and credentials are unchanged by this design update; onboarding and employee trigger/approval policies remain open in §15.
 
 ### Agents
 
@@ -384,7 +399,9 @@ The design is proven only by demonstrations, run on the PC before agents are tru
 12. **Launch/recovery contracts fail closed**: fail workspace setup, request an unsupported capability and fail a suspend acknowledgment; no turn starts in a fallback profile, and desired pause is not mistaken for observed stop. Change runtime/tool/permission contracts during resume: no partial-delta fresh thread is silently created. On the target PC, detached tool children stay within the measured CPU/RAM/process envelope; limit failures preserve evidence and unfinished work. An optional Paperclip prototype must additionally demonstrate authenticated owner isolation and disabled stock telemetry.
 13. **Capacity retries preserve work and authority**: inject a verified temporary-capacity rejection, provider wait, quota exhaustion, an unknown submission and a failed turn with completed tools. Only the safe rejected input or reconciled continuation is retried. Restart before/after persisting the retry proposal: one logical replacement intent survives without resetting limits or repeating an external action. Cancellation, stale steering, native internal retries, exhausted budgets/deadlines and the owner reserve stop new attempts. Shared cooldowns prevent simultaneous role retries; passive wait/recovery reporting does not wake management models.
 
-Then measure, weekly: tasks completed per agent, manual interventions by Pouya (and why), subscription quota spent on coordination (messages, reviews, triage) versus on the work itself, PR cycle time, issues opened and fixed, evidence-producing milestones versus handoffs, no-progress incidents, diagnosis/recovery outcomes, quota-related deferrals, and whether pacing preserved the intended reserve. Label estimated quota measurements separately from provider observations.
+14. **Company employees cannot become owners or cross company boundaries**: two employees from different companies, a human with two explicit memberships, an unknown participant and Pouya interact with Khadang. Permitted topic questions/steering retain exact human attribution; unauthorized topics, stale controls, owner-reserve spending, approval impersonation and cross-company memory/history/publication access are denied. Revoke a grant while input/output/approval is queued and restore a backup: no revoked or stale grant can deliver content or execute an action. Owner controls remain available, and company-private context never appears in another company's forum or passive reports.
+
+Then measure, weekly: tasks completed per agent, manual interventions by Pouya (and why), subscription quota spent on coordination (messages, reviews, triage) versus on the work itself, PR cycle time, issues opened and fixed, evidence-producing milestones versus handoffs, no-progress incidents, diagnosis/recovery outcomes, quota-related deferrals, and whether pacing preserved the intended reserve. Attribute human requests and company usage without exposing another company's work. Label estimated quota measurements separately from provider observations.
 
 ## 14. Migration order
 
@@ -402,6 +419,7 @@ Then measure, weekly: tasks completed per agent, manual interventions by Pouya (
 4. Select an owner-controlled location for the off-PC recovery key and bootstrap access instructions; then prove restoration without the original PC. The daily recovery target and broad data coverage are already approved.
 5. Subscription pacing, a 10% reserve for Pouya's direct use and temporary-capacity retries are approved. Choose the initial minimum gap, retry/backoff/elapsed bounds and verify compatible quota/status/error adapters for each installed provider runtime. Fixed delays alone are not a guarantee against exhaustion; retrying does not restore spent quota.
 6. AX/Paperclip source evaluation supports the patterns added in §5, not replacement of the relay. Paperclip's current native runner makes it a credible optional task/governance backend; decide adoption only after an isolated relay-adapter proof preserves native interactive/app continuity, one operational authority, role isolation, budgets and recovery, and shows useful productivity/coordination-cost results. See [the pinned source evaluation](research/2026-10-01-ax-paperclip-evaluation.md). Target-PC resource-profile values also remain to be measured.
+7. Company employees using Khadang are required, not owner-equivalent users. Choose the protected onboarding/delegated administrator flow, employee roles and topic/task steering grants, whether employee input requires a mention/reply or includes all topic messages, company approval delegation and shared subscription accounting. Implement company context isolation and acceptance test 14 before expanding live allowlists; company membership alone does not grant provider-account access.
 
 ## Appendix: verified facts (2026-10-01, Claude Code 2.1.287, Codex 0.159.3)
 
