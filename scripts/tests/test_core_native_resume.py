@@ -6,10 +6,11 @@ import sys
 import tempfile
 import unittest
 
-from native_resume_fixtures import FakeResume
+from native_resume_fixtures import FakeResume, SETTINGS_DIGEST
 from native_session_fixtures import CONTROLLER, enrollment, native_fixture, observation
 from outbox_fixtures import CONTEXT, open_outbox
 from relay_core.identity import Denied, Peer
+from relay_core.contracts import decode, fingerprint, intent_payload
 from relay_core.native_resume import CodexExactResume, resume_action
 from relay_core.runtime_delivery import evidence_for
 
@@ -35,7 +36,7 @@ class ResumeTests(unittest.TestCase):
         self.adapter = CodexExactResume(self.native.rpc, authorize=lambda *_: "fixture-admission", resume_supported=True)
 
     def store(self, action_id="resume-1"):
-        action = resume_action(self.registry._row("builder.task"), action_id)
+        action = resume_action(self.registry._row("builder.task"), action_id, settings_digest=SETTINGS_DIGEST)
         self.ledger.store(action, CONTEXT)
         return action
 
@@ -87,6 +88,46 @@ class ResumeTests(unittest.TestCase):
         self.assertEqual(self.deliver()["state"], "unknown")
         self.assertEqual(self.native.count(), 1)
         self.assertFalse(self.registry.cached("builder.task").fields["ready"])
+
+    def test_reported_settings_mismatch_is_unknown_before_observer_and_never_retried(self):
+        self.registry.refresh(CONTROLLER, "builder.task", expected_revision=0)
+        self.observed.clear()
+        self.store()
+        def rpc(method, parameters, *, request_id):
+            response = self.native.rpc(method, parameters, request_id=request_id)
+            response["result"]["sandbox"]["networkAccess"] = True
+            return response
+        self.adapter.rpc = rpc
+        self.assertEqual(self.deliver()["state"], "unknown")
+        self.assertEqual(self.observed, [])
+        self.assertFalse(self.registry.cached("builder.task").fields["ready"])
+        self.assertEqual(self.deliver()["state"], "unknown")
+        self.assertEqual(self.native.count(), 1)
+        self.store("resume-replacement")
+        self.assertEqual(self.deliver("resume-replacement")["state"], "held")
+        self.assertEqual(self.native.count(), 1)
+
+    def test_legacy_resume_without_reviewed_settings_pin_is_held_without_rpc(self):
+        action = resume_action(self.registry._row("builder.task"), "resume-1", settings_digest=SETTINGS_DIGEST)
+        fields = {key: value for key, value in action.to_dict().items() if key in action.fields}
+        del fields["parameters"]["settings_digest"]
+        fields["intent_digest"] = fingerprint(intent_payload("external_action", {"id": action.id, **fields}))
+        self.ledger.store(decode(fields), CONTEXT)
+        before = self.registry.cached("builder.task")
+        self.assertEqual(self.deliver()["state"], "held")
+        self.assertEqual(self.native.count(), 0)
+        self.assertEqual(self.registry.cached("builder.task"), before)
+
+    def test_reviewed_settings_pin_changes_the_intent_but_never_native_overrides(self):
+        row = self.registry._row("builder.task")
+        first = resume_action(row, "resume-1", settings_digest=SETTINGS_DIGEST)
+        different = resume_action(row, "resume-1", settings_digest="sha256:" + "d" * 64)
+        self.assertNotEqual(first.fields["intent_digest"], different.fields["intent_digest"])
+        self.ledger.store(first, CONTEXT)
+        with self.assertRaises(Denied):
+            self.ledger.store(different, CONTEXT)
+        self.assertEqual(self.deliver()["state"], "confirmed")
+        self.assertEqual(self.ledger.load("resume-1")["plan"]["parameters"], {"threadId": "native-thread-1", "cwd": "/fixture/worktree"})
 
     def test_wrong_rpc_id_thread_tree_root_errors_and_malformed_ack_never_confirm(self):
         variants = [lambda rid: {"id": "foreign", "result": {"thread": {"id": "native-thread-1"}}},
@@ -188,12 +229,12 @@ class ResumeTests(unittest.TestCase):
 
     def test_missing_resume_capability_and_claude_are_not_codex_resume_targets(self):
         self.registry.enroll(CONTROLLER, enrollment("builder.other", provider="claude", native_id="native-claude-1"))
-        self.ledger.store(resume_action(self.registry._row("builder.other"), "claude-resume"), CONTEXT)
+        self.ledger.store(resume_action(self.registry._row("builder.other"), "claude-resume", settings_digest=SETTINGS_DIGEST), CONTEXT)
         self.assertEqual(self.deliver("claude-resume")["state"], "held")
         native = enrollment("reviewer.task", native_id="native-reviewer-1")
         native["capabilities"] = ["read"]
         self.registry.enroll(CONTROLLER, native)
-        self.ledger.store(resume_action(self.registry._row("reviewer.task"), "read-only-resume"), CONTEXT)
+        self.ledger.store(resume_action(self.registry._row("reviewer.task"), "read-only-resume", settings_digest=SETTINGS_DIGEST), CONTEXT)
         self.assertEqual(self.deliver("read-only-resume")["state"], "held")
         self.assertEqual(self.native.count(), 0)
 
@@ -211,13 +252,13 @@ class ResumeTests(unittest.TestCase):
 
     def test_actual_process_deaths_retain_attempt_and_never_repeat_resume_rpc(self):
         points = ("after_claim_commit", "after_native_resume_control_commit", "after_resume_control_commit", "after_submit_commit",
-                  "after_resume_rpc", "after_resume_fresh_observation", "before_receipt_commit", "after_receipt_commit")
+                  "after_resume_rpc", "after_resume_settings_verified", "after_resume_fresh_observation", "before_receipt_commit", "after_receipt_commit")
         for point in points:
             folder = self.folder / point
             with native_fixture(folder) as (registry, authority):
                 registry.enroll(CONTROLLER, enrollment())
                 ledger = open_outbox(folder / "ledger", policy_digest=authority.policy.digest)
-                ledger.store(resume_action(registry._row("builder.task"), "resume-1"), CONTEXT)
+                ledger.store(resume_action(registry._row("builder.task"), "resume-1", settings_digest=SETTINGS_DIGEST), CONTEXT)
                 ledger.close()
             result = subprocess.run([sys.executable, str(Path(__file__).with_name("native_resume_fault_fixture.py")), str(folder), point],
                                     capture_output=True, timeout=10)

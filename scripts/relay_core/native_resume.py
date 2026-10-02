@@ -8,18 +8,22 @@ Registry observations must independently verify runtime/worktree/permissions.
 from .contracts import canonical_bytes, create, fingerprint, intent_payload
 from .identity import Denied, exact, identifier, integer
 from .runtime_delivery import evidence_for
+from .native_settings import verify_resume_permissions
 
 
-ADAPTER = "codex-app-server-exact-resume.v1"
+ADAPTER = "codex-app-server-exact-resume.v2"
 
 
-def resume_action(row, action_id):
+def resume_action(row, action_id, *, settings_digest):
     """Protected planning only; the returned record grants no execution permission."""
     record = row["record"]
+    from .native_rpc import _hash
+    _hash(settings_digest)
     fields = {"id": identifier(action_id), "root_task_id": record.fields["root_task_id"],
               "requested_by_session_id": record.id, "action_kind": "native_resume",
               "parameters": {"session_id": record.id, "expected_revision": record.revision,
-                             "binding_digest": row["binding_digest"], "enrollment_digest": fingerprint(row["enrollment"])}}
+                             "binding_digest": row["binding_digest"], "enrollment_digest": fingerprint(row["enrollment"]),
+                             "settings_digest": settings_digest}}
     return create("external_action", **fields, state="stored", intent_digest=fingerprint(intent_payload("external_action", fields)),
                   attempt_id=None, receipt_id=None, outcome_evidence_id=None, authorization_id=None)
 
@@ -29,7 +33,9 @@ def resume_plan(action, row, authorization_id):
     if action.kind != "external_action" or action.fields["action_kind"] != "native_resume":
         raise Denied("exact native-resume action required")
     parameters = action.to_dict()["parameters"]
-    exact(parameters, {"session_id", "expected_revision", "binding_digest", "enrollment_digest"})
+    exact(parameters, {"session_id", "expected_revision", "binding_digest", "enrollment_digest", "settings_digest"})
+    from .native_rpc import _hash
+    _hash(parameters["settings_digest"])
     session = row["record"]
     native = row["enrollment"]
     if action.fields["root_task_id"] != session.fields["root_task_id"] or action.fields["requested_by_session_id"] != session.id or \
@@ -42,7 +48,7 @@ def resume_plan(action, row, authorization_id):
             "target": {"session_id": session.id, "binding_digest": row["binding_digest"],
                        "enrollment_digest": fingerprint(native), "expected_revision": session.revision,
                        "provider_session_id": native["provider_session_id"], "worktree": native["worktree"],
-                       "expected": native["expected"]},
+                       "expected": native["expected"], "settings_digest": parameters["settings_digest"]},
             "parameters": {"threadId": native["provider_session_id"], "cwd": native["worktree"]}}
 
 
@@ -107,6 +113,9 @@ class CodexExactResume:
                     type(response.get("result")) is not dict or type(response["result"].get("thread")) is not dict or \
                     response["result"]["thread"].get("id") != plan["parameters"]["threadId"]:
                 raise Denied("ambiguous or wrong-thread resume acknowledgment")
+            settings = verify_resume_permissions(response["result"], thread_id=plan["parameters"]["threadId"],
+                                                 worktree=plan["parameters"]["cwd"], expected_digest=plan["target"]["settings_digest"])
+            ledger.checkpoint("after_resume_settings_verified")
             # ACK alone is insufficient; the existing observer must independently
             # verify fresh identity, worktree, runtime/tool/permission hashes.
             observed = registry.refresh(controller, session_id, expected_revision=pending.revision)
@@ -115,7 +124,8 @@ class CodexExactResume:
                     registry._controller(controller, session_id) != binding:
                 raise Denied("resume remains unavailable or its fresh observation changed")
             evidence = evidence_for(action, attempt_id, plan, outcome="accepted", provider_reference=plan["parameters"]["threadId"],
-                                    payload={"rpc_response": response, "observation_id": observed.fields["observation_id"],
+                                    payload={"rpc_response": response, "resume_permissions": settings,
+                                             "observation_id": observed.fields["observation_id"],
                                              "observed_revision": observed.revision})
             ledger.reconcile(evidence)
         except Exception:

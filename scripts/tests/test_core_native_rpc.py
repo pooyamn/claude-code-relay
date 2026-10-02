@@ -9,7 +9,7 @@ import unittest
 from unittest import mock
 
 from native_rpc_fixtures import CLIENT, INITIALIZED, RPCFixture, TRANSPORT_DIGEST
-from native_resume_fixtures import FakeResume
+from native_resume_fixtures import FakeResume, SETTINGS_DIGEST
 from native_session_fixtures import CONTROLLER, enrollment, native_fixture, observation
 from outbox_fixtures import CONTEXT, open_outbox
 from relay_core.contracts import fingerprint
@@ -421,7 +421,7 @@ class JoinedResumeTests(unittest.TestCase):
                 with native_fixture(folder, observer=inspect) as (registry, authority), \
                         closing(open_outbox(folder / "outbox", policy_digest=authority.policy.digest)) as ledger:
                     registry.enroll(CONTROLLER, enrollment())
-                    ledger.store(resume_action(registry._row("builder.task"), "resume-1"), CONTEXT)
+                    ledger.store(resume_action(registry._row("builder.task"), "resume-1", settings_digest=SETTINGS_DIGEST), CONTEXT)
                     wire = self.wire_type()
                     try:
                         wire.initialize()

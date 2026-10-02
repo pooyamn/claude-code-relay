@@ -68,7 +68,8 @@ pre-turn enforcement on the PC.
 
 `native_resume.py` extends the existing protected delivery outbox rather than
 creating a retry queue. A resume intent fixes the native mapping, root, binding,
-enrollment digest and current registry revision. The required protected gate must
+enrollment digest, current registry revision and separately reviewed resume
+settings digest. The required protected gate must
 cover current source/context, reviewed runtime/setup, writer fencing and admission,
 including possible native goal continuations. Unsupported or unadmitted requests
 remain held without a native call. Controller identity must come from kernel
@@ -78,7 +79,8 @@ Before RPC, the attempt is committed and `prepare_resume()` invalidates cached
 readiness and earlier probes while preserving the exact conversation/last turn.
 Submission and fresh control checks precede one `thread/resume` call with the
 recorded thread ID and worktree, without model/profile overrides or start/fork
-fallback. A matching RPC ID/thread acknowledgment then requires the registry's
+fallback. A matching RPC ID/thread acknowledgment must also report sandbox and
+approval settings matching that action's pin, then requires the registry's
 independent fresh runtime/worktree/permission observation; owner pause, changed
 revision or revoked binding cannot be replaced by that reply.
 
@@ -298,6 +300,60 @@ baseline and durable connection/control epochs before relying on notifications.
 Neither requested resume overrides, a stale notification nor disk configuration
 can stand in for that evidence. No settings mutation, live resume or inference
 was performed during this inspection.
+
+### Resume permission response verification
+
+The generated Codex 0.160.0 `ThreadResumeResponse` reports `cwd`,
+`approvalPolicy`, `approvalsReviewer` and the legacy `sandbox` policy. The
+prepared `native_settings.py` adapter compares those returned native fields,
+not request overrides or disk configuration, to an explicitly reviewed
+`ccrelay.codex_resume_permissions.v1` contract. This provides a resume-response
+baseline; it is not an independent post-resume observation or continuing
+permission to run. The official resume API returns the same response shape as
+thread creation. [Native resume contract](https://learn.chatgpt.com/docs/app-server).
+
+`resume_action(..., settings_digest=...)` now requires that separate pin. It
+changes the durable intent and delivery plan before any effect, without changing
+the registry's broader permission/context digest. The native request still
+contains only the exact thread ID and worktree. The adapter is version 2:
+missing pins are held before RPC, while mismatch, unsupported response shape or
+failed verification after submission stays unknown without another resume.
+Changing the action ID cannot bypass its unresolved predecessor. Successful
+evidence retains the reported response and canonical permissions alongside the
+independent observation; an acknowledgment alone still cannot mark readiness.
+
+Normalization follows the pinned schema's defaults and preserves network access,
+writable roots, temporary-directory exclusions, approval-grant flags and reviewer
+selection. Unknown fields, non-boolean flags, duplicate/unsafe roots and missing
+required approval fields are refused. Named permission profiles and experimental
+runtime workspace roots require complete effective-policy evidence; they are
+held for that integration, never reduced to the legacy sandbox view. External
+sandbox reporting does not prove actual OS enforcement.
+
+Before activation, review the pin against the protected launch artifact and
+current policy. An old unsubmitted intent without it needs explicit replacement;
+do not rewrite an existing intent, discard unknown outcomes or reset counters.
+Old confirmed receipts remain historical, not new settings evidence. Preserve
+the existing outbox, native registry, full response/evidence and launch cohort
+during recovery; no new persistent component or silent database migration was
+introduced. Rollback to adapter v1 is not permission to run version-2 intents
+with older, weaker verification. The plan keeps this check inactive.
+
+The clean staged sandbox run passes 167 focused settings, registry, resume,
+outbox, identity and transport checks. Nine new settings checks and three added
+resume checks cover mismatched permissions, exact intent pins, absent legacy
+pins, preserved defaults and refusal rather than policy fallback. Nine actual
+resume-driver deaths now include the boundary after settings verification;
+accepted-write/lost-ACK recovery still does not repeat the non-idempotent fake
+provider over pipes or WebSocket. Native settings, controller/admission and
+Linux facts remain synthetic. This is not real provider/profile/WSL proof; the
+full suite remains deferred to the next milestone. Strict staged secret
+screening passes without repository allowlists.
+
+Fresh settings/control epochs, complete loaded instructions/skills/MCP context,
+native app visibility, subscription topology and actual isolation still require
+the protected observer/launcher integration. No bound native session, daemon,
+bot, service or model was used as a fixture or changed by this preparation.
 
 ## Read only target preparation
 

@@ -291,6 +291,18 @@ Codex 0.160.0 schema inspection also establishes that disk `config/read` and
 baseline/event integration remains pending. The plan stays inactive and no live
 process/bot changed. [Evidence and remaining gates](pr7-native-session-registry.md#prepared-native-executable-observation).
 
+Resume-permission preparation: `native_settings.py` compares the native Codex
+resume response's sandbox, approval policy, reviewer and cwd to a separately
+reviewed settings digest bound into the durable action. Adapter v2 holds old
+unpinned intents and preserves mismatches as unknown rather than retrying or
+claiming readiness. The broader registry permission/context contract and required
+independent observation remain unchanged. All 167 clean-staged focused settings/
+registry/resume/outbox/identity/transport checks pass, including nine resume-driver
+deaths and exact-intent/no-fallback negatives. Named-profile and runtime-root
+evidence, fresh control epochs, real native/WSL and protected launcher acceptance
+remain pending. The plan stays inactive; no live model/session/bot changed.
+[Response evidence and recovery](pr7-native-session-registry.md#resume-permission-response-verification).
+
 ## PR 8 Root tasks and atomic work ownership
 
 Depends on: PRs 1, 2 and 7.
