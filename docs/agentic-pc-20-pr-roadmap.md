@@ -8,11 +8,11 @@ Build testable security and delivery foundations first. Introduce the builder wi
 
 Pouya requested sequential implementation for PC readiness and authorized committing and pushing verified changes. Repository publication is separate from deployment: no GitHub PRs, live deployments, credential changes or migration have been performed by this implementation run. Local implementation/test evidence is distinct from target-PC acceptance. Unrelated uncommitted edits and runtime/media files are excluded from this series.
 
-PR 1 is locally implemented. PRs 2–5 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel/runtime integration still pending; evidence and limits are recorded below. PR 6's outbound scheduler/receipt foundation is prepared offline; safe format repair, trusted producer wiring and target integration remain pending. PRs 7–20 remain to be implemented. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
+PR 1 is locally implemented. PRs 2–5 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel/runtime integration still pending; evidence and limits are recorded below. PR 6's outbound foundation, bounded format/media repair and receipt-bound owner-prompt bridge are prepared offline; protected producer/grant revalidation and target integration remain pending. PRs 7–20 remain to be implemented, apart from separately requested early preparations noted below. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
 
 ## Existing code to extend
 
-Design expansion (2026-10-02): [design v8](agentic-pc-design.md) also requires
+Design expansion (2026-10-02): [design v9](agentic-pc-design.md) also requires
 human employees from different companies to use Khadang. Preserve the 20-PR
 sequence, but extend contracts, protected identity/membership, intake, task
 steering, approvals, retrieval/history and publication with company/project/topic
@@ -22,6 +22,15 @@ existing local PR 1–5 preparation is not a completed multi-company boundary.
 Revisit those contracts and demonstrate design acceptance test 14 before
 enabling employee grants. Onboarding/delegation and topic trigger choices remain
 pending; this requirement does not change live bot allowlists or bindings.
+
+Native goals (requested 2026-10-02) extend PR 6's one-message status UI, PR 7's
+pinned native adapters, PR 8's durable root ownership, PR 9's admission/pacing
+and PR 19–20's recovery/target acceptance. Preserve the 20-PR sequence. The
+legacy Mac code prepares explicit native goal commands, exact-thread intent
+journaling and a compact goal footer without editing the user-owned protocol
+launcher. It does not establish protected PC controls or admitted native
+continuations. [Goal preparation evidence and activation gates](codex-goals.md);
+design acceptance test 15 remains pending.
 
 - Routing, Telegram formatting, session watchers, Codex observation and MCP messaging already exist in `scripts/`; do not plan their wholesale replacement.
 - The legacy `scripts/ccrelayd.py` advances the Telegram offset before handling, and its per-topic queues are in memory. PR 4 prepares a separate protected durable intake for the target; native/media/action adapters are still required before cutover. The legacy live Mac deployment is not automatically converted.

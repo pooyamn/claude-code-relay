@@ -197,6 +197,26 @@ def install(module):
             self.view = TurnView(module.read_thread(key))
             self._view_lock = threading.RLock()
             self._view_requests = {}
+            from relay_codex_goal import GoalControl, GoalView
+            self.goal_view = GoalView(self.view.thread_id)
+            self.goal_control = GoalControl(self.goal_view, self._goal_rpc)
+
+        def _goal_rpc(self, method, params):
+            # Recheck the exact binding immediately before a native operation.
+            if not self.alive() or not self.tid or params.get("threadId") != self.tid \
+                    or module.read_thread(self.key) != self.tid:
+                raise OSError("Native goal connection/binding changed")
+            rid = self._send(method, params)
+            return self._wait(rid, 10) if rid is not None else None
+
+        def open(self):
+            ok = super().open()
+            if ok:
+                try:
+                    self.goal_control.read()
+                except (ValueError, OSError):
+                    pass  # Display unavailable; never simulate goals in text.
+            return ok
 
         def _send(self, method, params, want_id=True):
             rid = super()._send(method, params, want_id)
@@ -212,6 +232,7 @@ def install(module):
                     and (method != "thread/resume" or thread["id"] == expected):
                 with self._view_lock:
                     self.view.bind(thread["id"])
+                    self.goal_view.bind(thread["id"])
                     turns = thread.get("turns") or []
                     if turns:
                         self.view.hydrate(turns[-1])
@@ -221,6 +242,9 @@ def install(module):
 
         def _on_notify(self, event):
             with self._view_lock:
+                if event.get("method") in {"thread/goal/updated", "thread/goal/cleared"}:
+                    self.goal_view.observe(event)
+                    return  # Goal events aren't turn events and have no turn ID.
                 if not self.view.observe(event):
                     return
                 # The original parser keeps transport/steering flags. Only
@@ -235,6 +259,16 @@ def install(module):
         def bubble_snapshot(self):
             with self._view_lock:
                 return self.view.thread_id, self.view.turn_id, self.view.status, self.view.render()
+
+        def goal_line(self):
+            return self.goal_view.line()
+
+        def goal_notice(self, request_id, text):
+            with self._view_lock:
+                if not self.view.turn_id:
+                    return False
+                self.view.put({"id": "relay-goal-" + request_id, "type": "agentMessage", "text": text}, completed=True)
+                return True
 
     module.Conn = BubbleConn
 
@@ -303,7 +337,7 @@ class BubblePages:
         self.rolling, self.started_at, self.wall_clock = rolling, started_at, wall_clock
         self.started_clock = clock()
 
-    def rolling_text(self, body, status):
+    def rolling_text(self, body, status, goal_line=""):
         from relay_tg import md_to_html
         started = self.started_at
         if started is not None:
@@ -318,6 +352,10 @@ class BubblePages:
         label = {"inProgress": "Working", "completed": "Done", "failed": "Failed",
                  "interrupted": "Interrupted"}.get(status, str(status))
         footer = f"{label} ({duration})"
+        if goal_line:
+            footer += "\n" + goal_line
+        if len(md_to_html(footer).encode("utf-16-le")) // 2 > 1500:
+            raise ValueError("Goal footer exceeds its reserved message budget")
         body = body or "Waiting for Codex activity…"
         size = min(len(body), 3000)
         while True:
@@ -332,7 +370,7 @@ class BubblePages:
                 return text
             size = max(1, size // 2)
 
-    def update(self, body, status="inProgress", force=False):
+    def update(self, body, status="inProgress", force=False, goal_line=""):
         if self.pending is not None:
             operation, pos, text, poll = self.pending
             receipt = poll()
@@ -366,7 +404,7 @@ class BubblePages:
             self.sent[intent["position"]] = intent["text"]
         label = {"inProgress": "⏳ Working", "completed": "✓ Done", "failed": "⚠️ Failed",
                  "interrupted": "✋ Interrupted"}.get(status, "⏸ " + str(status))
-        pieces = [self.rolling_text(body, status)] if self.rolling else self.split(body or "Waiting for Codex activity…", 3900)
+        pieces = [self.rolling_text(body, status, goal_line)] if self.rolling else self.split(body or "Waiting for Codex activity…", 3900)
         for pos, piece in enumerate(pieces):
             text = piece if self.rolling else label + (f" · part {pos + 1}" if len(pieces) > 1 else "") + "\n\n" + piece
             if pos >= len(self.state.ids):

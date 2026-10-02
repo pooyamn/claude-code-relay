@@ -2365,6 +2365,24 @@ def inject(prompt):
     menu tap) into the TUI and return '' immediately. The watcher delivers the
     result, so this never blocks on the turn."""
     save_target(CHAT_ID, THREAD_ID)
+    from relay_codex_goal import GoalInbox, parse_command
+    try:
+        goal_command = parse_command(prompt)
+    except ValueError as error:
+        deliver(str(error))
+        return ""
+    if goal_command is not None:
+        if not is_codex():
+            deliver("Native goal controls require the Codex backend. No model prompt was sent.")
+            return ""
+        inbox = GoalInbox(STATE_DIR, SESSION)
+        try:
+            inbox.enqueue(cxp().read_thread(SESSION), goal_command)
+        except ValueError as error:
+            deliver(str(error))
+        finally:
+            inbox.close()
+        return ""
     # API-backed opencode: POST the prompt and return. There is no pane to type
     # into, and prompt_async does not block on the turn, so the contract the
     # watcher expects ("" now, delivery later) is unchanged.
@@ -2533,6 +2551,8 @@ def watch():
     _cxconn = None                 # codex app-server connection, owned by this loop
     _cx_bubble, _cx_bubble_turn, _cx_bubble_ws = None, "", None
     _cx_bubble_finished = False
+    _cx_bubble_goal = ""
+    _cx_goal_notice_pending = False
     _cxblocked_since, _cxblocked_told = None, False
     api_tick, stream_last_text = 0, ""
     while True:
@@ -2620,6 +2640,25 @@ def watch():
                         f"{label} (topic {THREAD_ID})" if THREAD_ID else label)
                 except Exception:
                     pass
+            # Goal controls bypass prompt/turn pacing and never become steering
+            # text. Their persistent claim precedes the native RPC; an unknown
+            # outcome survives restart without replay.
+            from relay_codex_goal import GoalInbox
+            inbox = GoalInbox(STATE_DIR, SESSION)
+            try:
+                goal_result = inbox.run_one(_cxconn, cxp().read_thread(SESSION))
+                if goal_result:
+                    request_id, outcome, notice = goal_result
+                    held = inbox.unknown_count()
+                    if held:
+                        notice += f" {held} earlier/current goal command(s) have an unconfirmed outcome; inspect native status."
+                    if STREAM and _cxconn.goal_notice(request_id, notice):
+                        _cx_bubble_finished = False
+                        _cx_goal_notice_pending = True
+                    else:
+                        deliver(notice)  # No native turn/bubble exists yet.
+            finally:
+                inbox.close()
             # peek/drop, never drain: a message must not be consumed until it
             # has actually been handed to the connection.
             for item in cxp().peek(SESSION):
@@ -2647,6 +2686,10 @@ def watch():
             # activity stay in these bubbles. No separate origin/final text
             # messages and no live-window tail truncation on the Codex path.
             native_thread, native_turn, status, body = _cxconn.bubble_snapshot()
+            goal_line = _cxconn.goal_line()
+            if goal_line != _cx_bubble_goal:
+                _cx_bubble_finished = False
+                _cx_bubble_goal = goal_line
             if STREAM and native_turn:
                 from relay_codex_bubble import BubblePages, BubbleState
                 import relay_tg
@@ -2654,7 +2697,7 @@ def watch():
                 # Don't replay an old completed turn after a watcher restart.
                 # A recorded bubble can be reconciled; an active turn is new
                 # visible work and its full resume snapshot must be shown.
-                if status == "inProgress" or _cx_bubble_turn == native_turn or state.ids:
+                if status == "inProgress" or _cx_bubble_turn == native_turn or state.ids or _cx_goal_notice_pending:
                     if _cx_bubble_turn != native_turn:
                         if _cx_bubble_ws:
                             _cx_bubble_ws.close()
@@ -2672,10 +2715,13 @@ def watch():
                         _cx_bubble_turn, _cx_bubble_finished = native_turn, False
                     if not _cx_bubble_finished:
                         try:
-                            confirmed = _cx_bubble.update(body, status, force=status != "inProgress")
+                            confirmed = _cx_bubble.update(body, status, force=status != "inProgress", goal_line=goal_line)
+                            if confirmed:
+                                _cx_goal_notice_pending = False
                             if confirmed and status != "inProgress":
-                                if _cx_bubble_ws:
-                                    _cx_bubble_ws.close()
+                                # Keep the same acknowledged bubble editable for
+                                # goal controls while the native turn is idle.
+                                # Its WS is closed when the next turn takes over.
                                 _cx_bubble_finished = True
                         except Exception as error:
                             # Never turn a failed/unknown delivery into silence
@@ -2937,6 +2983,10 @@ def main():
     if "--watch" in sys.argv[1:]:
         watch(); return
     prompt = " ".join(args)
+    from relay_codex_goal import COMMAND as GOAL_RE
+    if GOAL_RE.fullmatch(prompt):
+        print(inject(prompt))
+        return  # Even legacy/JSONL mode must never turn a control into a prompt.
     if JSONL:
         jsonl_main(prompt); return
     if WATCH:

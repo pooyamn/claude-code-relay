@@ -43,6 +43,7 @@ import uuid
 D = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, D)
 import relay_tg  # noqa: E402
+from relay_codex_goal import COMMAND as GOAL_RE
 
 BACKEND = os.path.join(D, "claude-tui-backend-multi")
 CODES = os.path.join(D, "relay-codes.json")
@@ -221,6 +222,15 @@ class Daemon:
             return self.cmd_unbind(chat, thread)
         if admin and STATUS_RE.match(text):
             return self.cmd_status(chat, thread)
+        # Goal controls can start autonomous native work. The legacy bot's
+        # wildcard-chat permission isn't owner authority. Company-delegated
+        # controls remain disabled until the target membership/admission gates.
+        goal_match = GOAL_RE.fullmatch(text)
+        is_goal = bool(goal_match)
+        if goal_match and goal_match.group("bot") and goal_match.group("bot").lower() != self.me.get("username", "").lower():
+            return  # Explicitly addressed to another bot; never run it here.
+        if is_goal and (not admin or any(key in msg for key in ("forward_origin", "forward_from", "via_bot"))):
+            return self.say(chat, thread, "Goal controls require an authorized owner; no goal command was forwarded.")
 
         peer, folder = self.bindings.lookup(chat, thread)
         if not folder:
@@ -228,7 +238,7 @@ class Daemon:
                 f"({msg['chat'].get('title')}): {text[:40]!r}")
             return                      # unbound: stay silent
         media = self.fetch_media(msg, folder)
-        immediate = bool(CANCEL_RE.match(text))
+        immediate = is_goal or bool(CANCEL_RE.match(text))
         self.dispatch(peer, folder, chat, thread, msg["chat"], msg["from"], text,
                       media, msg, immediate=immediate)
 
