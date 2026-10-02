@@ -1,0 +1,11 @@
+{
+  "schema": "ccrelay.admission_config.v1",
+  "enabled": false,
+  "automatic_turns_enabled": false,
+  "scope": "platform-owner-only",
+  "broker_policy_path": "/etc/ccrelay/broker-policy.json",
+  "work_state_dir": "/var/lib/ccrelay-broker/work",
+  "minimum_gap_ms": null,
+  "quota_max_age_ms": null,
+  "activity_max_age_ms": null
+}

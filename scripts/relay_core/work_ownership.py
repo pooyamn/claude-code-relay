@@ -77,6 +77,12 @@ class WorkOwnership(DeliveryLedger):
         self.connection.execute("CREATE TABLE root_results (root_id TEXT NOT NULL,evidence_id TEXT NOT NULL,result_digest TEXT NOT NULL,PRIMARY KEY(root_id,evidence_id),UNIQUE(root_id,result_digest))")
 
     def _validate_component(self):
+        if self.connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='model_metadata'").fetchone():
+            from .model_admission import SCHEMA as ADMISSION_SCHEMA
+            admission = self.connection.execute("SELECT schema,policy_digest FROM model_metadata").fetchall()
+            if len(admission) != 1 or admission[0][0] != ADMISSION_SCHEMA:
+                raise Denied("unsupported joined admission schema; preserve database before root recovery")
+            _digest(admission[0][1])
         metadata = self.connection.execute("SELECT schema,next_fence,last_wall_ms FROM work_metadata").fetchall()
         if len(metadata) != 1 or metadata[0][0] != SCHEMA:
             raise Denied("unsupported work ownership schema; preserve for migration")

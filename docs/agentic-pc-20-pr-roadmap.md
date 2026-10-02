@@ -8,7 +8,7 @@ Build testable security and delivery foundations first. Introduce the builder wi
 
 Pouya requested sequential implementation for PC readiness and authorized committing and pushing verified changes. Repository publication is separate from deployment. A separately authorized legacy Mac Khadang test release is active; no GitHub PRs, protected PC capabilities, credential changes or production/HamalBot migration have been performed by this implementation run. Local implementation/test evidence is distinct from target-PC acceptance. Unrelated uncommitted edits and runtime/media files are excluded from this series.
 
-PR 1 is locally implemented. PRs 2–5 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel/runtime integration still pending; evidence and limits are recorded below. PR 6's outbound foundation, bounded format/media repair, receipt-bound owner-prompt bridge, current source-grant dispatch and Telegram-local recovery are prepared offline; real protected producer/context wiring and target integration remain pending. PR 7's native registry, launch-bundle, worker-UID worktree and context-installation foundations are prepared as dependencies for that wiring, without completing PR 6 or its own native/launcher gates. PR 8's durable root/work custody and bounded-diagnosis guard are prepared offline, without granting activity slots or completing real evidence/admission/report/controller integration. PRs 9–20 remain to be implemented, apart from separately requested early preparations noted below. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
+PR 1 is locally implemented. PRs 2–5 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel/runtime integration still pending; evidence and limits are recorded below. PR 6's outbound foundation, bounded format/media repair, receipt-bound owner-prompt bridge, current source-grant dispatch and Telegram-local recovery are prepared offline; real protected producer/context wiring and target integration remain pending. PR 7's native registry, launch-bundle, worker-UID worktree and context-installation foundations are prepared as dependencies for that wiring, without completing PR 6 or its own native/launcher gates. PR 8's durable root/work custody and bounded-diagnosis guard are prepared offline, without granting activity slots or completing real evidence/admission/report/controller integration. PR 9's shared admission/account-pacing ledger is prepared offline; real all-source native enforcement, quota/source/stop readers, joined diagnostics/retries and target acceptance remain pending. PRs 10–20 remain to be implemented, apart from separately requested early preparations noted below. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
 
 ## Existing code to extend
 
@@ -382,8 +382,9 @@ admission facts are synthetic; real readers, PR 9 scheduling, current result
 enforcement and the PR 6 report bridge remain unavailable. This creates no model
 turn, Telegram message, automatic repair or new SQL schema.
 
-All 324 focused clean-staged checks pass in 81 serial sandbox batches. Full-suite
-verification remains deferred to the next milestone; PR 8 is not target accepted.
+The diagnosis preparation passed 324 focused clean-staged checks in 81 serial
+sandbox batches. The subsequent PR 9 milestone passed all 724 core tests and all
+four legacy suites; PR 8 is still not target accepted.
 
 ## PR 9 Global admission and subscription pacing
 
@@ -397,7 +398,25 @@ Done when: a fourth turn cannot start through any source; one account's roles ca
 
 Capacity acceptance: overload retries preserve the task and resume safely after the verified wait; restart cannot reset retry limits or duplicate a replacement intent. Quota/authentication/unknown outcomes, canceled or stale-turn work and exhausted deadlines do not auto-retry. A provider wait longer than the local cap is honored or held, not shortened. Prove no replay of completed tools/external actions and no independent per-role retry storm.
 
-Local early preparation (2026-10-02, requested separately by Pouya): `relay_core/capacity_retry.py` supplies a pure versioned retry-policy state machine with typed normalized evidence, bounded backoff/jitter, deadline checks, deduplication, cancellation, native-retry deferral and stable one-time proposals. Eighteen isolated tests verify policy and serialized-state behavior. It does not persist state or call a model by itself; PR 9 remains unimplemented until the durable shared scheduler, atomic proposal/outbox linkage and admission gates are integrated. [Capacity retry scope and evidence](model-capacity-retries.md) records these limits.
+Local early preparation (2026-10-02, requested separately by Pouya): `relay_core/capacity_retry.py` supplies a pure versioned retry-policy state machine with typed normalized evidence, bounded backoff/jitter, deadline checks, deduplication, cancellation, native-retry deferral and stable one-time proposals. Eighteen isolated tests verify policy and serialized-state behavior. It does not persist state or call a model by itself; durable retry/proposal linkage and shared cooldown admission remain pending. [Capacity retry scope and evidence](model-capacity-retries.md) records these limits.
+
+Local shared admission preparation: `model_admission.py` joins account pacing,
+finite per-window estimates, the three-session activity cap and once-only root
+charging to the same outbox attempt transaction. Automation preserves 10% of each
+total allowance. Independently verified owner requests can use the reserve and
+bypass automated pacing but not quota/cap; autonomous support needs an explicit
+grant. Pacing/quota waits charge no turn, and retained activity/quota estimates
+survive restart until exact stop/coverage evidence permits release. Twenty-four
+admission and two planner cases include two actual transaction-boundary deaths.
+Observer facts are synthetic; real pre-turn fences, provider provenance, owner
+priority, missing-telemetry estimates, diagnostic/retry admission, passive reports
+and target restore remain pending. `ccrelay_admission.py --plan` stays disabled,
+with numerical pacing choices unset. [Admission evidence and recovery](pr9-model-admission.md).
+
+The clean staged-source milestone passed all 724 core tests in 181 serial sandbox
+batches, the isolation probe and all four legacy suites. The strict staged secret
+scan passed; unrelated protocol edits were excluded. This does not establish real
+native-app enforcement, subscription provenance or target-PC acceptance.
 
 ## PR 10 Verified tool switch and interrupted recovery
 

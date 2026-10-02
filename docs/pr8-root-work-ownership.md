@@ -178,10 +178,11 @@ death rolls back the bundle; a post-commit death preserves the same intent and
 once-only accounting without granting another execution. Material and admission
 receipts in these tests are synthetic, not real task/provider observations.
 
-All 324 focused root/work, diagnosis, contract, identity, outbox, artifact, isolation
-and native/transport checks passed from a clean staged-source export in 81 serial
-sandbox batches. The full suite remains deferred to the next milestone; earlier
-full-suite results are historical, not a claim about this candidate.
+The diagnosis preparation passed 324 focused root/work, diagnosis, contract,
+identity, outbox, artifact, isolation and native/transport checks from a clean
+staged-source export in 81 serial sandbox batches. The subsequent
+[PR 9 milestone](pr9-model-admission.md) passed all 724 core tests and all four
+legacy suites. These results do not establish target/native acceptance.
 
 PR 8 remains in preparation. Real protected root creation/inherited dispatch,
 resource inventory and writer fences, criteria/result provenance, diagnostic
