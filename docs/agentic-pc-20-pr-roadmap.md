@@ -316,6 +316,17 @@ integration, ordered event recovery, encrypted inventory/restore and native targ
 acceptance remain pending; capture stays inactive and no live bot/model changed.
 [Capture and recovery contract](pr7-native-session-registry.md#durable-native-response-capture).
 
+Control-epoch preparation: `native_epochs.py` journals sealed frame references
+and reviewed native settings baselines with monotonic epochs. Settings/lifecycle
+changes, delayed replies and restoration invalidate older observation tickets;
+matching notifications cannot revive unknown or closed state. Twenty-five new
+real-pipe/UnixWS sandbox checks include three actual synthetic-driver deaths,
+without another provider resume. This is a freshness prerequisite, not native
+readiness or completed observation. Protected driver/observer integration,
+verified subscription/mediation, full loaded-context/OS evidence and encrypted
+restore acceptance remain pending; epochs stay inactive and live bots unchanged.
+[Epoch evidence and recovery](pr7-native-session-registry.md#durable-settings-and-control-epochs).
+
 ## PR 8 Root tasks and atomic work ownership
 
 Depends on: PRs 1, 2 and 7.

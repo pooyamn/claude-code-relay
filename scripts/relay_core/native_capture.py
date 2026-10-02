@@ -40,13 +40,14 @@ def validate_reference(value):
 
 class NativeCapture:
     def __init__(self, store, *, source_digest, connection_id, current_source,
-                 notify=None, checkpoint=lambda _: None):
+                 notify=None, observe_receipt=None, checkpoint=lambda _: None):
         if type(store) is not ArtifactStore or not callable(current_source) or not callable(checkpoint) or \
-                notify is not None and not callable(notify):
+                notify is not None and not callable(notify) or observe_receipt is not None and not callable(observe_receipt):
             raise Denied("protected artifact store and current native source required")
         self.store, self.source_digest = store, _hash(source_digest)
         self.connection_id = identifier(connection_id)
         self.current_source, self.notify, self.checkpoint = current_source, notify, checkpoint
+        self.observe_receipt = observe_receipt
 
     def _current(self):
         if self.current_source() != self.source_digest:
@@ -90,6 +91,9 @@ class NativeCapture:
         self.checkpoint("after_native_frame_commit")
         self._current()
         receipt = NativeFrameReceipt(artifact)
+        if self.observe_receipt is not None:
+            self.observe_receipt(receipt)
+        self._current()
         # Keep existing demultiplexing/UI behavior, but only after durability.
         # The listener receives a detached parse, never the RPC return object.
         if self.notify is not None:

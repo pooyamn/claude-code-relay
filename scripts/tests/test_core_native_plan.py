@@ -27,6 +27,8 @@ class NativePlanTests(unittest.TestCase):
         self.assertEqual(plan["resume_adapter"], "codex-app-server-exact-resume.v3")
         self.assertEqual(plan["native_capture_schema"], "ccrelay.native_frame.v1")
         self.assertFalse(plan["native_capture_activated"])
+        self.assertEqual(plan["native_control_epoch_schema"], "ccrelay.native_control_epochs.v1")
+        self.assertFalse(plan["native_control_epochs_activated"])
         self.assertEqual(plan["rpc_transport"], "codex-app-server-jsonl.v1")
         self.assertEqual(plan["websocket_transport"], "codex-app-server-unix-websocket.v1")
         self.assertEqual(plan["kernel_peer_schema"], "ccrelay.native_unix_peer.v1")

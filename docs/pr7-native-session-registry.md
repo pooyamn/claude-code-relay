@@ -405,7 +405,7 @@ permission to resend. Historical reads verify stored bytes but do not grant
 current execution authority. Rollback must preserve these artifacts and unknown
 actions rather than discard them or route through an older adapter.
 
-Protected source/producer wiring, persistent control epochs, ordered event recovery,
+Protected source/producer wiring, target control-epoch integration, ordered event recovery,
 archive inventory integration and clean-target restore acceptance remain pending.
 The plan reports capture inactive. No live native session, daemon, bot or model
 was changed or used as a fixture.
@@ -421,6 +421,80 @@ publication and capture verification; recovery never repeats the provider effect
 Source/kernel/native settings and admission observations remain substituted,
 not native Linux/WSL enforcement evidence. The full suite remains deferred to
 the next milestone.
+
+### Durable settings and control epochs
+
+`native_epochs.py` prepares `ccrelay.native_control_epochs.v1` in a separate
+protected ledger. Each connection fixes its source digest, exact thread ID,
+worktree and reviewed settings pin. Monotonic control epochs and immutable
+history prevent an older observation from surviving a settings/lifecycle change,
+controller mutation or component restart. This is an observer prerequisite, not
+the completed native observer, readiness or permission to start a model turn.
+
+The pinned Codex 0.160.0 generated standard schema includes
+`thread/settings/updated` with `threadSettings`: cwd, sandbox policy, approval
+policy and reviewer, plus model/collaboration fields. The public
+[app-server documentation](https://learn.chatgpt.com/docs/app-server) does not
+establish this event's delivery/replay guarantees. Its `thread/read` response
+lacks the complete sandbox/approval baseline; disk `config/read` is not a
+replacement. Actual target compatibility and complete control mediation remain
+required before using these epochs as part of readiness.
+
+Enroll the protected RPC/capture connection before initialization. Enrollment
+installs a receipt consumer ahead of existing UI listeners, preserving those
+listeners. It records sealed frame references in arrival order with checksums;
+repeating a journal acknowledgment does not append or apply an event twice.
+A verified matched resume response establishes the settings baseline only when
+the captured frame is present in that journal and the expected epoch is still
+current. A settings event received during resume invalidates the old epoch:
+the later reply cannot overwrite it merely because its values match.
+
+An unsolicited matching event cannot establish the initial baseline or revive
+unknown/closed state. After a current baseline exists, a matching settings event
+advances the epoch and preserves the reviewed permissions. An unreviewed policy,
+unsupported profile/shape, missing control scope or permission request changes
+state to unknown. Lifecycle changes invalidate outstanding observation tickets;
+explicit thread closure prevents the connection's reuse. Foreign-thread and tool
+events remain in the journal without being attributed as this thread's controls.
+No permission request is automatically answered.
+
+A protected observer takes a `NativeEpochTicket` before its exact native read
+and validates it afterward. Validation requires the same current transport,
+capture/source, receipt consumer, epoch and verified baseline artifact bytes;
+boolean epoch aliases and fabricated dictionaries are refused. The ticket is
+only a necessary freshness check. Independent loaded instructions/skills/MCP and
+runtime/worktree evidence, current binding, actual lifecycle/stop proof and
+all-source admission are still required. A queued event is not assumed delivered:
+the observer must use the controlled native read/event barrier and the target's
+verified subscription/mediation contract, not trust a ticket alone.
+
+Before every native control mutation, the protected driver must invalidate the
+old epoch durably and bind any resulting baseline to that exact control attempt.
+This helper does not submit controls or reconcile an uncertain native action;
+the existing outbox still owns those outcomes. The exact-resume adapter and
+registry do not yet consume this component automatically. Full driver/observer
+integration remains the next gate; the planner reports epochs inactive.
+
+Include the new private ledger, its SQLite WAL/consistent backup and complete
+epoch/frame history in the encrypted recovery inventory alongside native-frame
+and native-payload artifacts, the registry/outbox and source/connection cohort.
+Restart or restore preserves historical baselines/references but invalidates
+their current status. A verified ordered prefix is not permission to replay
+native events/actions; sealed frames outside that committed prefix are retained
+as orphans for inspection. Preserve unsupported schema versions and unknown
+outcomes. No automatic baseline resume or retry occurs during recovery, and
+rollback cannot reactivate an older ticket or discard the journal.
+
+Twenty-five new sandbox checks cover real-pipe and anonymous UnixWS epochs,
+matching/foreign/malformed events, delayed resume/read replies, current-source
+and consumer failures, corrupted baselines, closed threads and restoration.
+Three actual synthetic-driver deaths cover epoch/frame-order commit boundaries;
+the provider records one resume across recovery, never a second effect. Source,
+UID/cgroup/native settings and admission facts are substituted, not target-OS or
+real-provider proof. No live daemon, native session, bot or model was changed.
+The clean staged-source run passed all 228 focused epoch, capture, settings,
+registry, outbox, artifact, identity and transport checks in 57 serial sandbox
+batches. The full suite remains deferred to the next milestone.
 
 ## Read only target preparation
 
