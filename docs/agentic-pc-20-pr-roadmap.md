@@ -8,7 +8,7 @@ Build testable security and delivery foundations first. Introduce the builder wi
 
 Pouya requested sequential implementation for PC readiness and authorized committing and pushing verified changes. Repository publication is separate from deployment: no GitHub PRs, live deployments, credential changes or migration have been performed by this implementation run. Local implementation/test evidence is distinct from target-PC acceptance. Unrelated uncommitted edits and runtime/media files are excluded from this series.
 
-PR 1 is locally implemented. PR 2 code/template preparation is implemented, with target-OS acceptance still pending; its evidence and limits are recorded below. PRs 3–20 remain to be implemented. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
+PR 1 is locally implemented. PRs 2–3 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel integration still pending; evidence and limits are recorded below. PRs 4–20 remain to be implemented. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
 
 ## Existing code to extend
 
@@ -66,6 +66,10 @@ Depends on: PRs 1 and 2.
 Persist owner-authenticated, single-use approvals bound to action parameters and candidate digests. Build the protected deployer, deterministic protected-change classification, masked Jev screening contract and audit trail. Install immutable artifacts; test candidates without live router secrets. Distinguish triage rule fallback from deployment screening: unavailable/uncertain security clearance never becomes automatic authorization. Use owner-approved bootstrap artifacts until the reviewer/publication path is available in PR 11.
 
 Done when: forged approval text, replay, altered artifacts and modified screening/deployer policy cannot authorize execution. Protected changes always wait for exact-version owner approval; routine deployment remains disabled until its later gates exist.
+
+Local preparation: `owner_gate.py` and a thin Linux ingress persist owner/channel/prompt-bound decisions, revocation, single-use approval consumption and durable attempts in private SQLite. `artifacts.py` verifies complete sealed content-addressed trees, classifies changes under installed protected policy and supplies owner-approved bootstrap pointer activation/reconciliation without executing candidates or restarting services. `screening.py` supplies the pure masked Jev report contract; no live provider or automated clearance is connected. Credentialed code is protected regardless of filename; the later routine lane isolates presentation work from bot credentials rather than requiring owner review of every relay change.
+
+All four legacy suites and 101 core tests pass, including actual scratch-process deaths around attempt/pointer/receipt boundaries. [The PR 3 evidence and recovery runbook](pr3-owner-deployment.md) records remaining WSL, trusted Khadang intake/receipt/UI and screener-provenance gates. Examples and service templates remain disabled/inert. No live bot, credential, service or state migration changed. Root bootstrap enrollment is not an owner decision; routine activation remains unavailable until PR 11's independent gates and PR 15's runtime proof.
 
 ## PR 4 Durable inbound intake and poller ownership
 

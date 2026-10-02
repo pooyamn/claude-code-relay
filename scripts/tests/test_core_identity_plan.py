@@ -20,6 +20,8 @@ class PlanTests(unittest.TestCase):
         result = planner.plan(DEPLOY, users=[], groups=[])
         self.assertFalse(result["changes_applied"])
         self.assertFalse(result["services_enabled"])
+        self.assertFalse(result["owner_ingress_enabled"])
+        self.assertFalse(result["bootstrap_deployment_enabled"])
         self.assertEqual(len(result["accounts"]), 11)
         self.assertEqual(len({row["uid"] for row in result["accounts"].values()}), 11)
         self.assertNotIn("/Users/pouya", {row["home"] for row in result["accounts"].values()})
@@ -53,6 +55,10 @@ class PlanTests(unittest.TestCase):
         self.assertIn("User=ccrelay-@ROLE@", worker)
         self.assertIn("KillMode=control-group", worker)
         self.assertIn("RestrictNamespaces=yes", worker)
+        owner = (DEPLOY / "systemd/ccrelay-owner-gate.service").read_text()
+        self.assertNotIn("\n[Install]", owner)
+        self.assertIn("User=ccrelay-deployer", owner)
+        self.assertIn("RestrictAddressFamilies=AF_UNIX", owner)
 
     def test_read_only_planner_cli_works_with_isolated_python(self):
         result = subprocess.run([sys.executable, "-I", str(DEPLOY / "identity-plan.py"), "--dry-run"],
@@ -64,7 +70,7 @@ class PlanTests(unittest.TestCase):
 
     def test_broker_entry_points_import_without_cwd_or_user_python_paths(self):
         source = Path(__file__).resolve().parent.parent
-        for name in ("ccrelay_broker.py", "ccrelay_broker_mcp.py"):
+        for name in ("ccrelay_broker.py", "ccrelay_broker_mcp.py", "ccrelay_owner_gate.py"):
             result = subprocess.run([sys.executable, "-I", str(source / name), "--help"],
                                     capture_output=True, text=True, timeout=5)
             self.assertEqual(result.returncode, 0, result.stderr)

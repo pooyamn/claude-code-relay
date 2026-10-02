@@ -44,6 +44,15 @@ still required; it is not replaced by a common-home copy.
 - `systemd/ccrelay-broker.service`: inert protected broker service with no
   activation section. The policy must be root-owned, and workers cannot edit
   the deployed artifact, policy, registry or launcher socket.
+- `identities/owner-policy.json.example` and `deployment-policy.json.example`:
+  disabled exact-owner/channel and protected classification/bootstrap policies.
+  Their owner/bot/chat/topic IDs are invented, not live configuration. Routine
+  deployment cannot be enabled by this v1 policy.
+- `systemd/ccrelay-owner-gate.service`: inert Linux credential-authenticated
+  approval ingress, using a separate explicit socket group for only `relay`
+  and the deploy coordinator. It neither polls Telegram nor starts/restarts
+  candidate code. [PR 3 evidence and recovery](../../docs/pr3-owner-deployment.md)
+  lists the remaining trusted Bot API, target-OS and screener gates.
 - `identities/session.service.in`: incomplete trusted-launcher template, not a
   runnable unit. PR 7 supplies the exact native command, measured resource
   profile and verified readiness. Each execution needs its own root-controlled

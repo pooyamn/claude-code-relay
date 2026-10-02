@@ -1,0 +1,13 @@
+{
+  "schema": "ccrelay.deployment_policy.v1",
+  "bootstrap_enabled": false,
+  "routine_enabled": false,
+  "components": [
+    {"id": "router", "credentialed": true, "routine_prefixes": []},
+    {"id": "broker", "credentialed": true, "routine_prefixes": []},
+    {"id": "owner-gate", "credentialed": true, "routine_prefixes": []},
+    {"id": "screener", "credentialed": true, "routine_prefixes": []},
+    {"id": "deployer", "credentialed": true, "routine_prefixes": []},
+    {"id": "presentation", "credentialed": false, "routine_prefixes": ["render/", "docs/"]}
+  ]
+}

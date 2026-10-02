@@ -229,9 +229,12 @@ Optional upstream task/governance components must not expose an unauthenticated 
 Relay updates
 - Routine relay changes may deploy after independent review, automated tests, and Jev security clearance. Pouya does not review every relay change.
 - Changes affecting credentials or secret access, authorization rules or identity boundaries, security screening (including Jev), or deployment controls always require Pouya's approval. A protected deterministic check classifies these changes before Jev; the changed code cannot rewrite its own deployment rules to bypass approval.
+- Executable code running with router credentials belongs to that protected boundary, regardless of the filename or a claimed cosmetic change. Move routine presentation/rendering work into a credentialless component with a protected launcher and scoped inputs; verify that isolation before permitting the routine lane. This keeps routine updates possible without treating arbitrary code in the credentialed router as confined.
 - Jev screens the exact candidate version, including relevant dependencies and configuration, using masked evidence. Other changes it flags as a security risk go to Pouya. If screening is unavailable, uncertain, or cannot cover the candidate, deployment waits for clearance or Pouya's explicit approval.
 - Pouya can discuss a flagged change with an agent, normally the reviewer. Deployment authorization must record Pouya's explicit decision for that exact candidate and scope through the authenticated owner channel. An agent's message claiming approval is not owner authorization. Any candidate change invalidates the previous decision.
 - The protected deployment service installs an immutable reviewed artifact identified by its digest; ordinary support sessions cannot overwrite installed router code, screening policy, or the deployer. Tests of unapproved candidate code run without live router credentials. Jev is a screener, while OS permissions and deployment authorization provide the boundary.
+
+Local PR 3 preparation and its remaining target/owner-channel gates are documented in [the owner deployment runbook](pr3-owner-deployment.md). It supplies durable exact-action approvals and sealed bootstrap version pointers, not live Jev clearance, automatic routine deployment or a running-router upgrade.
 
 ## 8. Branches and PRs
 

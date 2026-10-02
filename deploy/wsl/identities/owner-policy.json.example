@@ -1,0 +1,10 @@
+{
+  "schema": "ccrelay.owner_policy.v1",
+  "enabled": false,
+  "gate_uid": 23005,
+  "ingress_uid": 23000,
+  "owner_id": 1,
+  "bot_id": 2,
+  "chat_id": -3,
+  "thread_id": 4
+}

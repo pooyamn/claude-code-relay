@@ -1,0 +1,30 @@
+# Inert preparation. No [Install], bot token, polling or service activation.
+# Root installs reviewed code/policies only after target acceptance. The copy of
+# broker policy below is protected input, not another authority for registration.
+[Unit]
+Description=Protected owner approval ingress (preparation only)
+
+[Service]
+Type=simple
+User=ccrelay-deployer
+Group=ccrelay-owner-ingress
+SupplementaryGroups=ccrelay-deployer
+UMask=0077
+RuntimeDirectory=ccrelay-owner-gate
+RuntimeDirectoryMode=0750
+ExecStart=/usr/bin/python3 -I /opt/ccrelay/scripts/ccrelay_owner_gate.py --owner-policy /etc/ccrelay-owner/owner-policy.json --broker-policy /etc/ccrelay-owner/broker-policy.json --state-dir /var/lib/ccrelay-components/deployer --runtime-dir /run/ccrelay-owner-gate
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX
+ReadWritePaths=/var/lib/ccrelay-components/deployer /run/ccrelay-owner-gate
+KillMode=control-group
+TimeoutStopSec=10

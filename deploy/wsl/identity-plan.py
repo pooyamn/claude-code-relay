@@ -15,6 +15,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 from relay_core.identity import Denied, Policy, strict_json
+from relay_core.owner_gate import OwnerPolicy
+from relay_core.artifacts import DeploymentPolicy
 
 
 def plan(folder, users=None, groups=None):
@@ -23,6 +25,8 @@ def plan(folder, users=None, groups=None):
     folder = Path(folder)
     raw = strict_json((folder / "identities/broker-policy.json.example").read_bytes())
     policy = Policy(raw)
+    owner_policy = OwnerPolicy(strict_json((folder / "identities/owner-policy.json.example").read_bytes()), policy)
+    deployment_policy = DeploymentPolicy(strict_json((folder / "identities/deployment-policy.json.example").read_bytes()))
     accounts, shared_groups, memberships = {}, {}, []
     for line in (folder / "identities/ccrelay.sysusers.conf").read_text().splitlines():
         fields = shlex.split(line, comments=True)
@@ -61,6 +65,10 @@ def plan(folder, users=None, groups=None):
                     raise Denied("unexpected shared-group members")
     if accounts.get("ccrelay-broker", {}).get("uid") != policy.broker_uid or shared_groups.get("ccrelay-clients") != policy.client_gid:
         raise Denied("broker policy and OS identity templates differ")
+    if accounts.get("relay", {}).get("uid") != owner_policy.ingress_uid or \
+            accounts.get("ccrelay-deployer", {}).get("uid") != owner_policy.gate_uid or \
+            {user for user, group in memberships if group == "ccrelay-owner-ingress"} != {"relay", "ccrelay-deployer"}:
+        raise Denied("owner ingress policy and OS identity templates differ")
     for role_id, role in policy.roles.items():
         if accounts.get("ccrelay-" + role_id, {}).get("uid") != role.fields["uid"]:
             raise Denied("role policy and OS identity templates differ")
@@ -70,6 +78,8 @@ def plan(folder, users=None, groups=None):
         if (group.gr_name in privileged or group.gr_name in accounts) and role_names.intersection(group.gr_mem):
             raise Denied("worker has privileged or another identity's supplementary group")
     return {"schema": "ccrelay.identity_plan.v1", "mode": "dry-run-only", "policy_digest": policy.digest,
+            "owner_policy_digest": owner_policy.digest, "deployment_policy_digest": deployment_policy.digest,
+            "owner_ingress_enabled": owner_policy.enabled, "bootstrap_deployment_enabled": deployment_policy.bootstrap_enabled,
             "accounts": accounts, "shared_groups": shared_groups, "memberships": memberships,
             "changes_applied": False, "services_enabled": False,
             "pending": ["owner-reviewed artifacts and target permission tests", "per-role native login/app topology",
