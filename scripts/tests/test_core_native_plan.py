@@ -17,9 +17,10 @@ class NativePlanTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         plan = json.loads(result.stdout)
         for key in ("enabled", "automatic_turns_enabled", "native_calls", "state_changes", "admission_available",
-                    "launch_package_activated", "resource_limits_enforced"):
+                    "launch_package_activated", "resource_limits_enforced", "workspace_helper_activated"):
             self.assertIs(plan[key], False)
         self.assertEqual(plan["launch_package_schema"], "ccrelay.native_launch_package.v1")
+        self.assertEqual(plan["workspace_journal_schema"], "ccrelay.native_workspace_journal.v1")
         self.assertIn("builder", plan["role_profiles_not_active_sessions"])
         self.assertEqual(plan["state_dir"], "/var/lib/ccrelay-broker/native")
         for args in (["--run"], ["--resume", "native-thread-1"], ["--goal", "invented goal"]):

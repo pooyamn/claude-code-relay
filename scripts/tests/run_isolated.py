@@ -12,6 +12,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -116,6 +117,17 @@ def sandbox_command(scratch: Path, command: list, env: dict) -> list:
     raise RuntimeError("no reviewed OS test sandbox on this platform")
 
 
+def core_batches(catalog):
+    """Every sandbox-discovered test exactly once; retain the per-child bound."""
+    if type(catalog) is not list or not catalog or len(catalog) > 4096 or \
+            any(type(name) is not str or len(name) > 512 or not re.fullmatch(
+                r"test_core[A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.test[A-Za-z0-9_]*", name) for name in catalog) or \
+            len(set(catalog)) != len(catalog):
+        raise RuntimeError("invalid/duplicate sandbox core test catalog")
+    ordered = sorted(catalog)
+    return [ordered[index:index + 4] for index in range(0, len(ordered), 4)]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--suite", choices=("legacy", "core", "all"), default="all")
@@ -136,14 +148,30 @@ def main() -> int:
         commands = [[sys.executable, str(copied / "tests" / "isolation_probe.py")]]
         if args.suite in {"legacy", "all"}:
             commands += [["/bin/bash", str(copied / "tests" / "run_tests.sh")]]
-        if args.suite in {"core", "all"}:
-            commands += [[sys.executable, "-m", "unittest", "discover", "-s", str(copied / "tests"),
-                          "-p", "test_core*.py", "-v"]]
         for command in commands:
             wrapped = sandbox_command(scratch, command, env)
             result = subprocess.run(wrapped, cwd=scratch, env=env, timeout=args.timeout)
             if result.returncode:
                 return result.returncode
+        if args.suite in {"core", "all"}:
+            # Discovery imports candidate tests ONLY inside the same OS sandbox.
+            # The growing suite is serialized into bounded processes, not given
+            # a larger timeout or run concurrently in shared scratch directories.
+            driver = copied / "tests/core_batch.py"
+            result = subprocess.run(sandbox_command(scratch, [sys.executable, str(driver), "--list"], env),
+                                    cwd=scratch, env=env, timeout=args.timeout, capture_output=True)
+            if result.returncode:
+                sys.stderr.buffer.write(result.stderr)
+                return result.returncode
+            if len(result.stdout) > 2 * 1024 * 1024:
+                raise RuntimeError("core test catalog exceeds bound")
+            batches = core_batches(json.loads(result.stdout))
+            print(f"Core catalog: {sum(map(len, batches))} tests in {len(batches)} serial batches", flush=True)
+            for batch in batches:
+                command = [sys.executable, str(driver), "--run", *batch]
+                result = subprocess.run(sandbox_command(scratch, command, env), cwd=scratch, env=env, timeout=args.timeout)
+                if result.returncode:
+                    return result.returncode
         if denied.read_text(encoding="utf-8") != "SYNTHETIC OUTSIDE SANDBOX":
             raise RuntimeError("sandbox modified outside sentinel")
     return 0

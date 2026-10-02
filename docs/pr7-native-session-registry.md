@@ -167,6 +167,76 @@ dependencies. Unknown schemas and incompatible policies remain intact for
 reviewed migration. No live launch package has been imported or activated, so
 rollback at this stage concerns repository preparation only.
 
+## Worker UID worktree preparation
+
+`native_workspace.py` adds actual local Git worktree creation/reuse with a private
+SQLite phase journal. It requires the effective non-root worker UID to match the
+supplied broker role and checks private ownership, modes, links and metadata
+pointers. The state is worker-owned, not a broker authorization record; neither
+its phase nor its output can grant delivery, publication, approval or admission.
+No live entry point, worker RPC, Git seed importer or native launcher was enabled.
+
+The protected launcher must first validate the reviewed launch package, exact
+specification/current execution and company/source grants, then dispatch under
+the intended UID. Its mandatory `writer_guard` must independently quiesce/fence
+old writers and all surviving native/tool/Git descendants across the workspace
+and role-private Git metadata for the entire operation. A Python context manager,
+expired lease or stopped parent is not that proof. The fixture guard is synthetic;
+the real kernel/controller bridge remains unimplemented and required for use.
+
+Creation journals the exact requested spec before touching a new branch. An
+unexposed staging worktree is initialized without forced checkout, verified clean
+at the exact baseline, and promoted using Git's worktree move. Each Git mutation
+has an earlier committed phase. Existing target directories/branches are not
+silently adopted by create. After an interrupted promotion, the target is verified
+in place, preserving later dirty work rather than repeating initial checkout.
+Empty unexposed staging can be initialized; partial/changed staging, branch-only
+effects, collisions or missing recorded worktrees remain intact for evidenced
+repair. No reset, clean, force or fresh-native-session fallback hides ambiguity.
+
+Explicit reuse and prepared replay verify linked-worktree/common-directory
+backlinks, requested branch and baseline ancestry and read NUL-delimited status.
+They do not checkout or rewrite the index, tracked/untracked/ignored files or
+unfinished-operation markers. Status hashes describe observations only; they are
+not a snapshot of dirty contents or proof that a task is complete. Generated
+instruction/skill files are not yet installed by this helper.
+
+The Git executable bytes/version are pinned; changing a recorded Git contract,
+schema, policy or execution/specification requires reviewed migration/transfer.
+The role-private bare seed must have bounded canonical local configuration.
+Includes, configured filters/fsmonitor/remotes, external object alternates,
+worktree configuration, legacy grafts and shallow/incomplete objects are refused without repair
+or default-profile substitution. Seed import and supported repository extensions
+still need target acceptance, not an assumption that every repo topology works.
+
+Two actual Git regressions exposed why a commit-shaped name is insufficient.
+Replacement refs materialized different files while HEAD retained the pinned SHA;
+all helper Git calls now disable replacement objects. A worker-owned loose object
+could also contain different bytes under its expected hash filename, passing the
+existence check and reaching checkout. Full object integrity checking now runs
+before journal registration or workspace writes, without lost-found output or
+connectivity-only shortcuts. This is integrity validation, not source approval.
+Historical-repository strict-mode checks are not imposed. The existing command
+bound remains; large-repository performance/resource acceptance is a target gate.
+[Git replacement objects](https://git-scm.com/docs/git-replace),
+[Git object integrity](https://git-scm.com/docs/git-fsck).
+
+Git children use explicit argv, private umask, no inherited home/credential/Git
+configuration, disabled hooks and no network protocol/lazy fetching. A bounded
+command timeout terminates its spawned process group and leaves effects for
+fenced reconciliation; it does not establish absence of detached descendants.
+Actual WSL resource limits and controller stop evidence remain required. Git's
+documentation establishes hook disabling and global/system configuration
+controls; our strict local-config allowlist is an additional preparation policy.
+[Git configuration](https://git-scm.com/docs/git-config), [Git environment](https://git-scm.com/docs/git).
+
+Recovery requires the journal, exact Git/policy/spec pins, role-private Git object
+store/refs/worktree metadata and all worktree contents together. Database backup
+alone is incomplete. PRs 12/13 must capture a quiescent consistent cohort and
+restore initially unadmitted with fresh current-writer/native verification. No
+real role workspace has been imported or prepared by this step. Rollback of the
+repository artifact never authorizes removing a partial or dirty worktree.
+
 ## Verification and remaining gates
 
 Offline tests use invented normalized runtime/kernel observations, with actual
@@ -188,8 +258,30 @@ scratch-process deaths before/after artifact publication. These use invented
 instructions, permissions, skills and resource numbers, with real sealed files
 and artifact verification. They do not exercise Git worktree creation, native
 instruction loading, service activation, paid inference or WSL enforcement.
-The combined clean staged candidate passes 467 core checks and all four legacy
+The registry/launch-bundle clean staged candidate passed 467 core checks and all four legacy
 suites; strict staged secret screening passes without repository allowlists.
+
+Workspace fixtures exercise real Git creation, promotion, branch/ref identity,
+staged/unstaged/untracked/ignored bytes, merge markers, local SQLite, lifetime
+locks and nine worker deaths at journal/Git boundaries, plus three deaths for
+partial-staging/collision preservation. The actual fixture UID/file checks run;
+target paths, ancestor observations and writer/descendant guards are substituted.
+They do not prove distinct-UID WSL isolation, native startup, generated-file
+loading, mid-command descendant death or protected dispatch.
+
+The larger real-Git fixture set exceeded the old single-process 60-second harness
+allowance; the final observed case passed alone in 2.85 seconds. The harness now
+discovers cases inside the OS sandbox, validates the complete catalog and runs
+every case exactly once in serial batches with the same per-child 60-second
+ceiling. An eight-case batch grouped two heavy crash loops and exceeded that
+allowance, so batches contain at most four cases. It neither imports candidate tests on the host nor parallelizes builds,
+skips cases or relaxes the timeout. Batch coverage/schema checks are included.
+
+The workspace candidate passed all 486 core checks in 122 serial batches and all
+four legacy suites from a clean staged-source export. This includes 17 workspace
+checks and two batching checks; both Git identity regressions were reproduced
+before their fixes. Strict staged secret screening passed without repository
+allowlists. These results still do not satisfy the native/WSL acceptance gates.
 
 Before PR 7 acceptance:
 

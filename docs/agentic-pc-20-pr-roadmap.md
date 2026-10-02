@@ -8,7 +8,7 @@ Build testable security and delivery foundations first. Introduce the builder wi
 
 Pouya requested sequential implementation for PC readiness and authorized committing and pushing verified changes. Repository publication is separate from deployment. A separately authorized legacy Mac Khadang test release is active; no GitHub PRs, protected PC capabilities, credential changes or production/HamalBot migration have been performed by this implementation run. Local implementation/test evidence is distinct from target-PC acceptance. Unrelated uncommitted edits and runtime/media files are excluded from this series.
 
-PR 1 is locally implemented. PRs 2–5 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel/runtime integration still pending; evidence and limits are recorded below. PR 6's outbound foundation, bounded format/media repair, receipt-bound owner-prompt bridge, current source-grant dispatch and Telegram-local recovery are prepared offline; real protected producer/context wiring and target integration remain pending. PR 7's native registry and launch-bundle foundations are prepared as dependencies for that wiring, without completing PR 6 or its own native/launcher gates. PRs 8–20 remain to be implemented, apart from separately requested early preparations noted below. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
+PR 1 is locally implemented. PRs 2–5 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel/runtime integration still pending; evidence and limits are recorded below. PR 6's outbound foundation, bounded format/media repair, receipt-bound owner-prompt bridge, current source-grant dispatch and Telegram-local recovery are prepared offline; real protected producer/context wiring and target integration remain pending. PR 7's native registry, launch-bundle and worker-UID worktree foundations are prepared as dependencies for that wiring, without completing PR 6 or its own native/launcher gates. PRs 8–20 remain to be implemented, apart from separately requested early preparations noted below. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
 
 ## Existing code to extend
 
@@ -202,13 +202,31 @@ specifications against the supplied installed broker policy, pins instruction,
 skill, native/MCP configuration and measurement artifacts, and seals deterministic
 candidate instructions and resource fragments. Complete skill artifacts retain
 licenses and executable flags without running code. Role-private worktree and
-Git common-directory paths are required, but have not been created or observed.
+Git common-directory paths are required, but have not been created or observed on the target PC.
 The bundle is always prepared/not-ready/not-admitted; sealing is not review
 approval. Worktree creation/reuse, applying generated files, real native startup,
 measured resource enforcement and authorized admission remain required.
 All 467 core checks and four legacy suites pass on the clean staged candidate,
 including 20 launch-bundle checks and two actual artifact-publication deaths.
 Strict staged secret screening passes without repository allowlists.
+
+Worktree preparation: `native_workspace.py` performs actual local Git creation
+through an unexposed staging worktree, journals effects before writes, and verifies
+branch/baseline and linked-worktree/common-directory pointers. Reuse does not
+checkout, reset or clean existing files/index/unfinished operations. Pinned Git,
+strict local bare config, clean child environment and disabled hooks prevent
+arbitrary bootstrap programs; actual worker UID/private metadata checks apply.
+Actual replacement-ref and corrupt-object regressions also require ignoring
+replacement objects, rejecting grafts and checking full object integrity before
+workspace effects; an expected SHA string alone is insufficient.
+The journal is worker-owned and never authority. Protected reviewed dispatch,
+real writer/descendant fencing, target topology, generated-file installation,
+native startup/admission and joined recovery remain gates. Scratch Git fixtures
+substitute target paths/ancestor and writer-fence observations, not Git effects.
+The clean staged candidate passed 486 core checks and all four legacy suites,
+including 17 workspace checks and 12 actual worker deaths. Serial batches retain
+every case and the 60-second per-child ceiling. Strict staged secret screening
+passed without repository allowlists; this is not native/WSL activation evidence.
 
 ## PR 8 Root tasks and atomic work ownership
 
