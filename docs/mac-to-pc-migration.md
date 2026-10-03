@@ -52,8 +52,10 @@ The protected Windows Khadang service currently routes one test forum and uses
 Codex. A candidate now supports full chat/topic addresses and an explicit
 whole-group route; it is not yet deployed. A working native Linux transport for
 Codex now passes isolated Windows-to-Linux native acceptance, including shared
-events and actual tool identity. A persistent shared daemon, operational runtime
-routing and the Claude transport are still required for the preserved sessions.
+events and actual tool identity. A standalone Claude client now also passes
+authenticated native input and reply acceptance on the PC. A persistent shared
+daemon and operational routing for both runtimes are still required for the
+preserved sessions.
 Claude's pinned streaming control interface now also connects and disconnects
 authenticated native Remote Control on the PC through an explicit control
 request. A phone-message round trip and live Telegram steering remain unverified.
@@ -624,6 +626,52 @@ with unchanged configuration and the original Windows native remote task stayed
 Running. No binding, LG conversation or source writer changed. Phone/Telegram
 round trips, immediate active-turn steering, controls, permissions/questions and
 operational supervision remain required before original-topic cutovers.
+
+### Claude native session client
+
+At 2:52 PM PDT, the typed C# Claude client passed an authenticated PC check
+against pinned Claude Code 2.1.288. A fresh, isolated conversation acknowledged
+the exact submitted user UUID, emitted eight partial progress events, returned
+the fixed diagnostic reply and reported idle after its result. The native process
+exited with code 0, the Windows launcher stopped, and the one-shot task finished
+with result 0. No operation remained uncertain. This used the ordinary Windows
+owner in session 1 and actual Linux/native UID 1000; both OS probes denied the
+protected bot credential without reading bytes.
+
+The check used one inert subscription prompt with tools, hooks and MCP disabled.
+It did not resume imported history, enroll Remote Control, poll Telegram or
+change any live binding. Its private receipt is under
+`C:\Users\pou\.native-remote\migration-claude-wire-f016dbb82c29396fcc0738180c05bd2a`.
+The tested candidate DLL SHA-256 is
+`2b7403e3a0ab0a3ac52c3c4ae201822ae1c4947788e735ab76fba217890d33d7`;
+the sealed package SHA-256 is
+`e1aef433d9aa233b6e3d175edd203644bc2a3c8571af353ced5395d59fc8308c`.
+The previously frozen routing DLL and production configuration were not replaced.
+
+`ClaudeNativeStream` preserves Claude's own control protocol rather than
+emulating Codex requests or inventing turn IDs. Input uses native `priority:
+"now"` and `--replay-user-messages`; its receipt establishes consumption, not
+turn completion or active-turn steering. Native requests and explicit rejections
+are journaled. A lost receipt stays uncertain, with no automatic resend or new
+conversation fallback. An answer is bound to its native request ID, but a write
+alone is not reported as permission acceptance. The controller still must
+authenticate the human and bind approvals to the correct topic and task.
+
+The pinned SDK also establishes two recovery details now covered by fixtures:
+pending permission and user-dialog requests are siblings of the initialization
+response payload, and `/clear` emits a distinct `conversation_reset` event.
+The client restores pending questions, deduplicates live/replayed requests and
+retains durable answer/cancellation records so an old request cannot revive an
+answer. A reset invalidates the old session pin and its pending requests; the
+controller must persist the new binding before further input. These are component
+checks, not acceptance against a real unfinished project or human approval.
+
+All 563 PC-router self-checks and five diagnostic input-guard tests pass in the
+verified OS sandbox with host credentials and network excluded. Both C# builds
+have zero warnings and errors. The live router and original Claude remote task
+remain running. Operational session launch/routing, active-turn steering,
+questions/permissions, phone/Telegram round trips and original-topic cutovers
+remain pending. No deferred role or broker service was activated.
 
 ### Physical bench preservation and PC builds
 
