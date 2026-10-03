@@ -138,8 +138,8 @@ digests and administrator-owned, SYSTEM/Administrators-only permissions:
 | Relay configuration | 658147 bytes | Copied and checksum checked |
 | Owner Git, SSH, Claude and launch configuration | 40504 bytes | Copied and checksum checked |
 | Remaining owner configuration and shell profiles | 14341221 bytes | Copied, checksum checked and Linux reader accepted |
-| Full workspace including dirty and untracked work | 22649280767 bytes | Copied, checksum checked and Linux reader accepted; extraction running |
-| Fresh Codex SQLite snapshots | 168085642 bytes | Copied, checksum checked and Linux reader accepted |
+| Full workspace including dirty and untracked work | 22649280767 bytes | Copied, checksum checked, Linux reader accepted and extracted |
+| Fresh Codex SQLite snapshots | 168085642 bytes | Copied, checksum checked, Linux reader accepted and extracted |
 
 The protected destination is
 `C:\ProgramData\OracovaMigration\35d21d73d97ad5411f82033a86562528`.
@@ -164,8 +164,12 @@ Keeping the Unix source path is a compatibility measure for existing topic keys
 and histories, not a company or role boundary. Native models have not been
 launched there. The full Claude and Codex archives were extracted successfully
 as UID 1000 into private preserved-state directories, separate from active
-settings and logins. Workspace extraction is running as that same user and
-will restore the source Unix path only after the extraction succeeds.
+settings and logins. Workspace extraction also completed with exit 0 as that
+same user, restoring `/Users/pouya/.openclaw/workspace`. These extracted seeds
+still require project and exact-session checks plus a final source delta.
+Read-only Git probes on the PC resolved the captured relay, ai-hil and supervisor
+worktree HEADs. The relay seed predates the new migration commits, so it must
+receive the final source delta rather than being treated as an up-to-date checkout.
 
 Matching native Linux Codex 0.160.0 and Claude 2.1.288 are installed in private
 owner preparation directories and both version checks pass. The Codex package
@@ -176,6 +180,19 @@ updates were disabled for the preparation invocation; permanent launch settings
 still require inspection and merging. A real model must launch from the limited
 interactive Windows owner token, not inherit the SSH administrator context.
 The personal owner-registered WSL distro is not an accepted company boundary.
+
+Ubuntu's original automatic-update configuration was still enabled and one
+security-update job completed during preparation. It was not interrupted.
+An additive root-owned policy file now sets all APT periodic-update switches to
+0; both APT update timers are disabled and inactive. The original configuration
+is preserved and manual updates remain available. This extends the owner's
+existing no-auto-update preference to the PC's Linux environment, without
+changing Defender or Windows update policy.
+
+Follow-up WSL entries returned `WSAETIMEDOUT`; the subsequent ordinary-user
+inspection succeeded and confirmed the policy and timer state. No WSL restart
+or extraction replay was performed. This transient entry failure still needs
+characterization before declaring the host reliable for always-on sessions.
 
 All six Codex SQLite databases now also have fresh backup-API snapshots, with
 successful integrity checks and a verified protected PC archive. These preserve
