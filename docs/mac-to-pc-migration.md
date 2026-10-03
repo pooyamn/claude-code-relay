@@ -441,6 +441,11 @@ public Cloudflare helper. Both replacement services remain Running/Auto as
 LocalService, Defender realtime protection remains enabled, no replacement
 detection was present, and the original flagged executable remains absent.
 
+The 3:57 PM PDT read-only service check found both replacement services still
+Running/Auto as LocalService, with Defender antivirus and realtime protection
+enabled. This check read service/protection metadata; it did not repeat the
+authenticated protocol checks or establish off-network reachability.
+
 The 12:32 PM PDT membership recheck remains unchanged: Ai Dispatch member only;
 Oracova and Startup Ideas inaccessible. The existing bot-add request is still
 pending. Authenticated native continuation, topic cutover, physical bench
@@ -765,9 +770,43 @@ check at 3:41 PM PDT found the original router and Claude remote task still
 Running, with the production configuration unchanged.
 
 Windows/WSL acceptance of this launcher, package deployment, persistent native
-daemon supervision and Claude launch wiring remain pending. The prior isolated
+daemon supervision and Windows Claude launch wiring remain pending. The prior isolated
 shared-socket acceptance does not prove this new privileged launch path. No live
 configuration, binding, token, protected release or Hamal routing was changed.
+
+### Claude exact handoff stream connector
+
+The candidate now includes a Linux Claude stdio connector for the preserved
+native profile, not the isolated diagnostic profile. Its launch arguments resume
+only the supplied saved UUID, retain user/project/local settings and leave tools,
+hooks, MCP configuration and model selection enabled. Explicit owner policy
+selects full access; it is not inferred from a role name. The settings and stream
+flags follow the [native CLI reference](https://code.claude.com/docs/en/cli-reference);
+the special permission handler follows the
+[SDK's stdio control routing](https://github.com/anthropics/claude-agent-sdk-python/blob/main/src/claude_agent_sdk/types.py).
+Actual custom-provider, Qwen and customization compatibility remain unverified.
+
+Before any native launch, the connector requires an exact protected handoff
+digest, the original transcript's size/hash, a quiesced source-writer declaration
+and no unresolved external actions. The Windows parent must authenticate that
+reviewed handoff and establish actual source quiescence; the JSON declaration
+alone does not establish either. The known legacy Claude task remains held.
+The connector verifies workspace ownership and actual credential open-denial,
+then checks its owned native process's generation, executable, UID and inherited
+lease descriptor. It never reads the protected bot credential, selects a fresh
+conversation, reconnects or repeats uncertain input.
+
+All 22 new Claude connector fixtures and 19 Codex connector fixtures pass in
+the verified OS sandbox. These cover strict handoffs/framing, final output after
+process exit, procfs exit races and cleanup without relaunch. The lock-contention
+fixture uses an actual POSIX kernel lock on the Mac; it does not prove that the
+pinned Linux Claude binary retains the descriptor or stops all detached tools.
+The lease coordinates participating bridges, not arbitrary native CLI writers.
+
+Protected Windows launcher/factory wiring, native descriptor and parent-death
+acceptance, source-writer fencing, final checkpoint capture and live tool/phone
+round trips remain pending. This connector is source only; no PC launch,
+production configuration, topic binding or privileged deployment changed.
 
 ### Physical bench preservation and PC builds
 
