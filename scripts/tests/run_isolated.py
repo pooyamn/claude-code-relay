@@ -127,7 +127,24 @@ def core_batches(catalog):
             len(set(catalog)) != len(catalog):
         raise RuntimeError("invalid/duplicate sandbox core test catalog")
     ordered = sorted(catalog)
-    return [ordered[index:index + 4] for index in range(0, len(ordered), 4)]
+    batches, pending = [], []
+    for name in ordered:
+        # Real replay cases include Git/checkpoint setup and actual crash
+        # children. Measured single cases take ~25s on this Mac; sharing the
+        # unchanged 60s child ceiling would exceed it. Preserve every case.
+        if name.startswith("test_core_post_merge."):
+            if pending:
+                batches.append(pending)
+                pending = []
+            batches.append([name])
+        else:
+            pending.append(name)
+            if len(pending) == 4:
+                batches.append(pending)
+                pending = []
+    if pending:
+        batches.append(pending)
+    return batches
 
 
 def main() -> int:

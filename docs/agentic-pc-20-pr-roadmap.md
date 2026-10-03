@@ -8,7 +8,7 @@ Build testable security and delivery foundations first. Introduce the builder wi
 
 Pouya requested sequential implementation for PC readiness and authorized committing and pushing verified changes. Repository publication is separate from deployment. A separately authorized legacy Mac Khadang test release is active; no GitHub PRs, protected PC capabilities, credential changes or production/HamalBot migration have been performed by this implementation run. Local implementation/test evidence is distinct from target-PC acceptance. Unrelated uncommitted edits and runtime/media files are excluded from this series.
 
-PR 1 is locally implemented. PRs 2–5 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel/runtime integration still pending; evidence and limits are recorded below. PR 6's outbound foundation, bounded format/media repair, receipt-bound owner-prompt bridge, current source-grant dispatch and Telegram-local recovery are prepared offline; real protected producer/context wiring and target integration remain pending. PR 7's native registry, launch-bundle, worker-UID worktree and context-installation foundations are prepared as dependencies for that wiring, without completing PR 6 or its own native/launcher gates. PR 8's durable root/work custody and bounded-diagnosis guard are prepared offline, without granting activity slots or completing real evidence/admission/report/controller integration. PR 9's shared admission/account-pacing ledger, diagnostic transaction bridge, owner-first dispatch offers, bounded quota estimates and durable capacity-retry linkage are prepared offline; real all-source native enforcement, quota/source/stop/usage readers, approved estimate policy, protected priority/diagnostic producers and results, native retry/steering/continuation adapters and target acceptance remain pending. PR 10's worktree checkpoint and joined switch controller are prepared offline, including task/action references and atomic custody transfer; protected export, real source/loading/fence readers, issue delivery, admitted repair and target acceptance remain pending. PR 11's publication/review/merge-intent foundation is prepared offline; verified Git export, protected GitHub/CI enforcement, post-merge work preservation and target acceptance remain pending. PRs 12–20 remain to be implemented, apart from separately requested early preparations noted below. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
+PR 1 is locally implemented. PRs 2–5 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel/runtime integration still pending; evidence and limits are recorded below. PR 6's outbound foundation, bounded format/media repair, receipt-bound owner-prompt bridge, current source-grant dispatch and Telegram-local recovery are prepared offline; real protected producer/context wiring and target integration remain pending. PR 7's native registry, launch-bundle, worker-UID worktree and context-installation foundations are prepared as dependencies for that wiring, without completing PR 6 or its own native/launcher gates. PR 8's durable root/work custody and bounded-diagnosis guard are prepared offline, without granting activity slots or completing real evidence/admission/report/controller integration. PR 9's shared admission/account-pacing ledger, diagnostic transaction bridge, owner-first dispatch offers, bounded quota estimates and durable capacity-retry linkage are prepared offline; real all-source native enforcement, quota/source/stop/usage readers, approved estimate policy, protected priority/diagnostic producers and results, native retry/steering/continuation adapters and target acceptance remain pending. PR 10's worktree checkpoint and joined switch controller are prepared offline, including task/action references and atomic custody transfer; protected export, real source/loading/fence readers, issue delivery, admitted repair and target acceptance remain pending. PR 11's publication/review/merge-intent foundation and real-Git post-merge candidate replay are prepared offline; verified Git export, protected GitHub/CI enforcement, same-path promotion/conflict resolution and target acceptance remain pending. PRs 12–20 remain to be implemented, apart from separately requested early preparations noted below. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
 
 ## Existing code to extend
 
@@ -529,8 +529,26 @@ checks passed in 123 serial sandbox batches. All 61 final publication/owner chec
 passed in 16 serial sandbox batches; the strict staged secret scan passed. This is not
 a fresh full-suite run or real GitHub/CI/PC acceptance. Verified Git/checkpoint
 export, credential and human/security readers, provider/outcome adapters,
-server-enforced current-pair CI, post-merge work preservation and joined restore
+server-enforced current-pair CI, verified post-merge promotion and joined restore
 remain gates. The live broker operation stays disabled.
+
+Post-merge candidate preparation: `post_merge.py` seals original work and replays
+later commits into a separate actual Git worktree. A private copied index avoids
+`stash create` refreshing the original index; staged/unstaged changes replay
+separately, while untracked/ignored files, modes and symlinks come from the full
+checkpoint. Collisions retain both versions. Durable requests, retained Git refs,
+file reservations and sealed results expose crash state; uncertain dirty apply is
+held rather than repeated. Current source/candidate/merge proofs are mandatory,
+and candidate readiness grants no native activity. Same-path promotion, semantic
+verification of manual merge resolutions, independently admitted conflict repair,
+real protected readers and joined restore remain required. The new real-Git cases
+run singly after a measured 25-second case; all cases remain selected and the
+60-second sandbox-child ceiling is unchanged. This is offline preparation only.
+All 23 staged replay checks passed, including eight actual process deaths,
+staged rename/deletion and binary changes, later merge topology and empty commits.
+All 121 shared workspace/checkpoint/switch/publication/launcher/setup and batching
+checks passed in 31 serial sandbox batches; the strict staged secret scan passed.
+These focused results do not replace full-system/native/PC acceptance.
 [Publication and recovery contract](pr11-publication-gates.md).
 
 ## PR 12 Full system daily encrypted backups

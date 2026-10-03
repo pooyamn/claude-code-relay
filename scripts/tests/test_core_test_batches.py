@@ -19,6 +19,15 @@ class BatchTests(unittest.TestCase):
             with self.subTest(catalog=catalog), self.assertRaises(RuntimeError):
                 core_batches(catalog)
 
+    def test_real_git_replays_run_alone_with_all_neighbors_preserved(self):
+        catalog = ["test_core_a.Cases.test_first", "test_core_a.Cases.test_second",
+                   "test_core_post_merge.Cases.test_replay_one", "test_core_post_merge.Cases.test_replay_two",
+                   "test_core_z.Cases.test_last"]
+        batches = core_batches(list(reversed(catalog)))
+        self.assertEqual([name for batch in batches for name in batch], sorted(catalog))
+        self.assertTrue(all(1 <= len(batch) <= 4 for batch in batches))
+        self.assertTrue(all(len(batch) == 1 for batch in batches if any(name.startswith("test_core_post_merge.") for name in batch)))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -119,7 +119,7 @@ class WorkspacePreparation(DeliveryLedger):
         for name in ("objects", "refs", "HEAD"):
             self._private(common / name, directory=name != "HEAD")
 
-    def _git(self, common, args, *, worktree=None, allowed=(0,)):
+    def _git(self, common, args, *, worktree=None, allowed=(0,), index_file=None):
         self._check_lock()
         role = self.policy.roles.get(self.role_id)
         if self.policy.digest != self.policy_digest or role is None or not role.fields["enabled"] or role.fields["uid"] != self.uid:
@@ -133,6 +133,11 @@ class WorkspacePreparation(DeliveryLedger):
             raise Denied("installed Git binary pin changed")
         env = {"PATH": "/usr/bin:/bin", "LC_ALL": "C", "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null",
                "GIT_TERMINAL_PROMPT": "0", "GIT_OPTIONAL_LOCKS": "0", "GIT_NO_LAZY_FETCH": "1", "GIT_NO_REPLACE_OBJECTS": "1"}
+        if index_file is not None:
+            index_file = Path(index_file)
+            if index_file.parent != self.folder or not index_file.name.startswith("replay-index."):
+                raise Denied("only a private replay index inside the workspace journal is permitted")
+            env["GIT_INDEX_FILE"] = str(self._private(index_file))
         controls = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "core.attributesFile=/dev/null",
                     "-c", "core.excludesFile=/dev/null", "-c", "protocol.allow=never", "-c", "gc.auto=0", "-c", "maintenance.auto=false"]
         location = ["--git-dir=" + str(common)] if worktree is None else ["-C", str(worktree)]
