@@ -95,6 +95,9 @@ class WorkOwnership(DeliveryLedger):
         if self.connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='quota_estimate_metadata'").fetchone():
             from .quota_estimates import metadata
             metadata(self)
+        if self.connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='tool_switch_metadata'").fetchone():
+            from .tool_switches import metadata
+            metadata(self)
         metadata = self.connection.execute("SELECT schema,next_fence,last_wall_ms FROM work_metadata").fetchall()
         if len(metadata) != 1 or metadata[0][0] != SCHEMA:
             raise Denied("unsupported work ownership schema; preserve for migration")
@@ -519,6 +522,9 @@ Old history without explicit intent is unknown, not permission for diagnosis.
         return updated  # Writer/resource custody deliberately remains held.
 
     def release(self, peer, work_id, *, expected_revision):
+        from .tool_switches import active_work_switch
+        if active_work_switch(self, work_id):
+            raise Denied("pending tool switch retains writer custody; cancel or complete its verified transfer first")
         work = self.work(work_id)
         root = self.root(work["root_task_id"])
         self._controller(peer, root.fields["owner_role_id"])

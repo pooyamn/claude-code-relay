@@ -23,6 +23,7 @@ from relay_core.native_epochs import SCHEMA as EPOCH_SCHEMA
 from relay_core.native_observe import SCHEMA as OBSERVE_SCHEMA
 from relay_core.native_controlled_resume import ADAPTER as CONTROLLED_RESUME_ADAPTER
 from relay_core.worktree_checkpoints import SCHEMA as CHECKPOINT_SCHEMA
+from relay_core.tool_switches import SCHEMA as SWITCH_SCHEMA
 
 
 def configuration(raw):
@@ -62,6 +63,8 @@ def plan():
             "controlled_resume_adapter": CONTROLLED_RESUME_ADAPTER, "controlled_resume_activated": False,
             "worktree_checkpoint_schema": CHECKPOINT_SCHEMA, "checkpoint_capture_activated": False,
             "checkpoint_limits_configured": False, "tool_switch_activated": False,
+            "tool_switch_schema": SWITCH_SCHEMA, "tool_switch_controller_activated": False,
+            "tool_switch_protected_readers_available": False,
             "role_profiles_not_active_sessions": sorted(policy.roles), "admission_available": False,
             "pending": ["pinned protected Codex and Claude observation/transports and exact-ID resume",
                         "target UID/cgroup/process-generation and role-isolated subscription topology",

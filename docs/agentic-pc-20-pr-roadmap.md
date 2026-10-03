@@ -8,7 +8,7 @@ Build testable security and delivery foundations first. Introduce the builder wi
 
 Pouya requested sequential implementation for PC readiness and authorized committing and pushing verified changes. Repository publication is separate from deployment. A separately authorized legacy Mac Khadang test release is active; no GitHub PRs, protected PC capabilities, credential changes or production/HamalBot migration have been performed by this implementation run. Local implementation/test evidence is distinct from target-PC acceptance. Unrelated uncommitted edits and runtime/media files are excluded from this series.
 
-PR 1 is locally implemented. PRs 2–5 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel/runtime integration still pending; evidence and limits are recorded below. PR 6's outbound foundation, bounded format/media repair, receipt-bound owner-prompt bridge, current source-grant dispatch and Telegram-local recovery are prepared offline; real protected producer/context wiring and target integration remain pending. PR 7's native registry, launch-bundle, worker-UID worktree and context-installation foundations are prepared as dependencies for that wiring, without completing PR 6 or its own native/launcher gates. PR 8's durable root/work custody and bounded-diagnosis guard are prepared offline, without granting activity slots or completing real evidence/admission/report/controller integration. PR 9's shared admission/account-pacing ledger, diagnostic transaction bridge, owner-first dispatch offers, bounded quota estimates and durable capacity-retry linkage are prepared offline; real all-source native enforcement, quota/source/stop/usage readers, approved estimate policy, protected priority/diagnostic producers and results, native retry/steering/continuation adapters and target acceptance remain pending. PR 10's worktree checkpoint foundation is prepared offline; the durable switch controller, semantic/action handoff, destination loading proof, custody transfer and admitted repair remain pending. PRs 11–20 remain to be implemented, apart from separately requested early preparations noted below. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
+PR 1 is locally implemented. PRs 2–5 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel/runtime integration still pending; evidence and limits are recorded below. PR 6's outbound foundation, bounded format/media repair, receipt-bound owner-prompt bridge, current source-grant dispatch and Telegram-local recovery are prepared offline; real protected producer/context wiring and target integration remain pending. PR 7's native registry, launch-bundle, worker-UID worktree and context-installation foundations are prepared as dependencies for that wiring, without completing PR 6 or its own native/launcher gates. PR 8's durable root/work custody and bounded-diagnosis guard are prepared offline, without granting activity slots or completing real evidence/admission/report/controller integration. PR 9's shared admission/account-pacing ledger, diagnostic transaction bridge, owner-first dispatch offers, bounded quota estimates and durable capacity-retry linkage are prepared offline; real all-source native enforcement, quota/source/stop/usage readers, approved estimate policy, protected priority/diagnostic producers and results, native retry/steering/continuation adapters and target acceptance remain pending. PR 10's worktree checkpoint and joined switch controller are prepared offline, including task/action references and atomic custody transfer; protected export, real source/loading/fence readers, issue delivery, admitted repair and target acceptance remain pending. PRs 11–20 remain to be implemented, apart from separately requested early preparations noted below. Linux/WSL OS-boundary and integrated-system tests remain pending the appropriate isolated target environment; macOS conformance tests do not satisfy those gates.
 
 ## Existing code to extend
 
@@ -493,13 +493,19 @@ metadata. Chunked content and a complete manifest commit atomically; an interrup
 capture never selects a partial handoff. Unchanged HEAD/status cannot hide changed
 untracked bytes or executable modes. Exact prepared mapping, Git pins and explicit
 capture bounds are required. Sixteen cases include five actual request/capture/seal
-process deaths. The worker-owned journal grants no authority; protected export,
-semantic/action snapshots, the switch phase machine, destination loading proof,
-writer transfer, admitted repair and encrypted restore remain gates. The native
-planner stays disabled; no live source is switched.
-All 132 clean-staged focused checks passed in 33 serial sandbox batches, with
-the existing child timeout and no host home/credentials/network. The strict staged
-secret scan passed; this is not a new full-suite or target-PC acceptance result.
+process deaths. The worker-owned journal grants no authority. The joined switch
+controller now holds original custody, attaches task/operation/approval/action
+references and transfers the same work item under mandatory independent readers
+and writer fences, without resetting budgets or granting execution. Twenty-seven
+controller cases include six actual process deaths, a real dirty-Git checkpoint
+join and a synthetic native-mapping round trip. Protected export, authoritative
+context/operation/publication/approval readers, real destination loading and
+all-writer fences, issue delivery, admitted repair and encrypted restore remain
+gates. The native planner stays disabled; no live source is switched.
+All 837 clean-staged core checks passed in 210 serial sandbox batches, alongside
+the isolation probe and all four legacy suites, with the existing child timeout
+and no host home/credentials/network. The strict staged secret scan passed;
+these are offline conformance results, not native or target-PC acceptance.
 [Checkpoint and recovery contract](pr10-tool-switch.md).
 
 ## PR 11 Publication and independent merge gates

@@ -35,7 +35,9 @@ class NativePlanTests(unittest.TestCase):
         self.assertEqual(plan["controlled_resume_adapter"], "codex-app-server-controlled-resume.v1")
         self.assertFalse(plan["controlled_resume_activated"])
         self.assertEqual(plan["worktree_checkpoint_schema"], "ccrelay.worktree_checkpoint.v1")
-        for key in ("checkpoint_capture_activated", "checkpoint_limits_configured", "tool_switch_activated"):
+        self.assertEqual(plan["tool_switch_schema"], "ccrelay.tool_switch.v1")
+        for key in ("checkpoint_capture_activated", "checkpoint_limits_configured", "tool_switch_activated",
+                    "tool_switch_controller_activated", "tool_switch_protected_readers_available"):
             self.assertIs(plan[key], False)
         self.assertEqual(plan["rpc_transport"], "codex-app-server-jsonl.v1")
         self.assertEqual(plan["websocket_transport"], "codex-app-server-unix-websocket.v1")
