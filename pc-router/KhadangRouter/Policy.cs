@@ -7,7 +7,7 @@ public sealed record RouterPolicy(string BotUsername, long BotId, long OwnerId, 
     string OwnerSid, string CodexExecutable, string CodexSha256, string CredentialFile,
     string StateDirectory, string WorkspaceRoot, int MaximumSessions = 3, int StartSpacingSeconds = 5,
     bool OwnerFullAccess = false, ChatRoute[]? AdditionalChats = null, string? LinuxWorkspaceRoot = null,
-    LinuxCodexRuntime? LinuxCodex = null)
+    LinuxCodexRuntime? LinuxCodex = null, LinuxClaudeRuntime? LinuxClaude = null)
 {
     [JsonIgnore] public string NativeApprovalPolicy => OwnerFullAccess ? "never" : "on-request";
     [JsonIgnore] public string NativePermissionProfile => OwnerFullAccess ? ":danger-full-access" : ":workspace";
@@ -32,6 +32,12 @@ public sealed record RouterPolicy(string BotUsername, long BotId, long OwnerId, 
             LinuxCodex.Validate();
             if (LinuxWorkspaceRoot != LinuxCodexRuntime.WorkspaceRoot)
                 throw new InvalidDataException("Linux Codex requires the preserved ordinary-owner workspace root");
+        }
+        if (LinuxClaude != null)
+        {
+            LinuxClaude.Validate();
+            if (LinuxWorkspaceRoot != LinuxCodexRuntime.WorkspaceRoot)
+                throw new InvalidDataException("Linux Claude requires the preserved ordinary-owner workspace root");
         }
         var seen = new HashSet<long> { ChatId };
         if (AdditionalChats is { Length: > 32 }) throw new InvalidDataException("Too many migration chats");

@@ -22,6 +22,8 @@ try
             var needsLinuxCodex = bindings.Any(b => b.Backend == "codex" && b.Runtime == "linux");
             if (needsLinuxCodex && policy.LinuxCodex == null)
                 throw new InvalidDataException("Linux native bindings require the protected ordinary-owner connector");
+            LinuxClaudeTopics.ValidateRegistry(policy, bindings); // Fail the whole registry before any native launch.
+            var needsClaude = bindings.Any(binding => binding.Backend == "claude");
             using var telegram = new Telegram(WindowsService.Credential(policy.CredentialFile), ledger);
             var me = await telegram.Call("getMe", new { }, stop);
             if (me.GetProperty("username").GetString() != policy.BotUsername || me.GetProperty("id").GetInt64() != policy.BotId)
@@ -100,6 +102,12 @@ try
                     nativeLinuxCodexObservation = linux?.Observation,
                     nativeLinuxAccountPresent = linux != null,
                     nativeLinuxCommandOwnerVerified = linux != null,
+                    // This generic probe MUST NOT resume a real Claude handoff
+                    // and consume/change its initial checkpoint. Dedicated
+                    // candidate-bound native acceptance remains required.
+                    nativeLinuxClaudeLaunchVerified = false,
+                    nativeLinuxClaudeToolOwnerVerified = false,
+                    nativeLinuxClaudeContinuityVerified = false,
                     policySha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(args[2]))),
                     routerSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(typeof(Router).Assembly.Location))),
                     modelInference = false, telegramPolling = false, testedAt = DateTimeOffset.UtcNow }));
@@ -117,13 +125,16 @@ try
                 if (needsLinuxCodex && (!proof.TryGetProperty("nativeLinuxCodexVerified", out var linuxProof) || linuxProof.ValueKind != JsonValueKind.True ||
                     !proof.TryGetProperty("nativeLinuxCommandOwnerVerified", out var commandProof) || commandProof.ValueKind != JsonValueKind.True))
                     throw new InvalidOperationException("Matching Linux native launch/credential/tool-owner proof required before polling");
+                if (needsClaude) LinuxClaudeTopics.RequireAcceptance(proof);
                 await using var rpc = new NativeRpc(WindowsOwnerProcess.Start(policy, policy.WorkspaceRoot + "\\lg-magic"), ledger);
                 await rpc.Initialize(stop);
                 var remote = new NativeRemote();
                 await remote.Read(rpc, stop);
                 var linux = needsLinuxCodex ? await LinuxCodexChannel.ConnectVerified(policy, bindings, ledger, stop) : null;
                 await using var linuxRpc = linux?.Rpc;
-                await new Router(policy, ledger, telegram, rpc, nativeRemote: remote, linuxRpc: linuxRpc).Run(stop, canary: args[0] == "--canary-service");
+                var claudeTopics = needsClaude ? new LinuxClaudeTopics(policy, ledger, bindings) : null;
+                await new Router(policy, ledger, telegram, rpc, nativeRemote: remote, linuxRpc: linuxRpc, claudeTopics: claudeTopics)
+                    .Run(stop, canary: args[0] == "--canary-service");
             }
         }
         catch (Exception error) when (error is not OperationCanceledException)

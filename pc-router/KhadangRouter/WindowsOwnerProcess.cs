@@ -21,6 +21,16 @@ public sealed class WindowsOwnerProcess : IDisposable
     private string ownerSid = "";
     private uint ownerSession;
 
+    public bool HasExited
+    {
+        get
+        {
+            if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
+            if (process == IntPtr.Zero) throw new ObjectDisposedException(nameof(WindowsOwnerProcess));
+            return WaitForSingleObject(process, 0) switch { 0 => true, 0x102 => false, _ => throw Native() };
+        }
+    }
+
     public OwnerProcessObservation ObserveOwner()
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
@@ -48,6 +58,13 @@ public sealed class WindowsOwnerProcess : IDisposable
         var arguments = runtime.Arguments(workspaces);
         return StartCore(policy, windowsWorkspace, null, runtime, arguments);
     }
+    public static WindowsOwnerProcess StartLinuxClaude(RouterPolicy policy, string windowsWorkspace, Binding binding)
+    {
+        policy.Validate(); policy.ValidateBindings([binding]);
+        var runtime = policy.LinuxClaude ?? throw new InvalidDataException("Protected Linux Claude runtime required");
+        var arguments = runtime.Arguments(binding, policy.OwnerFullAccess);
+        return StartCore(policy, windowsWorkspace, null, linuxArguments: arguments, claude: runtime, binding: binding);
+    }
     // One-shot acceptance only: an empty child-only credential home. Never copy
     // production credentials, change global defaults or launch a model as SYSTEM.
     public static WindowsOwnerProcess StartDiagnostic(RouterPolicy policy, string workspace, string emptyHome)
@@ -57,17 +74,18 @@ public sealed class WindowsOwnerProcess : IDisposable
         return StartCore(policy, workspace, emptyHome);
     }
     private static WindowsOwnerProcess StartCore(RouterPolicy policy, string workspace, string? diagnosticHome,
-        LinuxCodexRuntime? linux = null, string? linuxArguments = null)
+        LinuxCodexRuntime? linux = null, string? linuxArguments = null, LinuxClaudeRuntime? claude = null, Binding? binding = null)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
         using var current = WindowsIdentity.GetCurrent();
         if (!current.IsSystem || Process.GetCurrentProcess().SessionId != 0)
             throw new InvalidOperationException("Owner launcher requires the SYSTEM service, not an agent or SSH session");
         policy.Workspace(workspace);
-        using var package = linux?.OpenPinnedPackage();
-        var image = linux == null ? policy.CodexExecutable : LinuxCodexRuntime.WslExecutable;
-        var digest = linux == null ? policy.CodexSha256 : linux.WslSha256;
-        if (linux != null)
+        var isLinux = linux != null || claude != null;
+        using var package = linux?.OpenPinnedPackage() ?? claude?.OpenPinnedPackage(binding ?? throw new InvalidDataException("Exact Claude binding required"));
+        var image = isLinux ? LinuxCodexRuntime.WslExecutable : policy.CodexExecutable;
+        var digest = linux?.WslSha256 ?? claude?.WslSha256 ?? policy.CodexSha256;
+        if (isLinux)
         {
             if (!Environment.SystemDirectory.Equals(@"C:\Windows\System32", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("Exact PC Windows system image root required");
@@ -94,10 +112,10 @@ public sealed class WindowsOwnerProcess : IDisposable
                 throw new InvalidOperationException("Physical console belongs to a different account");
             if (!GetTokenInformation(token, 20, out var elevated, 4, out _) || elevated != 0)
                 throw new InvalidOperationException("Native agents require a non-elevated owner token");
-            if (linux != null) VerifyCredentialDenied(token, policy.CredentialFile);
+            if (isLinux) VerifyCredentialDenied(token, policy.CredentialFile);
             result.ownerSid = policy.OwnerSid; result.ownerSession = session;
             if (!CreateEnvironmentBlock(out environment, token, false)) throw Native();
-            if (diagnosticHome != null || linux != null) diagnosticEnvironment = CleanOwnerEnvironment(environment, diagnosticHome);
+            if (diagnosticHome != null || isLinux) diagnosticEnvironment = CleanOwnerEnvironment(environment, diagnosticHome);
             var stdin = Pipe(handles, parentWrites: true);
             var stdout = Pipe(handles, parentWrites: false);
             var stderr = Pipe(handles, parentWrites: false);
@@ -107,7 +125,7 @@ public sealed class WindowsOwnerProcess : IDisposable
             if (!SetInformationJobObject(result.job, 9, ref limits, (uint)Marshal.SizeOf<JobLimits>())) throw Native();
             var startup = new StartupInfo { Size = Marshal.SizeOf<StartupInfo>(), Desktop = "winsta0\\default",
                 Flags = 0x100, Input = stdin.Child, Output = stdout.Child, Error = stderr.Child };
-            var command = new StringBuilder(linux != null ? Quote(image) + " " + linuxArguments :
+            var command = new StringBuilder(isLinux ? Quote(image) + " " + linuxArguments :
                 Quote(image) + " -c windows.sandbox=elevated" +
                 (diagnosticHome == null ? "" : " -c cli_auth_credentials_store=\"file\"") + " app-server --listen stdio://");
             // Only our three explicitly inheritable pipe ends are inherited.

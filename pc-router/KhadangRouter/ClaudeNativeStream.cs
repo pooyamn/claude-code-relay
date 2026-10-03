@@ -262,7 +262,8 @@ public sealed class ClaudeNativeStream : IClaudeNative
                 Notification?.Invoke(message);
             }
         }
-        catch (Exception error) when (error is IOException or OperationCanceledException or JsonException or InvalidDataException or InvalidOperationException or KeyNotFoundException) { }
+        catch (Exception error) when (error is IOException or OperationCanceledException or JsonException or InvalidDataException or
+            InvalidOperationException or KeyNotFoundException or DecoderFallbackException) { }
         finally
         {
             disconnected = true;

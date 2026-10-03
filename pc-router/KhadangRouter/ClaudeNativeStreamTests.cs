@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text;
 using System.Threading.Channels;
 
 namespace KhadangRouter;
@@ -11,7 +12,7 @@ public static class ClaudeNativeStreamTests
         int checks = 0;
         void Check(bool value, string name) { if (!value) throw new Exception(name); checks++; }
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        foreach (var mode in new[] { "normal", "reject", "disconnect", "mismatched-replay", "duplicate-json" })
+        foreach (var mode in new[] { "normal", "reject", "disconnect", "mismatched-replay", "duplicate-json", "invalid-utf8" })
         {
             var path = Path.Combine(root, "claude-stream-" + mode); Directory.CreateDirectory(path);
             using var ledger = new Ledger(Path.Combine(path, "rpc.db"));
@@ -136,7 +137,12 @@ public static class ClaudeNativeStreamTests
         public List<JsonElement> Writes = [];
         public static object Question() => new { type = "control_request", request_id = "snapshot-question", request = new { subtype = "can_use_tool", tool_name = "AskUserQuestion" } };
         public void Emit(object value) => frames.Writer.TryWrite(JsonSerializer.Serialize(value));
-        public async Task<string?> Read(CancellationToken stop) => await frames.Reader.ReadAsync(stop);
+        public async Task<string?> Read(CancellationToken stop)
+        {
+            var frame = await frames.Reader.ReadAsync(stop);
+            if (frame == "fixture-invalid-utf8") throw new DecoderFallbackException("Synthetic native UTF-8 failure");
+            return frame;
+        }
         public Task Write(string message, CancellationToken stop)
         {
             using var document = JsonDocument.Parse(message); var value = document.RootElement.Clone(); Writes.Add(value);
@@ -152,6 +158,7 @@ public static class ClaudeNativeStreamTests
             else if (value.GetProperty("type").GetString() == "user")
             {
                 if (mode == "disconnect") frames.Writer.TryWrite(null);
+                else if (mode == "invalid-utf8") frames.Writer.TryWrite("fixture-invalid-utf8");
                 else if (mode == "duplicate-json") frames.Writer.TryWrite("{\"type\":\"user\",\"type\":\"user\"}");
                 else
                 {

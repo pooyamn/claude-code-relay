@@ -446,7 +446,7 @@ Running/Auto as LocalService, with Defender antivirus and realtime protection
 enabled. This check read service/protection metadata; it did not repeat the
 authenticated protocol checks or establish off-network reachability.
 
-The 12:32 PM PDT membership recheck remains unchanged: Ai Dispatch member only;
+The 4:12 PM PDT membership recheck remains unchanged: Ai Dispatch member only;
 Oracova and Startup Ideas inaccessible. The existing bot-add request is still
 pending. Authenticated native continuation, topic cutover, physical bench
 transfer, independent recovery and Mac retirement remain incomplete.
@@ -770,7 +770,7 @@ check at 3:41 PM PDT found the original router and Claude remote task still
 Running, with the production configuration unchanged.
 
 Windows/WSL acceptance of this launcher, package deployment, persistent native
-daemon supervision and Windows Claude launch wiring remain pending. The prior isolated
+daemon supervision and native Claude launch acceptance remain pending. The prior isolated
 shared-socket acceptance does not prove this new privileged launch path. No live
 configuration, binding, token, protected release or Hamal routing was changed.
 
@@ -803,10 +803,41 @@ fixture uses an actual POSIX kernel lock on the Mac; it does not prove that the
 pinned Linux Claude binary retains the descriptor or stops all detached tools.
 The lease coordinates participating bridges, not arbitrary native CLI writers.
 
-Protected Windows launcher/factory wiring, native descriptor and parent-death
-acceptance, source-writer fencing, final checkpoint capture and live tool/phone
-round trips remain pending. This connector is source only; no PC launch,
-production configuration, topic binding or privileged deployment changed.
+The Windows launch path and Claude topic factory are now implemented in the
+router candidate. The optional runtime policy pins all seven Python files and
+each handoff in an administrator-owned package. Every checkpoint binds the
+exact chat, topic, workspace and native UUID; the whole selected registry is
+validated before any native launch. The existing owner launcher supplies fixed
+WSL arguments, verifies the actual limited console token and checks credential
+open-denial before starting the connector. No new broker or role service is used.
+
+The factory commits a handoff receipt before launch. A failed observation or
+router restart cannot silently reuse that same checkpoint; a reviewed next
+checkpoint or explicit protected-ledger reconciliation is required. This hold
+does not complete automatic recovery: capturing subsequent PC checkpoints and
+reconciling interrupted generations still need implementation and acceptance.
+The channel checks exact bounded readiness and brackets native traffic with the
+owned Windows process observation. An actual terminal process handle permits
+draining only the original private output pipe, never another input or connection.
+
+The generic router probe deliberately leaves Claude launch, tool-owner and
+continuity acceptance unverified. It must not resume a production handoff merely
+to test the launcher. Claude routing requires dedicated acceptance for the
+matching policy/code before polling; the receipt-writing native probe is still
+pending. Fixture results cannot supply those approvals or OS evidence.
+
+All 778 PC-router checks pass in the verified OS sandbox. Both the router and
+standalone Claude probe compile with zero warnings/errors. The fixtures cover
+scope drift, owner/generation changes, terminal output, invalid UTF-8 and
+handoff holds across an independently reopened SQLite connection. They do not
+establish actual Windows/WSL or preserved-session acceptance. The 4:11 PM PDT
+read-only PC check found the original router and Claude remote task Running,
+with the production configuration unchanged.
+
+Native descriptor/parent-death and tool-owner acceptance, source-writer fencing,
+final checkpoints, PC restart recovery and live tool/phone round trips remain
+pending. This is source wiring only; no PC native launch, production configuration,
+topic binding or privileged deployment changed.
 
 ### Physical bench preservation and PC builds
 
