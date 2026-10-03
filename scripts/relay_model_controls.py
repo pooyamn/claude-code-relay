@@ -1,8 +1,9 @@
-"""Native Codex model controls; no inference, relaunch or replacement thread.
+"""Native model controls and explicit, busy-checked legacy tool-switch aliases.
 
 Discovery comes from model/list. Updates use thread/settings/update and are
 confirmed by thread/read. Lost acknowledgments are reported, never retried.
 Picker receipts bind each button to one session, native thread and destination.
+Known Claude names and cx retain the relay's pre-picker backend-switch meaning.
 """
 import json
 import os
@@ -172,17 +173,25 @@ def handle(sender, prompt):
     if argument.split() and retired(argument.split()[0]):
         sender.deliver("Kimi Code and Ox Alpha are retired on both bots. Use /model or /backend.")
         return True
+    # OpenClaw normalizes cc model opus to /model opus before this helper runs.
+    # The picker must not swallow the old explicit backend selectors as unknown
+    # Codex catalog IDs. Only recognized names cross tools; unknown IDs stay in
+    # the native catalog path and never trigger a relaunch.
+    if name == "model":
+        if argument.lower() == "cx":
+            _switch_tool(sender, tid, "codex")
+            return True
+        claude_model = argument.lower() in {"opus", "sonnet", "haiku"} or bool(
+            re.fullmatch(r"claude-[A-Za-z0-9._\[\]-]+", argument, re.I))
+        if claude_model and sender.is_codex():
+            _switch_tool(sender, tid, "claude", argument)
+            return True
     if name == "backend":
         if not argument:
             text = "Choose the tool for this topic. /model changes the model within the current tool."
             choices = [("Claude Code", "/backend claude"), ("Codex", "/backend codex")]
         elif argument.lower() in {"claude", "codex"}:
-            if sender.backend_name() == argument.lower():
-                sender.deliver(f"This topic already uses {argument.title()}.")
-            elif (sender.is_codex() and tid and _active(tid)) or (not sender.is_codex() and sender.BUSY.search(sender.pane())):
-                sender.deliver("Finish or /cancel the current turn before switching tools; its conversation is preserved.")
-            else:
-                sender.restart_with_model("cx" if argument.lower() == "codex" else "opus")
+            _switch_tool(sender, tid, argument.lower())
             return True
         else:
             sender.deliver("Use /backend claude or /backend codex.")
@@ -214,6 +223,22 @@ def handle(sender, prompt):
     else:
         sender.deliver(text)
     return True
+
+
+def _switch_tool(sender, tid, backend, claude_model="opus"):
+    if sender.backend_name() == backend:
+        sender.deliver(f"This topic already uses {backend.title()}.")
+        return
+    try:
+        busy = _active(tid) if sender.is_codex() and tid else (
+            not sender.is_codex() and sender.BUSY.search(sender.pane()))
+    except Exception:
+        sender.deliver("Cannot verify whether the current turn is idle. No tool switch was sent.")
+        return
+    if busy:
+        sender.deliver("Finish or /cancel the current turn before switching tools; its conversation is preserved.")
+        return
+    sender.restart_with_model("cx" if backend == "codex" else claude_model)
 
 
 def _active(tid):

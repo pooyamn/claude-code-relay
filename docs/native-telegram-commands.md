@@ -1,5 +1,39 @@
 # Native Telegram command menus
 
+## Legacy tool-switch alias regression — 2026-10-03
+
+DUT topic 53 received `cc model opus` at 07:57:03; outbound message 4778
+confirmed the command was incorrectly rejected as an unknown Codex model.
+The native picker intercepted the normalized `/model opus` before the older
+backend-switch path could run. This was command dispatch, not lost delivery or
+an unavailable Anthropic model.
+
+Recognized Claude names (`opus`, `sonnet`, `haiku`, and explicit `claude-…` IDs)
+now retain their cross-tool switch meaning in Codex topics; `cx` retains the
+switch back to Codex. Within Claude, Claude names still select its model.
+Native Codex catalog IDs still use settings update/readback on the existing
+thread. Unknown or retired IDs never trigger a backend switch. Both aliases and
+`/backend` refuse an active turn or an unavailable idle-status read. `/backend`
+remains the unambiguous tool selector.
+
+The failed command is not automatically replayed. A tool switch preserves the
+stored conversations, but does not transfer Codex history into Claude; the
+existing unfinished-work handoff gate remains separate. Activation replaces only
+the model-control helper loaded by fresh per-message senders; it does not need a
+watcher/native-daemon restart, bot credential change, or binding change.
+
+Activated in the shared Mac sender installation at 09:26 PDT. Installed helper
+SHA-256 is `cac50c056ccbdd16c286b17bbb8e21748a7703e1953f753303965ba2e3e1c52d`,
+byte-identical to the tested source. A private before-copy is under
+`~/.config/ccrelay/dut-model-alias-backup.E2C7j8`. Readback verified the same
+DUT watcher PID, sender, folder registry, backend/pin, target, native thread
+and gateway configuration. Khadang's PC installation and Hamal wiring were
+not changed. Six new regression tests join the existing command/model tests:
+38 focused core tests and all four legacy suites passed in the OS sandbox;
+the strict secret scan passed. The actual next owner-issued switch and native
+Claude model confirmation remain unobserved; no live tool switch or inference
+was performed as a test.
+
 ## Model controls and retired providers — 2026-10-02 follow-up
 
 Pouya requested new commands, proper Codex model selection, and retirement of
