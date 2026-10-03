@@ -107,6 +107,15 @@ receipts remain in `.native-remote/source-clone-*/result.json`; a repository's
 historical source observation is not self-authenticating proof of its latest
 HEAD. This transfer mechanism still does not repair the rejected GitHub login.
 
+The first update run stopped before creating its claim or changing HEAD: Windows
+Git had marked `.git` Hidden, and `Get-Item -LiteralPath` without `-Force` reported
+it missing despite the native directory existing. The guard now requests hidden
+metadata with `-Force`, retaining the same reparse-point denial and unchanged
+attributes/ACLs. `test-source-metadata.ps1` reproduces that actual hidden-directory
+failure and checks the production guard against a real NTFS junction. Failed-run
+evidence is retained; updates are not automatically replayed. All five actual
+Windows metadata regression checks passed without touching a real repository.
+
 `relay_core/system_snapshot.py` requires a protected `SnapshotPolicy`, explicit
 component instances, a whole-cohort filesystem/native writer guard and a clock.
 The policy pins each component's source root, original owner UID, deployed

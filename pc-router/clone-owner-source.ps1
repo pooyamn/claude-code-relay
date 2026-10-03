@@ -35,7 +35,12 @@ foreach($root in @($parent,'C:\Users\pou\.native-remote')){
 }
 if($Update -and (-not $Bundle -or -not $ExpectedBase -or -not (Test-Path -LiteralPath "$destination\.git"))){throw 'Update requires reviewed bundle, expected base and existing repository'}
 if((Test-Path -LiteralPath $state) -or (-not $Update -and (Test-Path -LiteralPath $destination))){throw 'Prior state/destination exists; inspect it, never replay or overwrite'}
-if($Update){foreach($path in @($destination,"$destination\.git")){if((Get-Item -LiteralPath $path).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Literal existing repository required'}}}
+function Assert-LiteralSource([string]$Path){
+ # Git marks .git Hidden on Windows. -Force exposes its metadata; it does not
+ # change the hidden flag or bypass ACLs/UAC. Never rename/unhide source state.
+ if((Get-Item -LiteralPath $Path -Force).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Literal existing repository required'}
+}
+if($Update){foreach($path in @($destination,"$destination\.git")){Assert-LiteralSource $path}}
 [IO.Directory]::CreateDirectory($state) | Out-Null
 $claim=[IO.File]::Open((Join-Path $state 'one-shot.claim'),[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
 try{$claim.Flush($true)}finally{$claim.Dispose()}
