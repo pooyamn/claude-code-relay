@@ -54,9 +54,9 @@ whole-group route; it is not yet deployed. A working native Linux transport for
 Codex now passes isolated Windows-to-Linux native acceptance, including shared
 events and actual tool identity. A persistent shared daemon, operational runtime
 routing and the Claude transport are still required for the preserved sessions.
-Claude's pinned streaming control interface initializes on the PC with and
-without the Remote Control flag; authenticated phone synchronization and live
-steering are not yet proven by that credential-free compatibility check.
+Claude's pinned streaming control interface now also connects and disconnects
+authenticated native Remote Control on the PC through an explicit control
+request. A phone-message round trip and live Telegram steering remain unverified.
 Native remote connectivity alone does not supply those capabilities.
 The last membership check found Khadang unable to access Oracova and Startup
 Ideas, and only a member in Ai Dispatch. An owner request to add the bot is
@@ -582,11 +582,48 @@ does not establish that a remote connection was made or that the headless proces
 can synchronize phone messages. The [official CLI reference](https://code.claude.com/docs/en/cli-reference)
 describes `--remote-control` as an interactive-session flag, while the
 [Remote Control documentation](https://code.claude.com/docs/en/remote-control)
-requires an eligible subscription login and a running local process. A fresh
-authenticated session must still prove native phone/Telegram continuity,
-active-turn steering, controls and permission/question handling before selecting
-the operational Claude transport. Existing imported tasks must not serve as
-diagnostic fixtures. No deferred role or broker service was activated.
+requires an eligible subscription login and a running local process. The later
+authenticated check below establishes enrollment, not phone/Telegram message
+continuity. Existing imported tasks must not serve as diagnostic fixtures. No
+deferred role or broker service was activated.
+
+At 2:27 PM PDT, a separate fresh streaming session successfully connected and
+disconnected native Remote Control with task result 0. The owner login was
+copied into an isolated private diagnostic profile without importing histories,
+hooks, tools, MCP configuration or project instructions. Initialization reported
+an idle session and Remote Control availability. The explicit `remote_control`
+request returned a native bridge session ID and an HTTPS `claude.ai/code/` URL;
+the subsequent disconnect was acknowledged. Raw responses and pairing details
+remain private. No prompt was sent or existing conversation resumed.
+
+The mechanism comes from the inspected, registry-integrity-verified
+[`@anthropic-ai/claude-agent-sdk` 0.3.288 artifact](https://registry.npmjs.org/@anthropic-ai/claude-agent-sdk/-/claude-agent-sdk-0.3.288.tgz): its `enableRemoteControl()`
+method sends this control request, rather than relying on the interactive CLI
+flag. That method is not declared on its public `Query` type, so this remains a
+version-pinned integration that needs the same native compatibility check before
+an upgrade. The SDK's user-message type also has `priority: "now"`; this is the
+candidate mechanism for immediate steering, not yet an active-turn test result.
+No SDK package or alternate CLI was installed on the PC for this inspection.
+
+The accepted run used the Interactive/Limited Windows owner in session 1 and
+actual Linux/native UID 1000. Both OS probes denied access to the protected bot
+credential without reading bytes. The pinned native executable and ordinary
+child identity were checked. Native exit was 0 and the Windows launcher stopped.
+The terminal task has no triggers or restart policy; its private receipt is under
+`C:\Users\pou\.native-remote\migration-claude-remote-c658e18cbaf04866622e3cc887c7453d`.
+Its administrator-owned task and source code were sealed before launch. Windows
+initially normalized the task descriptor and added a principal read ACE; the
+documented [`TASK_DONT_ADD_PRINCIPAL_ACE` flag](https://learn.microsoft.com/en-us/windows/win32/taskschd/registeredtask-setsecuritydescriptor) produced an OS-verified protected
+SYSTEM/Administrators-only descriptor. The task was never started while those
+registration checks failed. The Windows API also normalized its principal name
+to `pou`, which was resolved back to the exact owner SID before launch.
+
+All 13 focused enrollment and compatibility tests pass in the verified OS
+sandbox; this is not a full 996-test suite run. The live router stayed Running
+with unchanged configuration and the original Windows native remote task stayed
+Running. No binding, LG conversation or source writer changed. Phone/Telegram
+round trips, immediate active-turn steering, controls, permissions/questions and
+operational supervision remain required before original-topic cutovers.
 
 ### Physical bench preservation and PC builds
 
