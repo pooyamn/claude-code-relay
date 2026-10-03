@@ -6,7 +6,7 @@ namespace KhadangRouter;
 
 // Owner-only Windows migration adapter. It does not claim company/role gates or
 // replace the prepared WSL authorization/admission/deployment components.
-public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, INative rpc)
+public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, INative rpc, IAttachments? attachments = null)
 {
     private sealed class Session(Binding binding)
     {
@@ -34,6 +34,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
     private readonly ConcurrentDictionary<string, Question> questions = new();
     private readonly SemaphoreSlim starts = new(1, 1);
     private readonly NativeQuota quota = new();
+    private readonly IAttachments attachmentStore = attachments ?? new Attachments(policy, ledger, telegram);
     private DateTimeOffset lastStart = DateTimeOffset.MinValue;
 
     public async Task Run(CancellationToken stop, bool canary = false)
@@ -179,13 +180,18 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
                 ledger.Finish(updateId, "unbound"); return;
             }
             target = session;
-            if (!message.TryGetProperty("text", out var textElement))
-            {
-                await telegram.Send(policy.ChatId, topic, "Attachment delivery is not activated in this PC adapter yet. The update is retained in the ledger; it was not silently sent as an empty prompt.", stop);
-                ledger.Finish(updateId, "held-media"); return;
-            }
-            var text = textElement.GetString()!;
-            if (text.TrimStart().StartsWith('/'))
+            IReadOnlyList<AttachmentReference> references;
+            try { references = Attachments.References(message); }
+            catch (Exception error) when (error is InvalidOperationException or KeyNotFoundException) { throw new AttachmentFailure("Malformed attachment metadata; original update retained"); }
+            var hasText = message.TryGetProperty("text", out var textElement);
+            var hasCaption = message.TryGetProperty("caption", out var caption);
+            if (references.Count > 0 && message.TryGetProperty("media_group_id", out _))
+                throw new AttachmentFailure("Album references retained; atomic multi-message assembly is pending. No partial album sent.");
+            if (hasText && hasCaption || hasText && textElement.ValueKind != JsonValueKind.String || hasCaption && caption.ValueKind != JsonValueKind.String)
+                throw new AttachmentFailure("Malformed message text/caption; original update retained");
+            if (!hasText && references.Count == 0) throw new AttachmentFailure("Unsupported message content; original update retained. No empty prompt sent.");
+            var text = hasText ? textElement.GetString()! : hasCaption ? caption.GetString()! : "";
+            if (references.Count == 0 && text.TrimStart().StartsWith('/'))
             {
                 // Account reads do not mutate a turn. Don't hold the session
                 // dispatch lock across a network quota read: owner steering,
@@ -199,6 +205,24 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
                 try { await Control(session, text, stop); ledger.Finish(updateId, "control"); return; }
                 finally { session.Dispatch.Release(); }
             }
+            string? mediaTurn = null;
+            IReadOnlyList<StagedAttachment> files = [];
+            if (references.Count > 0)
+            {
+                lock (session.Gate)
+                {
+                    if (session.Held || ledger.Unknown != 0 || session.Busy && session.Turn == null)
+                        throw new AttachmentFailure("Native input identity is unconfirmed; attachment held before download");
+                    mediaTurn = session.Busy ? session.Turn : null;
+                }
+                // Do not hold the turn/control lock during a network download.
+                // Recheck the arrival turn below; never convert stale media
+                // steering into a fresh model turn after it ends.
+                try { files = await attachmentStore.Stage(message, session.Binding, updateId, stop); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException or TelegramFailure or NotSupportedException or
+                    JsonException or InvalidOperationException or KeyNotFoundException)
+                { throw new AttachmentFailure("Attachment download/staging failed (" + error.GetType().Name + "); original reference retained"); }
+            }
             await session.Dispatch.WaitAsync(stop);
             try
             {
@@ -207,9 +231,10 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
                 {
                     if (session.Held || ledger.Unknown != 0) throw new InvalidOperationException("Uncertain prior effect; input held for reconciliation");
                     active = session.Busy ? session.Turn : null;
+                    if (mediaTurn != null && active != mediaTurn) throw new AttachmentFailure("Active turn ended or changed during attachment download; staged files held, no fresh-turn fallback");
                     if (session.Busy && active == null) throw new InvalidOperationException("Native turn identity not yet confirmed; no queue fallback");
                 }
-                var input = new[] { new { type = "text", text = "[Telegram owner " + policy.OwnerId + "; message " + message.GetProperty("message_id").GetInt64() + "]\n" + text } };
+                var input = Attachments.Input(policy.OwnerId, message.GetProperty("message_id").GetInt64(), text, files);
                 if (active != null)
                 {
                     await rpc.Call("turn/steer", new { threadId = session.Binding.ThreadId, expectedTurnId = active, input }, stop);
@@ -239,6 +264,13 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
             }
             finally { session.Dispatch.Release(); }
         }
+        catch (AttachmentFailure error)
+        {
+            // Known pre-native failure, not an ambiguous model action. Preserve
+            // the current turn/goal and keep subsequent owner inputs usable.
+            ledger.Finish(updateId, "held-media");
+            if (target != null) lock (target.Gate) { target.Bubble.Append("\nAttachment input " + updateId + " held: " + error.Message + "\n"); Touch(target); }
+        }
         catch (Exception error) when (error is not OperationCanceledException)
         {
             ledger.Finish(updateId, error is NativeRejected ? "rejected" : "held-no-replay");
@@ -265,7 +297,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
         string answer;
         switch (command[0].ToLowerInvariant())
         {
-            case "/help": answer = "PC Codex controls: /status, /limits, /cancel, /goal [objective | pause | resume | clear], /model [id], /effort <level>, /approve <nonce>, /deny <nonce>, /answer <nonce> <question-id> <text>. Native Claude routing and attachments are still pending; no Mac fallback is permitted."; break;
+            case "/help": answer = "PC Codex controls: /status, /limits, /cancel, /goal [objective | pause | resume | clear], /model [id], /effort <level>, /approve <nonce>, /deny <nonce>, /answer <nonce> <question-id> <text>. Photos and files download into a protected read-only cache (hosted Telegram limit 20 MB); captions stay with them. Images use native localImage; audio/video are files, not verified transcripts. Native Claude routing, large-file transport and albums remain pending; no Mac fallback is permitted."; break;
             case "/status": answer = "PC session: " + session.Binding.Name + "\nNative thread: " + session.Binding.ThreadId + "\n" +
                 (session.Held ? "Held — reconcile native/transport receipts before continuing." : session.Busy ? "Working; new messages steer this turn." : "Idle.") + "\nHeld/unknown operations: " + ledger.Unknown; break;
             case "/cancel":

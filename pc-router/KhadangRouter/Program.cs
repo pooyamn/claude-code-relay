@@ -52,6 +52,19 @@ try
                 if (sandbox.GetProperty("exitCode").GetInt32() != 0 || !sandbox.GetProperty("stdout").GetString()!.Contains("CodexSandboxOffline", StringComparison.OrdinalIgnoreCase))
                     throw new InvalidOperationException("Native elevated Windows workspace sandbox did not execute as its dedicated offline identity");
                 var goalReads = new List<object>();
+                var asset = Attachments.ProbeAsset(policy);
+                var assetPath = asset.Path.Replace("'", "''");
+                var assetCheck = "$b=[IO.File]::ReadAllBytes('" + assetPath + "'); " +
+                    "$h=[Security.Cryptography.SHA256]::Create(); $d=[BitConverter]::ToString($h.ComputeHash($b)).Replace('-',''); $h.Dispose(); " +
+                    "if($d -ne '" + asset.Sha256 + "'){exit 14}; " +
+                    "try { $f=[IO.File]::Open('" + assetPath + "',[IO.FileMode]::Open,[IO.FileAccess]::Write); $f.Dispose(); exit 15 } " +
+                    "catch [UnauthorizedAccessException] { }; " +
+                    "try { $f=[IO.File]::Open('" + Path.GetDirectoryName(assetPath) + "\\worker-write-canary.tmp',[IO.FileMode]::CreateNew,[IO.FileAccess]::Write); $f.Dispose(); exit 16 } " +
+                    "catch [UnauthorizedAccessException] { }; Write-Output 'ATTACHMENT-READ-ONLY-OK'; exit 0";
+                var assetResult = await rpc.Call("command/exec", new { command = new[] { Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell\\v1.0\\powershell.exe"), "-NoProfile", "-NonInteractive", "-Command", assetCheck },
+                    cwd = policy.WorkspaceRoot + "\\lg-magic", sandboxPolicy = new { type = "dangerFullAccess" }, timeoutMs = 10000 }, stop);
+                if (assetResult.GetProperty("exitCode").GetInt32() != 0 || !assetResult.GetProperty("stdout").GetString()!.Contains("ATTACHMENT-READ-ONLY-OK"))
+                    throw new InvalidOperationException("Native owner attachment read-only ACL proof failed");
                 var quota = new NativeQuota();
                 await quota.Read(rpc, stop);
                 foreach (var binding in ledger.Bindings())
@@ -69,6 +82,7 @@ try
                     nativeWindowsSandboxVerified = true,
                     nativeGoalReadSchemaVerified = true, nativeGoalReads = goalReads,
                     nativeQuota = quota.Snapshot,
+                    nativeAttachmentReadOnlyAclVerified = true, nativeAttachmentFixture = asset,
                     policySha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(args[2]))),
                     routerSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(typeof(Router).Assembly.Location))),
                     modelInference = false, telegramPolling = false, testedAt = DateTimeOffset.UtcNow }));

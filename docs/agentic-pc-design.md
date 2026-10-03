@@ -80,6 +80,18 @@ enforcement or completed PR 9: bounded costs/coverage, Claude/account/model
 pool applicability, approved pacing and all-source pre-turn fences remain gates.
 [Observer mechanism, evidence and limits](pr9-model-admission.md#pc-read-only-native-observer-2026-10-03).
 
+2026-10-03 inbound media milestone: the PC owner-only adapter stages direct-owner
+photos/files and captions in a content-hashed, read-only cache. Supported image
+signatures map to documented native localImage input; other files retain paths
+and metadata without automatic execution or invented transcripts. Delayed
+downloads do not lock owner controls, and ended steering turns never become new
+turns. 229 local/232 Windows checks pass; a real non-elevated native worker reads
+the exact cache fixture and is denied both overwrite and sibling-file creation,
+while token/code protection remains intact. This is not a real Telegram/image-
+model round trip, album/large-file/transcription completion, company access or
+portable switch/restore acceptance. Those requirements remain in scope.
+[Attachment mechanism and remaining gates](pr6-telegram-outbound.md#pc-owner-only-inbound-attachments-2026-10-03).
+
 ## 1. Goals and constraints
 
 Goals

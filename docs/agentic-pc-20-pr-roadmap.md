@@ -6,6 +6,17 @@ Build testable security and delivery foundations first. Introduce the builder wi
 
 ## Execution status
 
+2026-10-03 inbound media integration: owner-only PC photo/file staging now keeps
+captions and native localImage/file references in a protected read-only cache,
+without credential URLs in native input. 229 local and 232 actual Windows checks
+pass; the real non-elevated native worker proves read access plus overwrite and
+directory-create denial. Slow staging leaves controls responsive and stale
+steering cannot become a new turn. Real Telegram/image-model round trips,
+atomic albums, large-file transport, verified audio/video interpretation,
+restricted-profile/Claude/company grants, and switch/restore of external cache
+references remain explicit gates. This does not finish PR 4–6, 9–10 or 12.
+[Media evidence and full remaining scope](pr6-telegram-outbound.md#pc-owner-only-inbound-attachments-2026-10-03).
+
 2026-10-03 partial PR 9 provider integration: owner-only PC Khadang now has
 native read-only `/limits` and account-wide stale invalidation, with 136 joined
 checks passing both locally and on Windows. A no-inference read matched native

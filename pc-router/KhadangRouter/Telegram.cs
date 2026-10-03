@@ -15,17 +15,19 @@ public sealed class Telegram : IBot, IDisposable
 {
     private readonly HttpClient http = new(new HttpClientHandler { AllowAutoRedirect = false });
     private readonly string endpoint;
+    private readonly string filesEndpoint;
     private readonly Ledger ledger;
     private readonly SemaphoreSlim outbound = new(1, 1);
     public Telegram(string token, Ledger ledger)
     {
         if (string.IsNullOrWhiteSpace(token) || token.Any(char.IsWhiteSpace)) throw new InvalidDataException("Bot credential missing");
         endpoint = "https://api.telegram.org/bot" + token + "/"; this.ledger = ledger;
+        filesEndpoint = "https://api.telegram.org/file/bot" + token + "/";
         http.Timeout = TimeSpan.FromSeconds(45);
     }
     public async Task<JsonElement> Call(string method, object parameters, CancellationToken stop, bool effect = false)
     {
-        if (!new[] { "getMe", "getWebhookInfo", "getChat", "getChatMember", "getUpdates", "sendMessage", "editMessageText", "createForumTopic", "setMyCommands", "getMyCommands", "answerCallbackQuery" }.Contains(method))
+        if (!new[] { "getMe", "getWebhookInfo", "getChat", "getChatMember", "getUpdates", "getFile", "sendMessage", "editMessageText", "createForumTopic", "setMyCommands", "getMyCommands", "answerCallbackQuery" }.Contains(method))
             throw new InvalidOperationException("Unknown Telegram method");
         string? attempt = effect ? ledger.Attempt("telegram/" + method, parameters) : null;
         try
@@ -86,6 +88,54 @@ public sealed class Telegram : IBot, IDisposable
         try { await Call("editMessageText", new { chat_id = chat, message_id = message, text,
             link_preview_options = new { is_disabled = true } }, stop, effect: true); }
         finally { outbound.Release(); }
+    }
+    public static string DownloadPath(JsonElement result, AttachmentReference file)
+    {
+        if (result.ValueKind != JsonValueKind.Object) throw new AttachmentFailure("Malformed Telegram file metadata");
+        if (file.UniqueId != null && (!result.TryGetProperty("file_unique_id", out var unique) || unique.GetString() != file.UniqueId))
+            throw new AttachmentFailure("Telegram attachment identity changed");
+        if (result.TryGetProperty("file_size", out var size))
+        {
+            if (!size.TryGetInt64(out var bytes) || bytes < 0 || bytes > Attachments.MaximumBytes || file.Size is { } expected && expected != bytes)
+                throw new AttachmentFailure("Telegram attachment size changed or exceeds hosted download limit");
+        }
+        var path = result.GetProperty("file_path").GetString();
+        if (path == null || path.Length > 512 || !System.Text.RegularExpressions.Regex.IsMatch(path, "\\A[A-Za-z0-9_-]+(?:/[A-Za-z0-9_.-]+)+\\z") ||
+            path.Split('/').Any(part => part is "." or "..")) throw new AttachmentFailure("Unsafe Telegram download path refused");
+        return path;
+    }
+    public static async Task CopyAttachment(Stream source, Stream target, long? expected, CancellationToken stop)
+    {
+        long total = 0; var buffer = new byte[65536]; int count;
+        while ((count = await source.ReadAsync(buffer, stop)) != 0)
+        {
+            total += count;
+            if (total > Attachments.MaximumBytes || expected is { } length && total > length) throw new AttachmentFailure("Attachment stream exceeds its bounded length");
+            await target.WriteAsync(buffer.AsMemory(0, count), stop);
+        }
+        if (expected is { } bytes && total != bytes) throw new AttachmentFailure("Attachment download was truncated");
+    }
+    public async Task Download(AttachmentReference file, Stream target, CancellationToken stop)
+    {
+        try
+        {
+            var result = await Call("getFile", new { file_id = file.FileId }, stop);
+            var path = DownloadPath(result, file);
+            var expectedBytes = file.Size ?? (result.TryGetProperty("file_size", out var returnedSize) ? returnedSize.GetInt64() : (long?)null);
+            using var request = new HttpRequestMessage(HttpMethod.Get, filesEndpoint + path);
+            using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, stop);
+            if (!response.IsSuccessStatusCode) throw new TelegramFailure((int)response.StatusCode);
+            if (response.Content.Headers.ContentLength is { } declared && (declared > Attachments.MaximumBytes || expectedBytes is { } expected && declared != expected))
+                throw new AttachmentFailure("Attachment HTTP length exceeds or differs from reference");
+            await using var source = await response.Content.ReadAsStreamAsync(stop);
+            await CopyAttachment(source, target, expectedBytes, stop);
+        }
+        catch (Exception error) when (error is HttpRequestException or TaskCanceledException)
+        {
+            // Never propagate an exception containing the credential-bearing
+            // download URL into a bubble, diagnostic or native model input.
+            throw new TelegramFailure(0);
+        }
     }
     public void Dispose() { http.Dispose(); outbound.Dispose(); }
 }

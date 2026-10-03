@@ -10,6 +10,58 @@ until trusted producer/repair wiring, real owner-prompt acceptance and the
 integration gates below pass.
 Khadang is the authorized test bot; HamalBot wiring remains unchanged.
 
+## PC owner-only inbound attachments (2026-10-03)
+
+The Windows migration adapter now implements direct-owner photo/file delivery,
+separately from the protected company sender above. It selects the largest photo
+variant while preserving the original update/variants, retains captions and
+file names/MIME as untrusted metadata, and downloads referenced bytes through
+the [documented Telegram getFile API](https://core.telegram.org/bots/api#getfile).
+The hosted transport has a conservative 20,000,000-byte ceiling, bounded
+streaming and two concurrent staging jobs. Credentials remain in the SYSTEM
+router; fixed-origin/no-redirect downloads validate paths, unique IDs and sizes.
+Neither credential-bearing URLs nor Telegram file IDs go to the native model.
+
+The cache is `state/attachments` under the protected PC router. Generated paths
+never use a supplied filename. Files are flushed, SHA256-hashed, and sealed with
+SYSTEM/Admin ownership/control and exact-owner read permissions only; the
+router state/credential/code ACLs are not broadened. Manifests retain the source
+digest, exact topic/thread binding, selected references, sizes/digests and
+preparing/staged/held phases. Partial multi-part staging is not native input;
+restart or an old staging receipt cannot automatically replay it.
+
+Recognized PNG/JPEG/GIF/WebP signatures become documented native
+[`localImage` inputs](https://learn.chatgpt.com/docs/app-server); this identifies
+a format, not proof that a decoder or model successfully interpreted it. Other
+files remain read-only paths with their original metadata and caption. No
+automatic attachment execution or paid transcription is added. Audio/video are
+retained files, not a verified transcript or visual interpretation.
+
+Downloads do not hold the session dispatch/control lock. Active media records
+the arrival turn and rechecks it after staging; ending/changing that turn holds
+the file instead of converting steering into a fresh turn. Caption slash text
+is content, not a relay command. Pre-native download/metadata failures retain
+the update and amend the same bubble without holding the owner session or
+declaring an uncertain model action. Unknown native effects still use the
+existing no-replay gate.
+
+229 local and 232 actual Windows checks cover existing routing/goals/quota plus parser/path/stream
+bounds, metadata spoofing, byte signatures, captions, denied senders, same-bubble
+reporting, delayed staging/interrupt and stale-turn refusal. Windows adds actual
+materialization/manifest/replay checks. Target native ACL evidence is recorded
+in [`deployment-status.json`](../pc-router/deployment-status.json), separately
+from provider download and real owner/image-model round trips.
+
+Remaining full-system gates: real Telegram download/native image interpretation;
+atomic albums (held, not partially sent); large files through an explicitly
+reviewed local Bot API or equivalent transport; verified voice/video processing;
+restricted-profile tool access, Claude, company/role grants, and unfinished
+switch/clean-restore preservation of attachment bytes/paths. This is not PR 6 or
+company acceptance. Register cache bytes and all manifests in the same daily
+encrypted recovery cohort as the router ledger/native history; restoring a
+staged file is not permission to resend an owner input. No cache pruning or
+Hamal/Mac wiring change is performed here.
+
 ## Prepared mechanism
 
 `relay_core/telegram_scheduler.py` extends the PR 5 outbox in a separate private
