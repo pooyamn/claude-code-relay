@@ -43,8 +43,10 @@ media, 2.3 GB of Codex sessions and 1.2 GB of Claude project history. The PC has
 ample disk space. All source workspace files now have a checksum-verified PC
 archive and an extracted workspace; project validation and operational checks
 are not complete. The separate
-physical bench MacBook also holds bench projects and tools; it is not the Mac
-VM holding the relay workspace.
+physical bench MacBook is not the Mac VM holding the relay workspace. Its
+selected operational projects, firmware, keys, captures and tool installations
+now also have a protected, checksum-verified PC archive. That archive is not an
+activated bench environment or a final checkpoint.
 
 The protected Windows Khadang service currently routes one test forum and uses
 Codex. A candidate now supports full chat/topic addresses and an explicit
@@ -157,8 +159,9 @@ The small framed SSH transfer passed, but three bulk transfers stalled at 64 KiB
 with blocked producers and receivers. Those exact owned receivers were stopped,
 partial files retained, and the experimental helper retired. File-based SFTP is
 the transport workaround; it does not claim to fix the underlying console-stream
-failure. The accepted copy helper is `scripts/copy-pc-migration.rb`; its six
-argument-safety tests pass. Windows tar rejected an entry in the media archive;
+failure. The accepted copy helper is `scripts/copy-pc-migration.rb`; its eight
+argument-safety tests pass, including the physical bench source restrictions.
+Windows tar rejected an entry in the media archive;
 both the source reader and target GNU tar accepted the identical bytes. Future
 POSIX archive verification uses the Linux reader instead of silently renaming
 source files or dropping metadata to satisfy the Windows reader.
@@ -423,6 +426,12 @@ Public-IP checks from the LAN do not prove off-network reachability or router
 forward ownership. External acceptance and Mac-independent recovery still need
 to pass before retiring the Mac.
 
+The 1:25 PM PDT recheck passed authenticated FakeTLS and Telegram `resPQ`/nonce
+verification on both LAN ports, both public-IP ports from the LAN, and the
+public Cloudflare helper. Both replacement services remain Running/Auto as
+LocalService, Defender realtime protection remains enabled, no replacement
+detection was present, and the original flagged executable remains absent.
+
 The 12:32 PM PDT membership recheck remains unchanged: Ai Dispatch member only;
 Oracova and Startup Ideas inaccessible. The existing bot-add request is still
 pending. Authenticated native continuation, topic cutover, physical bench
@@ -494,6 +503,68 @@ activation needs Pouya's decision for this exact version and a matching native
 OS-ACL deployment probe. No source binding, native model or Hamal wiring is
 changed by staging it. Linux transport, per-topic quiescing/final delta capture
 and bot membership checks remain prerequisites for the original-topic cutovers.
+
+### Physical bench preservation and PC builds
+
+At 1:28 PM PDT, the physical MacBook's operational archive completed with
+source, SFTP and target reader exit 0. Its 38 explicitly selected members include
+the bench repositories, signing and PKI material, original firmware backups,
+capture records, compiler/tool installations, VPN and tunnel records, SSH
+configuration and shell profiles. The 2,629,314,560-byte archive has matching
+source and PC SHA-256
+`48542d3b8f5ecbd74537ea3be82234667f1d6a42366473172ccab8398f44da2a`.
+The destination is
+`C:\ProgramData\OracovaMigration\38258191bb20aac6fae35f6f964cefd8`;
+its archive and receipts are administrator-owned and accessible only to
+SYSTEM/Administrators. No private key bytes were printed or published. The
+source produced no warnings. GNU tar ignored two Apple backup/FileProvider
+extended attributes while listing the archive successfully; the original
+archive bytes and full reader warnings are retained privately.
+
+The existing archive helper now accepts only the literal `bench` SSH source,
+checks its ordinary `oracova` identity and owned canonical root, quotes every
+remote argument, and rejects whole-home and parent-traversal selections. The
+eight tests pass with 25 assertions. Source data travelled over SSH/SFTP into
+private local and protected PC files. It is not encrypted at rest by this helper,
+was not extracted or activated, and remains a seed while source writers run.
+Darwin binaries are preserved evidence, not usable Linux replacements. Final
+checkpoint capture and the encrypted off-machine daily recovery system remain
+pending.
+
+A compile-only check ran from the exact Interactive/Limited Windows owner in
+session 1, then Linux UID 1000. Actual open/close probes denied access to both
+the bot credential and protected bench archive tree. Four compile workers used
+new private output directories, outside the preserved repositories; no model,
+board connection, power change, firmware signing or flashing was performed.
+Git state, the build inputs and the original pairing header remained unchanged.
+The terminal one-shot task has no triggers or restart policy. Its private result
+is retained under
+`C:\Users\pou\.native-remote\migration-bench-38258191bb20aac6fae35f6f964cefd8`.
+
+The real Nucleo trackpad firmware configured and built without warnings using
+ARM GCC 13.2.1, CMake 3.28.3 and Ninja 1.11.1. Its 80,512-byte ARM executable has
+SHA-256 `8fabc13cf4371711b845e53a7fcc10d147894eaa65d6666a0edbcd092be0d193`.
+This proves that project's preserved sources and Linux toolchain can build on
+the PC; it does not prove device operation or a Windows trackpad application.
+
+The supervisor config-0 application configured successfully but failed to
+compile. Its CMake target includes `platform/augur_pwm_stm32.c`, whose explicit
+board guard reports:
+
+```text
+platform/augur_pwm_stm32.c:7:2: error: #error "PWM binding requires selected H5 config1 or H743 config2"
+    7 | #error "PWM binding requires selected H5 config1 or H743 config2"
+      |  ^~~~~
+```
+
+Both the CMake file and PWM source have identical hashes on the live Mac and
+preserved PC seed. This is an existing source/board-selection conflict, not an
+unproven Windows dependency or timeout explanation. The combined check therefore
+retains result 1; the passing trackpad build does not turn it into an overall
+pass. The guard, config-0 pinout and firmware source were not weakened or edited.
+Supervisor build resolution, project/runtime validation and physical USB/flash/
+debug/serial/hub-power acceptance remain pending. The hardware is still connected
+to the MacBook.
 
 Detailed historical implementation evidence remains in
 [deployment status](../pc-router/deployment-status.json) and the
