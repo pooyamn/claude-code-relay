@@ -98,6 +98,9 @@ class WorkOwnership(DeliveryLedger):
         if self.connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='tool_switch_metadata'").fetchone():
             from .tool_switches import metadata
             metadata(self)
+        if self.connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='publication_metadata'").fetchone():
+            from .publications import metadata
+            metadata(self)
         metadata = self.connection.execute("SELECT schema,next_fence,last_wall_ms FROM work_metadata").fetchall()
         if len(metadata) != 1 or metadata[0][0] != SCHEMA:
             raise Denied("unsupported work ownership schema; preserve for migration")
