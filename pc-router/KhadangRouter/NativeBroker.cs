@@ -311,6 +311,8 @@ public sealed class NativeBrokerSession : IDisposable
     internal NativeBrokerSession(NativeBroker broker, Action currentPeer) { this.broker = broker; this.currentPeer = currentPeer; Current(); }
     public uint Pid => broker.Pid;
     public string Epoch => broker.Epoch;
+    public async Task<BrokerWireStatus> Status(CancellationToken stop)
+    { Current(); await broker.Ready.WaitAsync(stop); Current(); return new(Epoch, Pid, broker.Position); }
     private void Current() { if (closed) throw new IOException("Broker client detached"); currentPeer(); broker.Current(); }
     public async Task<JsonElement> Call(string intent, string method, object parameters, CancellationToken clientStop)
     {

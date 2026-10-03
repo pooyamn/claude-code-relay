@@ -657,7 +657,7 @@ The sealed installer remains
 `E91D47B20DAC5F467280C6C31BB51534DD7B06E43FD16741F0AD54BA9AED090C`.
 
 The candidate is **inactive**. The live router still constructs and owns its
-private native process in `Program.cs`; the protected broker-to-router facade,
+private native process in `Program.cs`; its production broker/native facade,
 launch/discovery registry, approved always-on service integration, request
 handler/shutdown reconciliation and consistent backup enrollment remain needed.
 OpenAI Docs confirms one initialization per native connection, not per attached
@@ -666,6 +666,99 @@ router client; the broker owns that existing handshake.
 Company isolation, private native phone pairing, real phone/bubble acceptance,
 all-source reserve admission, Claude switching and full-system recovery remain
 uncompleted requirements, not implied by the lease or client-replacement proof.
+
+### Protected broker-to-router wire component — 2026-10-03
+
+`NativeBrokerWire` and `NativeBrokerWireClient` now compose the pinned kernel
+pipe with broker-owned calls, events and thread request custody. Both ends use
+the exact protected SYSTEM/session-0 process generation and artifact pins, plus
+the expected native epoch supplied by the launcher. They do not discover peers,
+launch native work, initialize another native connection, reconnect or retry.
+The raw client requires an explicit stable call intent; its trusted caller must
+persist that intent before dispatch. A reviewed authorization callback is
+mandatory. This component grants neither company/role authority nor model
+admission and is **not selected by the live router**.
+
+Frames have a bounded big-endian length prefix and strict envelope schema.
+Concurrent response correlation does not let a slow native call block status
+or event reads. Admission to the client correlation map is atomic and bounded
+at 32 outstanding requests, including canceled-but-submitted waiters. Native
+calls/replies retain the broker's separate ceilings. Canceling before a frame
+starts writes nothing; after submission, caller cancellation only detaches its
+waiter. EOF or a failed write settles outstanding client waits, while the
+broker's native action and private journal continue. Unknown outcomes require
+stable-intent inspection, not resubmission. Client disposal joins its actual
+writes/reader before releasing resources, not the native owner.
+
+Malformed response identities/outcomes fail all waiters rather than removing
+one prematurely and leaving it hung. Explicit JSON null results remain distinct
+from missing fields in both directions. Event pages preserve complete raw native
+frames, escaping and Unicode with contiguous positions; a byte-bound page ends
+between items, never inside one, and reading does not acknowledge/drop events.
+Thread request pages retain complete fingerprinted frames; connection requests
+stay outside that inbox. A successful reply receipt reports `written=true` and
+`accepted=false`: native resolution/decision evidence remains separate. Raw
+connection-scoped event data is protected control-plane data, not an employee
+or Telegram feed; the eventual scoped facade must filter it before delivery.
+
+OpenAI Docs informed broker ownership of the once-per-native-connection
+handshake and continuing event/request stream, not support for our custom pipe.
+[Official native protocol](https://learn.chatgpt.com/docs/app-server).
+
+488 local and 491 actual Windows checks pass, plus twelve fixed probe method
+guards. The inert regressions cover client cancellation/replacement and late
+responses, one stable native submission, exact operation/epoch/ID shapes,
+authorization denial before effects, malformed response settlement, explicit
+null results/replies, changed/stale/consumed reviews, rejected versus unknown
+calls, mutation fencing, byte-bounded complete event pages, fragmented Unicode,
+atomic 32-caller admission, canceled pre-write admission and failed-write drain.
+These are protocol checks, not company grants or real approval acceptance.
+
+First cross-process run `e283f70395e0441b9ff17269f30391ac` completed at
+`2026-10-03T17:00:47.0462017Z` with 490 Windows checks. A subsequent null-reply
+regression/fix was validated in fresh final run
+`0798116c4a7f46c88a48f6c334672b91`, completed at
+`2026-10-03T17:04:56.4507204Z`; neither run was replayed or overwritten.
+Unlike the earlier direct-attached broker fixture, the separate clients now
+perform actual native calls and event reads over `NativeBrokerWireClient`.
+Client A checkpoints an inert thread and exits. While no client is attached,
+the fixed protected supervisor sets one paused diagnostic goal and clears it.
+Client B authenticates and reads the missed update/clear frames plus goal=null
+through the wire. Both clients observe the same native PID 14304, Session 1,
+non-elevated owner, creation FILETIME `134355206956082016`, and epoch
+`6eb8d115f6df4a1d86e1cde4315c15bc`: one native initialization, four captured
+events and zero unknown diagnostic calls. The broker PID is 18380. The
+independent lease contender remains denied before SQLite/native startup.
+The native home is fresh/credential-free, account=null and remote=disabled;
+no model, tool, enrollment or Telegram action occurs.
+
+Independent readback at `2026-10-03T17:05:21.8246029Z` confirms Ready/result 0,
+zero XML trigger elements/restarts and protected administrator-owned
+SYSTEM/Administrators-only task/state. Both runs' diagnostic native/broker PIDs
+are absent. Original live router/main/remote generations and installed code/
+policy hashes are unchanged; all nine services remain Running. Read-only live
+ledger inspection at `2026-10-03T17:05:58.5784186Z` confirms the original LG
+binding/bubble 161, Done/not-busy/not-held, unchanged native/tool/Telegram receipt
+counts and zero unknown operations. Actual extracted DLL hashes were independently
+read back at `2026-10-03T17:06:17.4008679Z`. Claims, client receipts, journal,
+contender result and immutable artifacts remain retained for inspection.
+
+Final archive SHA256
+`12E37272F120279B62D8C2289DD18465158A6FCBA7D87571012CF872D84C2AD4`;
+router DLL `DF953DFEAFEC8AC50296F692BC0AB4D9C3C22EEF1A9C0BC5D92034E50465C08E`;
+probe DLL `539CD8DDC8B466E7C79607E5BA7EA78A97A83FD770D44A7F670E8DB83F343BF5`.
+The sealed installer remains
+`E91D47B20DAC5F467280C6C31BB51534DD7B06E43FD16741F0AD54BA9AED090C`.
+
+**Remaining integration:** `INative`/router facade, durable cursor and intent
+ownership, protected launch/discovery/orphan registry, connection request
+handlers, verified native shutdown/reconciliation and an approved always-on
+service. Exact-version security/owner review precedes live wiring. Private native
+phone pairing, real phone/input/tool/goal-to-existing-bubble acceptance,
+all-source 10% reserve admission, Claude continuity, company isolation and
+consistent backup/clean restoration remain full-scope gates. Wire fixtures and
+credential-free native probes do not establish crash/reboot, real approval,
+OAuth or phone acceptance, and do not finish PR 6/7 or the PC goal.
 
 ## Prepared mechanism
 

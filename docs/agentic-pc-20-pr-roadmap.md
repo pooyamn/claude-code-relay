@@ -6,6 +6,19 @@ Build testable security and delivery foundations first. Introduce the builder wi
 
 ## Execution status
 
+2026-10-03 broker wire component: 488 local/491 Windows checks and twelve probe
+guards pass. Actual separate pinned SYSTEM clients now invoke broker-owned
+native calls and read missed goal events through the bounded wire, rather than
+the parent performing direct attached calls. Native remains the non-elevated
+owner with one initialization and zero unknown diagnostic calls. Cancellation,
+malformed/late responses, write failures and null results preserve outcome
+custody; no model/auth/enrollment/Telegram action or live code/policy change
+occurs. The wire is inactive in `Program.cs`; `INative` facade/cursor-intent
+ownership, protected launch/orphan registry, reviewed service activation,
+private phone pairing and all-source admission/recovery remain required. This
+does not complete PR 6/7 or the 20-PR goal.
+[Actual wire proof and integration gates](pr6-telegram-outbound.md#protected-broker-to-router-wire-component--2026-10-03).
+
 2026-10-03 same-process remote diagnosis: 339 local and 342 Windows checks pass.
 The actual PC probe reports Remote Control disabled on the router's own native
 process. It rules out the proposed source-filter explanation: the existing LG

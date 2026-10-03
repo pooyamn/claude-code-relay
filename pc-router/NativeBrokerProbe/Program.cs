@@ -38,22 +38,45 @@ if (args[0] == "--lease-contender" && args.Length == 2 && Environment.MachineNam
     if (!refused || called) throw new InvalidDataException("Kernel lease did not exclude contender before SQLite/native startup");
     return;
 }
-if (args[0] == "--client" && args.Length == 5 && args[4] is "first" or "second")
+if (args[0] == "--client" && args.Length == 8 && args[4] is "first" or "second")
 {
     var server = new WindowsPipePin(uint.Parse(args[2]), long.Parse(args[3]), exe, digest);
-    var (stream, peer) = await WindowsPipePeer.Connect(run, server, artifactRoot, deadline.Token);
-    using (stream) using (peer)
+    await using var wire = await NativeBrokerWireClient.Connect(run, server, args[5], artifactRoot, deadline.Token);
+    var observed = await wire.Status(deadline.Token);
+    var clientReport = new Dictionary<string, object?> { ["complete"] = false, ["epoch"] = observed.Epoch, ["nativePid"] = observed.Pid };
+    if (args[4] == "first")
     {
-        using var writer = new StreamWriter(stream, new UTF8Encoding(false), leaveOpen: true) { AutoFlush = true };
-        using var reader = new StreamReader(stream, Encoding.UTF8, leaveOpen: true);
-        await writer.WriteLineAsync(args[4].AsMemory(), deadline.Token);
-        var line = await reader.ReadLineAsync(deadline.Token) ?? throw new IOException("Broker fixture response missing");
-        if (line.Length > 4096) throw new InvalidDataException("Unexpected broker fixture frame size");
-        using var response = JsonDocument.Parse(line);
-        if (!response.RootElement.GetProperty("verified").GetBoolean()) throw new InvalidDataException("Broker fixture verification failed");
-        peer.Current();
+        var account = await Call("account/read", new { refreshToken = false });
+        if (account.GetProperty("account").ValueKind != JsonValueKind.Null) throw new InvalidDataException("Diagnostic native unexpectedly authenticated");
+        var remote = await Call("remoteControl/status/read", new { });
+        if (remote.GetProperty("status").GetString() != "disabled") throw new InvalidDataException("Diagnostic native unexpectedly enrolled");
+        var workspace = Path.Combine(@"C:\Users\pou\.native-remote", "broker-probe-" + run);
+        var created = await Call("thread/start", new { cwd = workspace, ephemeral = false,
+            approvalPolicy = "never", sandbox = "read-only", environments = Array.Empty<object>(), allowProviderModelFallback = false });
+        var thread = created.GetProperty("thread").GetProperty("id").GetString()!;
+        await Call("thread/inject_items", new { threadId = thread, items = new[] {
+            new { type = "message", role = "user", content = new[] {
+                new { type = "input_text", text = "[Inert broker checkpoint, not a task.] Never run models, tools or external actions." } } } } });
+        clientReport["thread"] = thread; clientReport["cursor"] = (await wire.Status(deadline.Token)).Position;
+        clientReport["nativeAccountAbsent"] = true; clientReport["nativeRemoteDisabled"] = true;
     }
+    else
+    {
+        var cursor = long.Parse(args[6]); var thread = args[7];
+        var events = await wire.Events(cursor, 100, deadline.Token);
+        var methods = events.Where(e => e.Frame.TryGetProperty("params", out var p) && p.TryGetProperty("threadId", out var t) && t.GetString() == thread)
+            .Select(e => e.Frame.GetProperty("method").GetString()).ToList();
+        if (!methods.Contains("thread/goal/updated") || !methods.Contains("thread/goal/cleared")) throw new InvalidDataException("Wire offline native goal event custody incomplete");
+        if (events.Any(e => e.Frame.TryGetProperty("method", out var m) && m.GetString() == "turn/started")) throw new InvalidDataException("Unexpected model turn");
+        var read = await Call("thread/goal/get", new { threadId = thread });
+        if (read.GetProperty("goal").ValueKind != JsonValueKind.Null) throw new InvalidDataException("Wire native goal readback mismatch");
+        clientReport["receivedOfflineGoalUpdatedAndCleared"] = true; clientReport["goalReadbackMatched"] = true;
+    }
+    clientReport["complete"] = true;
+    File.WriteAllText(Path.Combine(artifactRoot, "state", "client-" + args[4] + ".json"), JsonSerializer.Serialize(clientReport));
     return;
+    async Task<JsonElement> Call(string method, object parameters)
+    { Guard(method); return await wire.Call(Guid.NewGuid().ToString("N"), method, parameters, deadline.Token); }
 }
 if (args[0] != "--run" || args.Length != 2 || Environment.MachineName != "DESKTOP-8SO9HDK")
     throw new InvalidDataException("Exact PC deterministic fixture required");
@@ -106,49 +129,36 @@ try
         stage = "attached-client-" + iteration;
         var pending = listener.Stream.WaitForConnectionAsync(deadline.Token);
         var start = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true };
-        foreach (var arg in new[] { "--client", run, server.Pid.ToString(), server.CreationTime.ToString(), iteration == 0 ? "first" : "second" }) start.ArgumentList.Add(arg);
+        foreach (var arg in new[] { "--client", run, server.Pid.ToString(), server.CreationTime.ToString(), iteration == 0 ? "first" : "second",
+            broker.Epoch, cursor.ToString(), thread ?? "-" }) start.ArgumentList.Add(arg);
         client = Process.Start(start) ?? throw new IOException("Protected fixture client missing");
         var pin = WindowsPipePeer.Capture(checked((uint)client.Id), exe, digest);
         await pending;
-        using (var peer = WindowsPipePeer.Authenticate(listener.Stream, false, pin, artifactRoot))
-        using (var attached = broker.Attach(peer))
+        var serving = NativeBrokerWire.Serve(broker, listener.Stream, pin, artifactRoot, request => {
+            if (request.Kind == "call") Guard(request.Method!);
+            else if (request.Kind is not ("status" or "events")) throw new InvalidDataException("Fixed fixture wire methods only");
+        }, deadline.Token);
+        await client.WaitForExitAsync(deadline.Token); await serving.WaitAsync(deadline.Token);
+        if (client.ExitCode != 0) throw new InvalidDataException("Protected wire client failed");
+        using (var receipt = JsonDocument.Parse(File.ReadAllText(Path.Combine(state, iteration == 0 ? "client-first.json" : "client-second.json"))))
         {
-            using var reader = new StreamReader(listener.Stream, Encoding.UTF8, leaveOpen: true);
-            if (await reader.ReadLineAsync(deadline.Token) != (iteration == 0 ? "first" : "second")) throw new InvalidDataException("Unexpected fixture client stage");
+            var verified = receipt.RootElement;
+            if (!verified.GetProperty("complete").GetBoolean() || verified.GetProperty("epoch").GetString() != broker.Epoch ||
+                verified.GetProperty("nativePid").GetUInt32() != broker.Pid || nativeProcess.ObserveOwner() != birth)
+                throw new InvalidDataException("Wire client native generation mismatch");
             if (iteration == 0)
             {
-                var account = await Call(attached, "account/read", new { refreshToken = false });
-                if (account.GetProperty("account").ValueKind != JsonValueKind.Null) throw new InvalidDataException("Diagnostic native unexpectedly authenticated");
-                var remote = await Call(attached, "remoteControl/status/read", new { });
-                if (remote.GetProperty("status").GetString() != "disabled") throw new InvalidDataException("Diagnostic native unexpectedly enrolled");
-                var created = await Call(attached, "thread/start", new { cwd = workspace, ephemeral = false,
-                    approvalPolicy = "never", sandbox = "read-only", environments = Array.Empty<object>(), allowProviderModelFallback = false });
-                thread = created.GetProperty("thread").GetProperty("id").GetString()!;
-                await Call(attached, "thread/inject_items", new { threadId = thread, items = new[] {
-                    new { type = "message", role = "user", content = new[] {
-                        new { type = "input_text", text = "[Inert broker checkpoint, not a task.] Never run models, tools or external actions." } } } } });
-                cursor = broker.Position;
+                thread = verified.GetProperty("thread").GetString(); cursor = verified.GetProperty("cursor").GetInt64();
                 report["nativeAccountAbsent"] = true; report["nativeRemoteDisabled"] = true; report["diagnosticThreadCheckpointed"] = true;
             }
             else
             {
-                var events = attached.Events(cursor);
-                var methods = events.Where(e => e.Frame.TryGetProperty("params", out var p) && p.TryGetProperty("threadId", out var t) && t.GetString() == thread)
-                    .Select(e => e.Frame.GetProperty("method").GetString()).ToList();
-                if (!methods.Contains("thread/goal/updated") || !methods.Contains("thread/goal/cleared")) throw new InvalidDataException("Offline native goal event custody incomplete");
-                if (events.Where(e => e.Frame.TryGetProperty("method", out var m) && m.GetString() == "turn/started").Any())
-                    throw new InvalidDataException("Unexpected model turn");
-                var read = await Call(attached, "thread/goal/get", new { threadId = thread });
-                if (read.GetProperty("goal").ValueKind != JsonValueKind.Null || nativeProcess.ObserveOwner() != birth || broker.Unknown != 0)
+                if (!verified.GetProperty("receivedOfflineGoalUpdatedAndCleared").GetBoolean() || !verified.GetProperty("goalReadbackMatched").GetBoolean() || broker.Unknown != 0)
                     throw new InvalidDataException("Native identity/goal/intent custody differs after client replacement");
                 report["secondClientReceivedOfflineGoalUpdatedAndCleared"] = true;
                 report["secondClientGoalReadbackMatched"] = true;
                 report["sameNativeProcessGenerationAfterClientReplacement"] = true;
             }
-            using var writer = new StreamWriter(listener.Stream, new UTF8Encoding(false), leaveOpen: true) { AutoFlush = true };
-            await writer.WriteLineAsync("{\"verified\":true}".AsMemory(), deadline.Token);
-            await client.WaitForExitAsync(deadline.Token);
-            if (client.ExitCode != 0) throw new InvalidDataException("Protected client failed");
         }
         listener.Stream.Disconnect(); client.Dispose(); client = null;
         if (iteration == 0)
@@ -174,9 +184,8 @@ try
     report["unknownDiagnosticIntents"] = broker.Unknown; report["eventPosition"] = broker.Position;
     if (rpc.InitializationAttempts != 1) throw new InvalidDataException("Native initialization count changed across UI clients");
     report["nativeInitializationCount"] = rpc.InitializationAttempts;
+    report["crossProcessNativeCallsAndEventsUsedBrokerWire"] = true;
     report["complete"] = true;
-    async Task<JsonElement> Call(NativeBrokerSession attached, string method, object parameters)
-    { Guard(method); return await attached.Call(Guid.NewGuid().ToString("N"), method, parameters, deadline.Token); }
     async Task<JsonElement> Control(string method, object parameters)
     { Guard(method); return await broker.ControllerCall(Guid.NewGuid().ToString("N"), method, parameters, deadline.Token); }
 }

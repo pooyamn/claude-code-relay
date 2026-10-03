@@ -105,6 +105,17 @@ service/review, native phone continuity, company/admission and full recovery
 gates remain required.
 [Mechanism and exact Windows proof](pr6-telegram-outbound.md#exclusive-broker-journal-ownership--2026-10-03).
 
+2026-10-03 broker wire milestone: the inactive pinned Windows pipe now carries
+broker-owned native calls, complete event pages and reviewed thread requests.
+488 local/491 Windows checks pass. Separate actual Windows clients perform their
+calls/event reads through the wire; replacement receives missed paused-goal/
+clear events from the same non-elevated native generation, with one handshake
+and zero unknown diagnostic calls. Live router/remotes, binding/bubble and nine
+services stay unchanged. This is not a deployed `INative` facade or always-on
+broker, nor phone/company/admission or crash/reboot acceptance; protected
+registry/service/review and the full recovery gates remain required.
+[Exact wire proof and remaining integration](pr6-telegram-outbound.md#protected-broker-to-router-wire-component--2026-10-03).
+
 2026-10-03 startup configuration: `Oracova-KhadangStartup` is a protected
 deterministic SYSTEM task with boot, owner-logon and minute triggers. SCM stays
 Manual: a stopped router may start only after the exact non-elevated physical
