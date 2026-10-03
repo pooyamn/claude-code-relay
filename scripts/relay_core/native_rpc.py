@@ -69,9 +69,25 @@ def _decode(raw):
             for child in item:
                 bounded(child, depth + 1)
     bounded(value)
+    # Pinned 0.160.0 UnixWS notifications include emittedAtMs. Preserve this
+    # non-authoritative wire metadata; it is never an ACK, identity or deadline.
     if type(value) is not dict or value.get("jsonrpc", "2.0") != "2.0" or \
-            set(value) - {"jsonrpc", "id", "method", "params", "result", "error"}:
-        raise Denied("unsupported native RPC envelope")
+            set(value) - {"jsonrpc", "id", "method", "params", "result", "error", "emittedAtMs"} or \
+            "emittedAtMs" in value and (type(value["emittedAtMs"]) is not int or not 0 <= value["emittedAtMs"] < 2**63):
+        error = Denied("unsupported native RPC envelope")
+        # Private diagnostics may inspect schema names/types, never parameter,
+        # result, error or authentication payloads. This does not accept a frame
+        # or relax the production envelope contract.
+        error.native_envelope_shape = {"rootType": type(value).__name__}
+        if type(value) is dict:
+            error.native_envelope_shape.update({
+                "keys": sorted(key[:128] for key in value)[:32],
+                "jsonrpcType": type(value.get("jsonrpc")).__name__,
+                "jsonrpcAbsent": "jsonrpc" not in value,
+                "jsonrpcMatches": value.get("jsonrpc") == "2.0",
+                "fieldTypes": {key[:128]: type(value[key]).__name__ for key in sorted(value)[:32]},
+            })
+        raise error
     return value
 
 

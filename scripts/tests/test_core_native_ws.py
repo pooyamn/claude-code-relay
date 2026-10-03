@@ -26,10 +26,13 @@ class WSTests(unittest.TestCase):
         wire.initialize()
         self.assertTrue(wire.peer.channel.upgraded)
         self.assertNotIn("Authorization:", wire.peer.upgrade_request)
-        wire.peer.write({"method": "thread/goal/updated", "params": {"threadId": "native-1", "goal": None}})
+        wire.peer.write({"method": "thread/goal/updated", "params": {"threadId": "native-1", "goal": None},
+                         "emittedAtMs": 1791060000000})
         self.assertTrue(wire.rpc.poll(timeout_ms=100))
         self.assertEqual(wire.events[-1]["kind"], "notification")
         self.assertEqual(wire.events[-1]["message"]["method"], "thread/goal/updated")
+        self.assertEqual(wire.events[-1]["message"]["emittedAtMs"], 1791060000000)
+        self.assertEqual(json.loads(wire.events[-1]["raw"])["emittedAtMs"], 1791060000000)
         self.assertEqual([value["opcode"] for value in wire.peer.frames], [1, 1])
         wire.peer.assert_quiet()
 

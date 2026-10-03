@@ -14,11 +14,30 @@ from native_session_fixtures import CONTROLLER, enrollment, native_fixture, obse
 from outbox_fixtures import CONTEXT, open_outbox
 from relay_core.contracts import fingerprint
 from relay_core.identity import Denied
-from relay_core.native_rpc import CodexRPC, IOTimedOut, JSONLChannel
+from relay_core.native_rpc import CodexRPC, IOTimedOut, JSONLChannel, _decode
 from relay_core.native_resume import CodexExactResume, resume_action
 
 
 class RPCTests(unittest.TestCase):
+    def test_pinned_emission_timestamp_is_preserved_but_never_coerced(self):
+        message = {'method': 'thread/goal/updated', 'params': {'threadId': 'native-1', 'goal': None},
+                   'emittedAtMs': 1791060000000}
+        self.assertEqual(_decode(json.dumps(message).encode()), message)
+        for bad in (None, True, '1791060000000', 1.5, -1, 2**63):
+            with self.subTest(timestamp=bad), self.assertRaises(Denied):
+                _decode(json.dumps({**message, 'emittedAtMs': bad}).encode())
+
+    def test_rejected_envelope_shape_never_exposes_payload_or_accepts_frame(self):
+        raw = json.dumps({'id': 7, 'result': {'secret': 'PRIVATE-FIXTURE'},
+                          'unexpected': {'token': 'PRIVATE-FIXTURE'}}).encode()
+        with self.assertRaises(Denied) as rejected:
+            _decode(raw)
+        shape = rejected.exception.native_envelope_shape
+        self.assertEqual(shape['keys'], ['id', 'result', 'unexpected'])
+        self.assertNotIn('PRIVATE-FIXTURE', json.dumps(shape))
+        self.assertEqual(shape['rootType'], 'dict')
+        self.assertTrue(shape['jsonrpcAbsent'])
+
     def fixture(self, **limits):
         wire = RPCFixture(**limits)
         self.addCleanup(wire.close)

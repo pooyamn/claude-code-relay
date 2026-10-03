@@ -51,8 +51,10 @@ activated bench environment or a final checkpoint.
 The protected Windows Khadang service currently routes one test forum and uses
 Codex. A candidate now supports full chat/topic addresses and an explicit
 whole-group route; it is not yet deployed. A working native Linux transport for
-the preserved Codex and Claude sessions is still required. Native remote
-connectivity alone does not supply that transport.
+Codex now passes isolated Windows-to-Linux native acceptance, including shared
+events and actual tool identity. A persistent shared daemon, operational runtime
+routing and the Claude transport are still required for the preserved sessions.
+Native remote connectivity alone does not supply those capabilities.
 The last membership check found Khadang unable to access Oracova and Startup
 Ideas, and only a member in Ai Dispatch. An owner request to add the bot is
 pending. Recheck actual membership before routing changes.
@@ -426,8 +428,8 @@ Public-IP checks from the LAN do not prove off-network reachability or router
 forward ownership. External acceptance and Mac-independent recovery still need
 to pass before retiring the Mac.
 
-The 1:25 PM PDT recheck passed authenticated FakeTLS and Telegram `resPQ`/nonce
-verification on both LAN ports, both public-IP ports from the LAN, and the
+The 1:25 PM and 1:50 PM PDT rechecks passed authenticated FakeTLS and Telegram
+`resPQ`/nonce verification on both LAN ports, both public-IP ports from the LAN, and the
 public Cloudflare helper. Both replacement services remain Running/Auto as
 LocalService, Defender realtime protection remains enabled, no replacement
 detection was present, and the original flagged executable remains absent.
@@ -501,8 +503,56 @@ The self-contained package SHA-256 is
 This is credential-bearing router code and changes routing authorization, so
 activation needs Pouya's decision for this exact version and a matching native
 OS-ACL deployment probe. No source binding, native model or Hamal wiring is
-changed by staging it. Linux transport, per-topic quiescing/final delta capture
-and bot membership checks remain prerequisites for the original-topic cutovers.
+changed by staging it. Operational Linux Codex/Claude routing, per-topic
+quiescing/final delta capture and bot membership checks remain prerequisites
+for the original-topic cutovers.
+
+### Shared Linux Codex transport acceptance
+
+At 2:02 PM PDT, the Windows-to-WSL bridge passed native acceptance with task
+result 0. Two clients used the frozen router DLL's existing `NativeRpc` code to
+connect to one pinned Linux Codex 0.160.0 Unix WebSocket listener. Both observed
+the same kernel peer PID and process generation. An inert diagnostic checkpoint
+allowed the second client to resume that exact fresh thread without inference.
+Paused goal updates, the dedicated `thread/goal/cleared` event and subsequent
+goal reads all agreed across clients. No model turn or unknown diagnostic
+operation was observed.
+
+Execution used the exact Interactive/Limited Windows owner in session 1, then
+explicit Linux UID 1000. Actual native `command/exec` returned UID 1000 and
+could not open the protected bot credential; the probe never read credential
+bytes. The native server used a fresh empty profile with no account. The Linux
+server exited with code 0 and both Windows launchers were reaped. The live router remained
+Running with unchanged configuration; no existing conversation, Telegram
+binding, LG session or Hamal wiring was used or changed.
+
+The bridge fixes two measured compatibility gaps. The pinned native server
+publishes an owner symlink to a private short socket named by the requested
+path's SHA-256. The adapter accepts only that exact mapping, checks the literal
+socket and private directory, and rechecks kernel peer, executable inode/hash,
+process generation and path identities. Arbitrary aliases, discovery and daemon
+startup fallbacks remain rejected. Native notifications also carry `emittedAtMs`;
+the bounded parser now preserves that integer metadata instead of rejecting the
+whole notification. It is not treated as an acknowledgement or authority. Other
+unexpected fields, duplicate keys, invalid numbers and overlarge frames still
+fail closed. Earlier failures and their private diagnostics remain preserved;
+no live action was replayed. The test's clear-event assertion was corrected
+against the existing working relay implementation, not by increasing its timeout.
+
+The self-contained Windows harness builds without warnings. All 62 focused
+adapter, JSONL and Unix WebSocket regression tests pass in the verified OS
+sandbox; this is not a full 983-test suite run. Diagnostic code is protected and
+administrator-owned, read-only to the ordinary owner. Accepted receipts remain
+under `C:\Users\pou\.native-remote\migration-linux-transport-1f92b34274a18d32365effd3ade5775f`.
+The exact frozen router DLL remains unchanged.
+
+This proves the transport and shared-event mechanism, not live app/Telegram
+continuity. Persistent shared-daemon supervision, per-runtime routing, Claude
+control, original-topic cutovers, final source checkpoints and recovery tests
+remain pending. The interface is experimental according to
+[official OpenAI documentation](https://learn.chatgpt.com/docs/app-server), so
+the adapter stays version-pinned and must pass compatibility checks before an
+upgrade. No deferred role or broker service was activated.
 
 ### Physical bench preservation and PC builds
 
