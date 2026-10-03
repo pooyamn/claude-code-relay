@@ -213,16 +213,44 @@ actual project build, flashing or USB acceptance. A systemd binary-format trigge
 the WSL status path was read-only; the existing mount was left intact and this
 compatibility issue remains to be reconciled before declaring runtime readiness.
 
-MTProto is currently down. At 10:59 AM PDT, Defender quarantined the Windows
+At 10:59 AM PDT, Defender quarantined the Windows
 `mtg.exe` as `Trojan:Win32/Kepavll!rfn` with Severe severity, terminating both
 proxy processes. The original download archive matches the official release's
 SHA-256; that does not establish a false positive. WinSW 2.12.0 then failed to
 report the child exits because its LocalService account could not open the
 service-control manager, leaving both wrappers falsely marked Running. This
 matches [the upstream restricted-user bug](https://github.com/winsw/winsw/issues/1136).
-No executable was restored and no Defender exception was added. Security review
-is pending; MTProto and its misleading service-health signal both require repair
-before Mac-independent VPN acceptance can pass.
+No executable was restored and no Defender exception was added. The original
+detection remains unresolved; matching the download does not prove that sample
+safe.
+
+At 11:48 AM PDT, the two PC services were replaced with the MIT-licensed
+[alexbers/mtprotoproxy](https://github.com/alexbers/mtprotoproxy), pinned to
+`0614c35020943b2080c9bd27b5e6336270af389f`, using the existing signed Python
+and checksum-verified PyCryptodome 3.23.0. The original FakeTLS secrets, domain,
+links and listeners are unchanged: loopback TCP10990 behind the existing
+TCP443/Cloudflare routes, and direct TCP8443. The flagged executable remains
+absent. Defender is enabled and its scan/state checks found no detection against
+the replacement at acceptance; this is not a formal security audit.
+
+The native service host and both Python children run as LocalService, with
+administrator-owned protected code/configuration and bounded private logs.
+Only the two service paths, their bounded SCM recovery actions and the existing
+TCP8443 firewall program filter changed. Child death now exits the host, allowing
+Windows to observe failure without WinSW's privileged SCM query. An intentional
+crash of the loopback proxy produced a non-Running service state and automatic
+recovery under a new host PID; no manual restart was issued and the direct proxy
+stayed running. Authenticated FakeTLS exchanges and Telegram `resPQ`/nonce
+checks passed again after recovery on PC LAN ports 443 and 8443, both public-IP
+ports from inside the LAN, and the public Cloudflare helper. Four local adapter
+tests also pass. The legacy bench probe emits an undersized TLS ClientHello;
+a current independent OpenSSL client passes without weakening server checks.
+
+Protected rollback, installation, recovery and acceptance receipts are retained
+in `C:\ProgramData\OracovaMTProto-2a2ae0dae7f749a2bcd664519271c88d`.
+Public-IP checks from the LAN do not prove off-network reachability or router
+forward ownership. External acceptance and Mac-independent recovery still need
+to pass before retiring the Mac.
 
 Khadang membership remains unchanged: Ai Dispatch member only; Oracova and Startup
 Ideas inaccessible. The existing bot-add request is still pending. Target native
