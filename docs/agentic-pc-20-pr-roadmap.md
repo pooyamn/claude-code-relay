@@ -121,6 +121,18 @@ Claude switching and daily full-system recovery remain required, not descopeable
 No PR or full-PC completion is implied by the endpoint fixture.
 [Exact evidence and next gates](pr6-telegram-outbound.md#protected-windows-pipe-peer-component-2026-10-03).
 
+2026-10-03 native broker custody component: 394 local/397 Windows checks and
+twelve method guards pass. A credential-free protected Windows host retains
+the same non-elevated native process across two diagnostic clients; missed
+paused-goal/clear events reach the replacement client with matching readback,
+one initialization and zero unknown diagnostic intents. Stable intent/event/
+request journals and resolved-request cleanup are implemented as an inactive
+core, not selected by the live router. Production wire/lease/service integration,
+in-flight reply shutdown and non-thread requests, exact-version review, private
+pairing, actual phone/bubble recovery, all-source reserve admission and consistent
+backup capture remain gates. No PR/full-PC completion or company trust is implied.
+[Bounded proof and remaining work](pr6-telegram-outbound.md#native-broker-custody-and-client-replacement-acceptance-2026-10-03).
+
 2026-10-03 PC-only Khadang direction supersedes the legacy Mac activation below:
 the Mac test poller/watchers are stopped and its known plaintext token file is
 removed. The protected PC credential and non-elevated native owner launcher are

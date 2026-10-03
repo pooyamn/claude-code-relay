@@ -443,6 +443,91 @@ listener test. Role/company boundary, Claude switching, daily off-machine
 recovery, secure auto-login/boot/TV-off and the other 20-PR requirements remain
 open. This does not complete PR 6 or the full PC goal.
 
+## Native broker custody and client-replacement acceptance (2026-10-03)
+
+`NativeBroker` now supplies an **inactive candidate custody core**. The broker
+owns native stdio/RPC and a separate protected journal; an attached client owns
+only its waiter/session. Detaching or cancelling that waiter does not cancel
+native work, initialize another transport or dispose the native process.
+Initialization is attempted once per owned transport. The private journal keeps
+stable intent/fingerprint/results, ordered complete event frames and typed
+request IDs with native epoch/thread/turn/frame digests. Confirmed or rejected
+intents are not submitted twice; uncertain outcomes hold new mutations while
+read-only evidence inspection remains possible. A new native epoch retains old
+unknown outcomes rather than replaying them. These are local component rules,
+not grants to execute arbitrary native actions.
+
+Pending thread-scoped requests are invalidated by `serverRequest/resolved`,
+including resolution racing a reply write. Successful reply submission is not
+native acceptance, and resolution is recorded as unattributed cleanup, never
+proof that a particular client's reviewed decision executed. The OpenAI Docs
+skill informed single-transport initialization and request-resolution ownership.
+[Official native protocol](https://learn.chatgpt.com/docs/app-server).
+
+394 local and 397 actual Windows router checks pass, plus twelve fixed probe
+method guards. Fixtures cover cancelled/detached clients, one native submission,
+ordered retained events, changed intent denial, approval epoch/scope/digest
+checks, resolved/stale reply refusal, resolution during write, explicit
+rejection versus unknown outcomes and mutation fencing. Positive environment
+tests retain required OS-runtime variables and deny arbitrary credentials and
+startup hooks. They do not establish full process-crash or OS-reboot recovery.
+
+Actual Windows run `4767116beafa48d2a9656b305eab6812` completed at
+`2026-10-03T15:40:10.886819Z`. Its protected SYSTEM/session-0 deterministic host
+and two SYSTEM diagnostic clients use the mutually authenticated kernel pipe
+component. The native app-server itself is the exact non-elevated pou console
+token, session 1, PID 17332, creation FILETIME `134355156102633877`; no model or
+tool runs as SYSTEM. It uses a fresh empty child-only `CODEX_HOME`, file-only
+credential storage and a positive OS-runtime environment allowlist. Native
+account readback is null and remote status is disabled. No production credential
+home/global configuration, enrollment, model turn, Telegram call or live ledger
+is used.
+
+Client A checkpoints one inert diagnostic thread and exits. The native process
+survives with the same held token/generation. While no UI client is attached,
+the same-process protected supervisor submits one fixed paused-goal update and
+one clear. New client B authenticates, receives the missed real native
+`thread/goal/updated` and `thread/goal/cleared` frames from the journal, and
+independently reads goal=null from the same native process. There is **one native
+initialization, event position 4 and zero unknown diagnostic intents**. Fixed
+supervisor methods in this fixture are not production admission or role grants.
+
+Independent readback confirms the task is Ready/result 0 with zero triggers or
+restarts, both owned diagnostic PIDs have exited, and task/state DACLs are
+administrator-owned and SYSTEM/Administrators-only. Its claim, private journal,
+native checkpoint and result remain retained, not overwritten or replayed.
+The immutable release is
+`C:\ProgramData\OracovaNativeRemote\broker-probe-4767116beafa48d2a9656b305eab6812`.
+Archive SHA256
+`8703C41C2B2A8C3F59CDC86F243CEF8359F892F71E656D3EBB7CE17074FB25C4`;
+candidate router DLL
+`063BA5BA2C73FC6CC6330749304305F1D479103494C6734448D5E2C2E51A5F36`;
+probe DLL
+`6ACBB22B2943ACD3FED24D6DCAD184DB76898DE45A4F084B5DD8B3DCAC82DB15`;
+installer
+`E91D47B20DAC5F467280C6C31BB51534DD7B06E43FD16741F0AD54BA9AED090C`.
+
+Live readback at `2026-10-03T15:46:05.0410913Z`, with the configuration digest
+checked at `2026-10-03T15:46:27.1899051Z`, confirms unchanged installed
+router/policy, original main/remote native generations, exact LG binding/bubble
+161, model/tool/Telegram receipt counts and zero unknown operations. All nine
+VPN/LG/router services remain Running. Only the diagnostic's owned processes
+exited; the live router and older native remotes were not restarted.
+
+**Still required:** a reviewed production wire/native facade, protected launch
+registry/exclusive journal lease and always-on service integration. The fixture
+proves client replacement, not broker/native crash or reboot recovery. Production
+integration must handle non-thread native server requests, drain/fence in-flight
+approval replies on shutdown, and reconcile unknown effects without replay.
+Exact-version owner/security review precedes live credential or listener wiring;
+then supported private native phone pairing and real phone/input/tool/goal-to-
+existing-bubble acceptance, including all-source 10% owner-reserve admission.
+The candidate journal, epochs/attempts and native state must join the consistent
+backup cohort before activation; metadata inventory alone is not a backup.
+Company roles, native Claude switching, full-system daily off-machine recovery,
+secure auto-login/boot/TV-off and the rest of the 20-PR scope remain open. This
+does not complete PR 6 or the full PC goal.
+
 ## Prepared mechanism
 
 `relay_core/telegram_scheduler.py` extends the PR 5 outbox in a separate private

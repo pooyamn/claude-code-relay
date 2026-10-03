@@ -12,9 +12,12 @@ public sealed class NativeRpc : INative, IAsyncDisposable
     private readonly CancellationTokenSource stop = new();
     private readonly Task reader;
     private long sequence;
+    private int initializationAttempts;
     private volatile bool disconnected;
     public event Action<JsonElement>? Notification;
     public uint Pid => channel.Pid;
+    public bool Connected => !disconnected;
+    public int InitializationAttempts => Volatile.Read(ref initializationAttempts);
     public NativeRpc(WindowsOwnerProcess process, Ledger ledger) : this(new StdioNativeChannel(process), ledger) { }
     public NativeRpc(INativeChannel channel, Ledger ledger)
     {
@@ -23,6 +26,8 @@ public sealed class NativeRpc : INative, IAsyncDisposable
     }
     public async Task Initialize(CancellationToken token)
     {
+        if (Interlocked.CompareExchange(ref initializationAttempts, 1, 0) != 0)
+            throw new InvalidOperationException("Native transport initialization already attempted; never replay");
         await Call("initialize", new { clientInfo = new { name = "khadang-pc-router", title = "Khadang PC", version = "0.1.0" },
             capabilities = new { experimentalApi = true } }, token, effect: false);
         await Write(new { method = "initialized", @params = new { } }, token);

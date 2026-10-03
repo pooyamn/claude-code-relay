@@ -49,6 +49,7 @@ public static class SelfTests
         }
         checks += NativeViewTests.Run();
         checks += NativeChannelTests.Run(root).GetAwaiter().GetResult();
+        checks += NativeBrokerTests.Run(root).GetAwaiter().GetResult();
         checks += RemoteTests.Run().GetAwaiter().GetResult();
         checks += JoinedTests.Run(root, policy).GetAwaiter().GetResult();
         checks += GoalTests.Run(root, policy).GetAwaiter().GetResult();

@@ -79,6 +79,18 @@ public sealed class Ledger : IDisposable
         return rows.Count == 0 ? null : JsonDocument.Parse(rows[0][0]!).RootElement.Clone();
     }
     public void Exec(string sql, params object?[] args) { lock (gate) { _ = Rows(sql, args); } }
+    // Candidate component journals use the same OS SQLite and serialized FULL
+    // commit boundary. No public SQL endpoint or live broker is exposed.
+    internal List<string?[]> Query(string sql, params object?[] args) => Rows(sql, args);
+    internal void Transaction(Action operation)
+    {
+        lock (gate)
+        {
+            Exec("BEGIN IMMEDIATE");
+            try { operation(); Exec("COMMIT"); }
+            catch { Exec("ROLLBACK"); throw; }
+        }
+    }
     private List<string?[]> Rows(string sql, params object?[] args)
     {
         lock (gate)

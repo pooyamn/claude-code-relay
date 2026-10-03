@@ -71,6 +71,19 @@ lifetime: protected lease/custody integration, exact-version security review,
 private native phone pairing and real continuity/recovery/admission gates remain.
 [Mechanism, actual proof and limits](pr6-telegram-outbound.md#protected-windows-pipe-peer-component-2026-10-03).
 
+2026-10-03 native custody milestone: an inactive broker core owns native stdio,
+initialization and a separate durable intent/event/request journal independently
+of attached clients. 394 local/397 Windows checks and twelve probe guards pass.
+A protected credential-free Windows fixture proves client A can exit, paused-
+goal/clear events persist while no client is attached, and replacement client B
+reaches the same non-elevated native process with matching events/readback: one
+initialization, zero unknown diagnostic intents. The live router/remotes and
+VPN/LG stay unchanged. This is not a deployed always-on broker, crash/reboot
+recovery, company identity or phone acceptance. Production facade/lease/service,
+request shutdown/reconciliation, exact-version security review, private native
+pairing, all-source reserve admission and backup-cohort integration remain gates.
+[Mechanism and actual client-replacement proof](pr6-telegram-outbound.md#native-broker-custody-and-client-replacement-acceptance-2026-10-03).
+
 2026-10-03 startup configuration: `Oracova-KhadangStartup` is a protected
 deterministic SYSTEM task with boot, owner-logon and minute triggers. SCM stays
 Manual: a stopped router may start only after the exact non-elevated physical

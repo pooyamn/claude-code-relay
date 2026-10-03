@@ -59,6 +59,15 @@ public static class NativeChannelTests
                 catch (IOException) { Check(channel.Writes.Count == 1, "Disconnected stream rejects later submission before writing"); }
             }
         }
+        var initPath = Path.Combine(root, "channel-init"); Directory.CreateDirectory(initPath);
+        using (var ledger = new Ledger(Path.Combine(initPath, "rpc.db")))
+        {
+            var channel = new FakeChannel("normal"); await using var rpc = new NativeRpc(channel, ledger);
+            await rpc.Initialize(stop.Token);
+            Check(rpc.InitializationAttempts == 1 && channel.Writes.Count == 2, "One initialize request and initialized notification");
+            try { await rpc.Initialize(stop.Token); throw new Exception("Native initialization replayed"); }
+            catch (InvalidOperationException) { Check(channel.Writes.Count == 2, "Duplicate initialization is refused before writing"); }
+        }
         return checks;
     }
     private sealed class FakeChannel(string mode) : INativeChannel
@@ -69,7 +78,9 @@ public static class NativeChannelTests
         public async Task<string?> Read(CancellationToken stop) => await frames.Reader.ReadAsync(stop);
         public Task Write(string message, CancellationToken stop)
         {
-            Writes.Add(message); using var doc = JsonDocument.Parse(message); var id = doc.RootElement.GetProperty("id").GetInt64();
+            Writes.Add(message); using var doc = JsonDocument.Parse(message);
+            if (!doc.RootElement.TryGetProperty("id", out var identifier)) return Task.CompletedTask;
+            var id = identifier.GetInt64();
             frames.Writer.TryWrite(mode == "disconnect" ? null : JsonSerializer.Serialize(new { method = "test/event", @params = new { } }));
             if (mode != "disconnect") frames.Writer.TryWrite(mode == "reject" ? JsonSerializer.Serialize(new { id, error = new { code = 123 } }) : JsonSerializer.Serialize(new { id, result = new { ok = true } }));
             return Task.CompletedTask;

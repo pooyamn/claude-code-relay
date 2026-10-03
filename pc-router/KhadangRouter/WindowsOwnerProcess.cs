@@ -18,22 +18,50 @@ public sealed class WindowsOwnerProcess : IDisposable
     public StreamWriter Input { get; private set; } = null!;
     public uint Pid { get; private set; }
     private IntPtr process, job;
+    private string ownerSid = "";
+    private uint ownerSession;
 
-    public static WindowsOwnerProcess Start(RouterPolicy policy, string workspace)
+    public OwnerProcessObservation ObserveOwner()
+    {
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
+        if (process == IntPtr.Zero || WaitForSingleObject(process, 0) != 0x102 || !OpenProcessToken(process, 8, out var token)) throw Native();
+        try
+        {
+            using var identity = new WindowsIdentity(token);
+            if (identity.IsSystem || identity.User?.Value != ownerSid ||
+                !GetTokenInformation(token, 20, out var elevated, 4, out _) || elevated != 0 ||
+                !GetTokenInformation(token, 12, out var session, 4, out _) || session != ownerSession ||
+                !GetProcessTimes(process, out var creation, out _, out _, out _))
+                throw new InvalidDataException("Owned native process token/generation mismatch");
+            return new(Pid, ownerSid, session, false, creation);
+        }
+        finally { CloseHandle(token); }
+    }
+
+    public static WindowsOwnerProcess Start(RouterPolicy policy, string workspace) => StartCore(policy, workspace, null);
+    // One-shot acceptance only: an empty child-only credential home. Never copy
+    // production credentials, change global defaults or launch a model as SYSTEM.
+    public static WindowsOwnerProcess StartDiagnostic(RouterPolicy policy, string workspace, string emptyHome)
+    {
+        policy.Workspace(emptyHome);
+        if (Directory.EnumerateFileSystemEntries(emptyHome).Any()) throw new InvalidDataException("Empty diagnostic native home required");
+        return StartCore(policy, workspace, emptyHome);
+    }
+    private static WindowsOwnerProcess StartCore(RouterPolicy policy, string workspace, string? diagnosticHome)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
         using var current = WindowsIdentity.GetCurrent();
         if (!current.IsSystem || Process.GetCurrentProcess().SessionId != 0)
             throw new InvalidOperationException("Owner launcher requires the SYSTEM service, not an agent or SSH session");
         policy.Workspace(workspace);
-        using (var file = File.OpenRead(policy.CodexExecutable))
-            if (!Convert.ToHexString(SHA256.HashData(file)).Equals(policy.CodexSha256, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidDataException("Pinned native Codex executable changed");
+        using var executable = new FileStream(policy.CodexExecutable, FileMode.Open, FileAccess.Read, FileShare.Read);
+        if (!Convert.ToHexString(SHA256.HashData(executable)).Equals(policy.CodexSha256, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("Pinned native Codex executable changed");
         if ((File.GetAttributes(policy.CodexExecutable) & FileAttributes.ReparsePoint) != 0)
             throw new InvalidDataException("Native executable cannot be a reparse point");
         EnablePrivileges();
         var result = new WindowsOwnerProcess();
-        IntPtr token = IntPtr.Zero, environment = IntPtr.Zero, thread = IntPtr.Zero;
+        IntPtr token = IntPtr.Zero, environment = IntPtr.Zero, diagnosticEnvironment = IntPtr.Zero, thread = IntPtr.Zero;
         var handles = new List<IntPtr>();
         try
         {
@@ -45,7 +73,9 @@ public sealed class WindowsOwnerProcess : IDisposable
                 throw new InvalidOperationException("Physical console belongs to a different account");
             if (!GetTokenInformation(token, 20, out var elevated, 4, out _) || elevated != 0)
                 throw new InvalidOperationException("Native agents require a non-elevated owner token");
+            result.ownerSid = policy.OwnerSid; result.ownerSession = session;
             if (!CreateEnvironmentBlock(out environment, token, false)) throw Native();
+            if (diagnosticHome != null) diagnosticEnvironment = EmptyHomeEnvironment(environment, diagnosticHome);
             var stdin = Pipe(handles, parentWrites: true);
             var stdout = Pipe(handles, parentWrites: false);
             var stderr = Pipe(handles, parentWrites: false);
@@ -55,11 +85,12 @@ public sealed class WindowsOwnerProcess : IDisposable
             if (!SetInformationJobObject(result.job, 9, ref limits, (uint)Marshal.SizeOf<JobLimits>())) throw Native();
             var startup = new StartupInfo { Size = Marshal.SizeOf<StartupInfo>(), Desktop = "winsta0\\default",
                 Flags = 0x100, Input = stdin.Child, Output = stdout.Child, Error = stderr.Child };
-            var command = new StringBuilder(Quote(policy.CodexExecutable) + " -c windows.sandbox=elevated app-server --listen stdio://");
+            var command = new StringBuilder(Quote(policy.CodexExecutable) + " -c windows.sandbox=elevated" +
+                (diagnosticHome == null ? "" : " -c cli_auth_credentials_store=\"file\"") + " app-server --listen stdio://");
             // Only our three explicitly inheritable pipe ends are inherited.
             // Router file/socket/token handles are non-inheritable.
             if (!CreateProcessAsUser(token, policy.CodexExecutable, command, IntPtr.Zero, IntPtr.Zero, true,
-                0x08000404, environment, workspace, ref startup, out var info)) throw Native();
+                0x08000404, diagnosticEnvironment == IntPtr.Zero ? environment : diagnosticEnvironment, workspace, ref startup, out var info)) throw Native();
             result.process = info.Process; thread = info.Thread; result.Pid = info.Pid;
             if (!AssignProcessToJobObject(result.job, result.process)) throw Native();
             if (ResumeThread(thread) == uint.MaxValue) throw Native();
@@ -77,9 +108,34 @@ public sealed class WindowsOwnerProcess : IDisposable
             foreach (var handle in handles) CloseHandle(handle);
             if (thread != IntPtr.Zero) CloseHandle(thread);
             if (environment != IntPtr.Zero) DestroyEnvironmentBlock(environment);
+            if (diagnosticEnvironment != IntPtr.Zero) Marshal.FreeHGlobal(diagnosticEnvironment);
             if (token != IntPtr.Zero) CloseHandle(token);
         }
     }
+    private static IntPtr EmptyHomeEnvironment(IntPtr block, string home)
+    {
+        // Never log or copy the owner's provider/CLI credential environment.
+        // This replacement belongs solely to the diagnostic child process.
+        var values = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        for (var offset = 0; ;)
+        {
+            var line = Marshal.PtrToStringUni(IntPtr.Add(block, offset))!;
+            if (line.Length == 0) break;
+            offset += (line.Length + 1) * 2;
+            var separator = line.IndexOf('=', 1);
+            if (separator < 1) throw new InvalidDataException("Malformed native owner environment block");
+            var key = line[..separator];
+            if (!AllowedDiagnosticVariable(key)) continue;
+            values[key] = line[(separator + 1)..];
+        }
+        values["CODEX_HOME"] = home;
+        return Marshal.StringToHGlobalUni(string.Join('\0', values.Select(pair => pair.Key + "=" + pair.Value)) + "\0\0");
+    }
+    internal static bool AllowedDiagnosticVariable(string key) => new[] {
+        "APPDATA", "LOCALAPPDATA", "PROGRAMDATA", "PROGRAMFILES", "PROGRAMFILES(X86)", "COMMONPROGRAMFILES", "COMMONPROGRAMFILES(X86)",
+        "COMSPEC", "SYSTEMDRIVE", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "PATH", "PATHEXT", "USERPROFILE", "USERNAME", "USERDOMAIN",
+        "USERDOMAIN_ROAMINGPROFILE", "HOMEDRIVE", "HOMEPATH", "COMPUTERNAME", "OS", "NUMBER_OF_PROCESSORS", "SESSIONNAME"
+    }.Contains(key, StringComparer.OrdinalIgnoreCase);
     private static (IntPtr Parent, IntPtr Child) Pipe(List<IntPtr> handles, bool parentWrites)
     {
         var attributes = new SecurityAttributes { Size = Marshal.SizeOf<SecurityAttributes>(), Inherit = 1 };
@@ -143,6 +199,7 @@ public sealed class WindowsOwnerProcess : IDisposable
     [DllImport("kernel32.dll", SetLastError = true)] private static extern bool SetInformationJobObject(IntPtr job, int information, ref JobLimits limits, uint length);
     [DllImport("kernel32.dll", SetLastError = true)] private static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
     [DllImport("kernel32.dll", SetLastError = true)] private static extern uint ResumeThread(IntPtr thread);
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool GetProcessTimes(IntPtr process, out long created, out long exited, out long kernel, out long user);
     [DllImport("kernel32.dll")] private static extern uint WaitForSingleObject(IntPtr handle, uint wait);
     [DllImport("kernel32.dll")] private static extern bool TerminateProcess(IntPtr process, uint code);
     [DllImport("kernel32.dll")] private static extern bool CloseHandle(IntPtr handle);
@@ -151,3 +208,5 @@ public sealed class WindowsOwnerProcess : IDisposable
     [DllImport("advapi32.dll", EntryPoint = "LookupPrivilegeValueW", CharSet = CharSet.Unicode, SetLastError = true)] private static extern bool LookupPrivilegeValue(string? system, string name, out Luid luid);
     [DllImport("advapi32.dll", SetLastError = true)] private static extern bool AdjustTokenPrivileges(IntPtr token, bool disableAll, ref TokenPrivileges privileges, uint length, IntPtr previous, IntPtr required);
 }
+
+public sealed record OwnerProcessObservation(uint Pid, string Sid, int Session, bool Elevated, long CreationTime);
