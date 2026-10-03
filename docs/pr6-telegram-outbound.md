@@ -45,14 +45,44 @@ the update and amend the same bubble without holding the owner session or
 declaring an uncertain model action. Unknown native effects still use the
 existing no-replay gate.
 
-229 local and 232 actual Windows checks cover existing routing/goals/quota plus parser/path/stream
+254 local and 257 actual Windows checks cover existing routing/goals/quota plus parser/path/stream
 bounds, metadata spoofing, byte signatures, captions, denied senders, same-bubble
 reporting, delayed staging/interrupt and stale-turn refusal. Windows adds actual
 materialization/manifest/replay checks. Target native ACL evidence is recorded
 in [`deployment-status.json`](../pc-router/deployment-status.json), separately
 from provider download and real owner/image-model round trips.
 
-Remaining full-system gates: real Telegram download/native image interpretation;
+`pc-router/MediaProbe` and `run-media-probe.ps1` provide an explicitly reviewed,
+one-shot Khadang acceptance diagnostic, not an alternate live router. The
+self-contained package must include the exact deployed router assembly. It uses
+a separate protected ledger/claim, never opens the live database or polls updates,
+and starts native inference only through the existing medium-owner launcher.
+A generated randomized three-panel PNG contains no project data or truth metadata;
+only its confirmed bot message can be removed. Upload/delete receipts, bytes,
+truth and the native thread remain in protected diagnostic recovery state.
+One structured-output turn has a 90-second response deadline; tools or ambiguous
+effects stop it without retry. This exercises documented
+[Telegram file uploads](https://core.telegram.org/bots/api#senddocument) and native
+[`localImage`/`outputSchema`](https://learn.chatgpt.com/docs/app-server) inputs.
+`--observe-only` diagnoses the native quota fields with no upload/thread/model.
+The quota guard is a fresh coarse observation, not shared admission or reserve
+enforcement. The first actual attempt stopped before upload/inference on the
+characterized startup race documented in [PR 9](pr9-model-admission.md).
+
+Actual generated-image acceptance passed at 12:28:44 UTC on 2026-10-03: Telegram
+uploaded and downloaded identical PNG bytes (SHA256
+`DACD38C74E37CCA9925D5B0F9C5B7B972E78DB7AF9F81254F2BBE7DF60412F11`),
+and the native model returned the private randomized truth `red, blue, magenta`.
+Exactly one turn completed, with no observed native tools or unknown operations.
+The confirmed generated bot message was removed; its bytes and receipts remain.
+The separate diagnostic worker exited, and the live LG thread/bubble, four
+turn/start receipts, two sendMessage receipts and single topic stayed unchanged.
+Managed account/permission readings matched before/after; rounded weekly usage
+was 25% both times (not proof of zero cost or global reserve enforcement).
+This proves the provider download/native image path, not authenticated owner
+photo intake, in-flight media steering or phone/app continuity.
+
+Remaining full-system gates: real owner photo intake and active media steering;
 atomic albums (held, not partially sent); large files through an explicitly
 reviewed local Bot API or equivalent transport; verified voice/video processing;
 restricted-profile tool access, Claude, company/role grants, and unfinished
@@ -61,6 +91,8 @@ company acceptance. Register cache bytes and all manifests in the same daily
 encrypted recovery cohort as the router ledger/native history; restoring a
 staged file is not permission to resend an owner input. No cache pruning or
 Hamal/Mac wiring change is performed here.
+Include `state/diagnostics/media-*` ledgers/claims/truth/receipts in that cohort;
+restoration never grants another diagnostic send or model turn.
 
 ## Prepared mechanism
 

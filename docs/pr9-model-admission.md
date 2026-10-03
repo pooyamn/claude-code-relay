@@ -132,6 +132,23 @@ the current turn, tool history and goal alone. The network read does not hold
 the session dispatch lock, so owner steering/interrupt/status can continue.
 Failure stays a read failure, not an unknown external action or held session.
 
+The PC media diagnostic characterized a startup race on 2026-10-03: the first
+bracket was invalidated by an account-wide event (`stale`, no verified account or
+permission); a separate read-only bracket at 12:19:13 UTC verified the same account,
+25% weekly usage and included-usage permission. No upload or model turn occurred.
+The observer now discards a revision-raced bracket and permits exactly one new
+full bracket against the changed revision. Repeated events still leave it stale;
+rejection, malformed data, account mismatch and cancellation do not trigger an
+error retry. This reacquires invalidated read-only state; it does not replay a
+model/action, refresh credentials, restore old permissions or grant admission.
+Fixtures cover stable startup recovery, continuing races, second-read rejection,
+account drift, malformed data, cancellation and read-semaphore release.
+The fix is deployed with 254 local/257 Windows joined checks. A new native
+connection at 12:28:37 UTC obtained a fresh account-verified observation before
+the successful one-turn image diagnostic; permissions stayed allowed and rounded
+weekly usage stayed 25% afterward. Historical/stale live status is still not
+loaded as availability. The diagnostic does not establish all-source admission.
+
 This is **observation, not 10% reserve enforcement**. The display says so.
 Provider percentages do not prove bounded future turn cost, covered outstanding
 attempts, complete model/pool applicability, Claude quota, outside consumption or

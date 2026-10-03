@@ -85,11 +85,15 @@ photos/files and captions in a content-hashed, read-only cache. Supported image
 signatures map to documented native localImage input; other files retain paths
 and metadata without automatic execution or invented transcripts. Delayed
 downloads do not lock owner controls, and ended steering turns never become new
-turns. 229 local/232 Windows checks pass; a real non-elevated native worker reads
+turns. 254 local/257 Windows checks pass; a real non-elevated native worker reads
 the exact cache fixture and is denied both overwrite and sibling-file creation,
-while token/code protection remains intact. This is not a real Telegram/image-
-model round trip, album/large-file/transcription completion, company access or
-portable switch/restore acceptance. Those requirements remain in scope.
+while token/code protection remains intact. A one-shot generated PNG round trip
+now proves identical Telegram download bytes and real native image interpretation
+without observed tools, uncertain actions or LG bubble changes. Its startup quota
+race was characterized and fixed with one new observation only after revision
+invalidation; continuing races remain stale. Real owner photo intake/active
+steering, albums/large files/transcription, company access, global admission and
+portable switch/restore remain acceptance gates. Those requirements stay in scope.
 [Attachment mechanism and remaining gates](pr6-telegram-outbound.md#pc-owner-only-inbound-attachments-2026-10-03).
 
 ## 1. Goals and constraints

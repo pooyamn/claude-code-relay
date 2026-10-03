@@ -39,14 +39,26 @@ public sealed class NativeQuota
         rpc.Notification += Updated;
         try
         {
-            // Bracket usage with the active managed account; don't extract an
-            // ID from auth.json, an email, a token or somebody else's process.
-            var before = Account(await rpc.Call("account/read", new { refreshToken = false }, stop, effect: false));
-            var usage = await rpc.Call("account/rateLimits/read", new { }, stop, effect: false);
-            var after = Account(await rpc.Call("account/read", new { refreshToken = false }, stop, effect: false));
-            if (before != after) throw new InvalidDataException("Native account changed during quota read");
-            var parsed = Parse(usage, before, DateTimeOffset.UtcNow);
-            lock (gate) { if (revision == started) { revision++; value = parsed; } }
+            for (int observation = 0; observation < 2; observation++)
+            {
+                lock (gate) started = revision;
+                // Bracket usage with the active managed account; don't extract
+                // IDs from auth.json, emails, tokens or another process.
+                var before = Account(await rpc.Call("account/read", new { refreshToken = false }, stop, effect: false));
+                var usage = await rpc.Call("account/rateLimits/read", new { }, stop, effect: false);
+                var after = Account(await rpc.Call("account/read", new { refreshToken = false }, stop, effect: false));
+                if (before != after) throw new InvalidDataException("Native account changed during quota read");
+                var parsed = Parse(usage, before, DateTimeOffset.UtcNow);
+                lock (gate)
+                {
+                    if (revision == started) { revision++; value = parsed; return; }
+                }
+                // Native startup sends account-wide updates during the first
+                // bracket. Discard that raced result, then allow ONE new read
+                // against the changed revision. No delay, error retry, token
+                // refresh, model/action replay or permission inference. Another
+                // race remains stale instead of looping indefinitely.
+            }
         }
         catch (Exception error) when (error is NativeRejected or IOException or TimeoutException or InvalidDataException or
             InvalidOperationException or KeyNotFoundException or JsonException)

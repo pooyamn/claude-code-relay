@@ -58,18 +58,26 @@ public static class QuotaTests
             "{\"rateLimits\":{\"spendControlReached\":1}}",
             "{\"rateLimits\":{\"rateLimitReachedType\":\"unknown\"}}"
         }) Denied(payload, "Invalid quota catalog accepted");
-        foreach (var scenario in new[] { "normal", "failure", "race", "account-switch" })
+        foreach (var scenario in new[] { "normal", "failure", "race", "account-switch", "startup-race", "race-then-failure", "race-then-switch", "race-then-malformed" })
         {
             var native = new QuotaNative(scenario); var view = new NativeQuota(); await view.Read(native, CancellationToken.None);
-            Check(view.Snapshot.State == (scenario == "normal" ? "observed" : scenario == "race" ? "stale" : "unavailable"), "Native read outcome: " + scenario);
+            Check(view.Snapshot.State == (scenario is "normal" or "startup-race" ? "observed" : scenario == "race" ? "stale" : "unavailable"), "Native read outcome: " + scenario);
             Check(native.Calls.All(c => !c.Effect && c.Method is "account/read" or "account/rateLimits/read"), "Quota reads never mutate, invoke models, consume credits or refresh credentials");
+            Check(native.Calls.Count(c => c.Method == "account/rateLimits/read") == (scenario is "race" or "startup-race" or "race-then-failure" or "race-then-switch" or "race-then-malformed" ? 2 : 1), "Only a revision race permits one additional bounded read: " + scenario);
+            if (scenario == "startup-race") Check(view.Snapshot.AccountVerified && view.Snapshot.OrdinaryUsageAllowed == false && !view.Snapshot.ReserveEnforced, "Fresh post-startup observation preserves negative permission and does not grant admission");
             if (scenario == "normal")
             {
                 Check(view.Render().Contains("90% used") && view.Render().Contains("not allowed") && view.Render().Contains("not yet enforced"), "Usage rendering preserves negative permissions and labels target honestly");
                 view.Invalidate(); Check(view.Snapshot.State == "stale" && !view.Snapshot.AccountVerified && !view.Render().Contains("90% used"), "Sparse update invalidates availability instead of merging permission or windows");
             }
         }
-        foreach (var scenario in new[] { "normal", "failure", "race", "slow" })
+        var canceled = new NativeQuota(); var cancelNative = new QuotaNative("race-then-cancel");
+        try { await canceled.Read(cancelNative, CancellationToken.None); throw new Exception("Raced second read ignored cancellation"); }
+        catch (OperationCanceledException) { checks++; }
+        Check(canceled.Snapshot.State == "unavailable" && cancelNative.Calls.Count(c => c.Method == "account/rateLimits/read") == 2, "Cancellation clears permission and stops bounded observation");
+        await canceled.Read(new QuotaNative("normal"), CancellationToken.None);
+        Check(canceled.Snapshot.State == "observed", "Canceled observation releases its read semaphore");
+        foreach (var scenario in new[] { "normal", "failure", "race", "slow", "startup-race" })
         {
             var path = Path.Combine(root, "quota-" + scenario); Directory.CreateDirectory(path);
             var workspace = OperatingSystem.IsWindows() ? Path.Combine(path, "workspaces") : "C:\\QuotaWorkspaces";
@@ -85,9 +93,9 @@ public static class QuotaTests
             finally { stop.Cancel(); try { await running; } catch (OperationCanceledException) { } }
             Check(bot.Sends == 0 && bot.Last!.Contains("Existing tool history") && bot.Last.Contains("Working ("), "Limits/status amend one existing active bubble without clearing tool history");
             Check(!ledger.Get("bubble/quota-thread")!.Value.GetProperty("held").GetBoolean() && ledger.Unknown == 0, "Quota read failure never holds owner session or marks an effect uncertain");
-            Check(native.Calls.Count(c => c.Method == "account/rateLimits/read") == 1 && native.Calls.All(c => !c.Method.StartsWith("turn/") || scenario == "slow" && c.Method == "turn/interrupt"), "Foreign sender denied; limits never start/interrupt a turn");
+            Check(native.Calls.Count(c => c.Method == "account/rateLimits/read") == (scenario is "race" or "startup-race" ? 2 : 1) && native.Calls.All(c => !c.Method.StartsWith("turn/") || scenario == "slow" && c.Method == "turn/interrupt"), "Foreign sender denied; limits never start/interrupt a turn");
             Check(bot.MenuVerified, "Limits native command registered/read back");
-            Check(ledger.Get("native/quota")!.Value.GetProperty("State").GetString() == (scenario is "normal" or "slow" ? "observed" : scenario == "race" ? "stale" : "unavailable"), "Account-wide no-thread notification and read result persist: " + scenario);
+            Check(ledger.Get("native/quota")!.Value.GetProperty("State").GetString() == (scenario is "normal" or "slow" or "startup-race" ? "observed" : scenario == "race" ? "stale" : "unavailable"), "Account-wide no-thread notification and read result persist: " + scenario);
             if (scenario == "slow") Check(native.Calls.Single(c => c.Method == "turn/interrupt").Effect && bot.Last!.Contains("Interrupt requested"), "Owner interrupt completes while quota read is pending; no session-lock deadlock");
         }
         return checks;
@@ -105,11 +113,16 @@ public static class QuotaTests
             Calls.Add((method, effect));
             if (method == "thread/resume") return Task.FromResult(Json(new { cwd = Json(parameters).GetProperty("cwd").GetString(), approvalPolicy = "never", approvalsReviewer = "user", sandbox = new { type = "dangerFullAccess" }, thread = new { id = "quota-thread" } }));
             if (method == "thread/goal/get") return Task.FromResult(Json(new { goal = (object?)null }));
-            if (method == "account/read") return Task.FromResult(Account(scenario == "account-switch" && Calls.Count(c => c.Method == method) > 1 ? "foreign" : "fixture-account"));
+            if (method == "account/read") return Task.FromResult(Account((scenario == "account-switch" && Calls.Count(c => c.Method == method) > 1 || scenario == "race-then-switch" && Calls.Count(c => c.Method == method) > 2) ? "foreign" : "fixture-account"));
             if (method == "account/rateLimits/read")
             {
                 if (scenario == "failure") throw new NativeRejected(method);
-                if (scenario == "race") Event("account/rateLimits/updated", new { rateLimits = new { primary = new { usedPercent = 99 } } });
+                var read = Calls.Count(c => c.Method == method);
+                if (scenario == "race-then-failure" && read == 2) throw new NativeRejected(method);
+                if (scenario == "race-then-malformed" && read == 2) return Task.FromResult(Raw("{}"));
+                if (scenario == "race-then-cancel" && read == 2) throw new OperationCanceledException(stop);
+                if (scenario == "race" || (scenario is "startup-race" or "race-then-failure" or "race-then-switch" or "race-then-malformed" or "race-then-cancel") && read == 1)
+                    Event("account/rateLimits/updated", new { rateLimits = new { primary = new { usedPercent = 99 } } });
                 if (Slow)
                 {
                     async Task<JsonElement> Delayed() { await interrupted.Task.WaitAsync(stop); return Usage; }

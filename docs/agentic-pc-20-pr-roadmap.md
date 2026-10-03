@@ -8,10 +8,14 @@ Build testable security and delivery foundations first. Introduce the builder wi
 
 2026-10-03 inbound media integration: owner-only PC photo/file staging now keeps
 captions and native localImage/file references in a protected read-only cache,
-without credential URLs in native input. 229 local and 232 actual Windows checks
+without credential URLs in native input. 254 local and 257 actual Windows checks
 pass; the real non-elevated native worker proves read access plus overwrite and
 directory-create denial. Slow staging leaves controls responsive and stale
-steering cannot become a new turn. Real Telegram/image-model round trips,
+steering cannot become a new turn. A generated PNG now passes real Telegram
+download/native image interpretation in one tool-free diagnostic turn, without
+changing the LG thread/bubble. The initial quota startup race is characterized
+and fixed through bounded reacquisition of invalidated read-only state, not an
+action retry or weakened permission gate. Real owner photo intake/active steering,
 atomic albums, large-file transport, verified audio/video interpretation,
 restricted-profile/Claude/company grants, and switch/restore of external cache
 references remain explicit gates. This does not finish PR 4–6, 9–10 or 12.
