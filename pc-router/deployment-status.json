@@ -155,12 +155,32 @@
     "later_observation": "3 percent CPU, approximately 54 C from ACPI thermal-zone data; no stress processes. These later readings do not establish event-time temperature or TV causality.",
     "thermal_protection_modified": false
   },
+  "wsl_partial_target_proof": {
+    "distribution": "Ubuntu-24.04",
+    "kernel": "6.18.40.1-microsoft-standard-WSL2",
+    "systemd": "255.4-1ubuntu8.17",
+    "bubblewrap": "0.9.0",
+    "focused_regressions_passed": 47,
+    "mac_drill_runner_guard_checks_passed": 9,
+    "source_provenance": "Committed de0ecbd source archive plus 10 tests from the existing untracked Linux wire fixture; that fixture was not edited or included in this commit.",
+    "real_cross_uid_assertions_passed": 78,
+    "fixture_uids": {"builder": 23100, "reviewer": 23101, "cto": 23102},
+    "persistent_accounts_provisioned": false,
+    "models_or_credentials_installed": false,
+    "original_wsl_config_changed": false,
+    "non_elevated_windows_owner_can_launch_linux_root": true,
+    "owner_probe_at": "2026-10-03T11:09:05.1792863Z",
+    "owner_probe_task": "Oracova-WSL-OwnerBoundaryProbe-20261003; one-shot diagnostic, no recurring trigger",
+    "security_flag": "Owner-registered WSL does not isolate protected Linux state from full-access owner-account Windows model processes. Protected host identity/topology plus interop/mount restrictions and real-token denial tests are required before role/company activation. Jev has not cleared this topology.",
+    "live_role_company_acceptance": false,
+    "evidence": "docs/pc-wsl-identity-evidence.md"
+  },
   "remaining": [
     "Active steering and durable goal-state acceptance (ordinary owner input now observed)",
     "Native Claude interactive adapter and tool-switch continuity",
     "Media delivery and native phone/app attachment",
     "Joined quota/admission/progress enforcement including the 10 percent owner reserve",
-    "Role/company/employee authorization and publication gates",
+    "Protected Windows/WSL host boundary; role/company/employee authorization and publication gates",
     "Approved saved-credential replacement, secure auto-login, stopped-service/boot acceptance, before-login access and clean-machine recovery drills",
     "TV SIMPLINK disable/readback and TV-off/PC-online acceptance; native daemon/orphan and resume recovery"
   ]

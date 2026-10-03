@@ -1,6 +1,7 @@
 # PR 2 protected identities and broker preparation
 
-Local code/template preparation, 2026-10-01. Not deployed or target-WSL accepted.
+Local code/template preparation, 2026-10-01. Partial WSL fixture evidence added
+2026-10-03; not deployed or fully target-WSL accepted.
 The Mac legacy relay is unchanged; its directory-based caller is now explicitly
 labeled routing rather than authentication. The new target stdio client is
 `scripts/ccrelay_broker_mcp.py`, not a shared-state privileged MCP server.
@@ -79,6 +80,16 @@ fall back to the shared-home legacy identity boundary. Owner cutover permission
 is separate from repository publication.
 
 ## Evidence and pending acceptance
+
+2026-10-03: 47 focused tests passed on the actual PC through bubblewrap,
+including 10 existing untracked real-Linux wire fixtures. A new disposable
+systemd drill passed 78 actual cross-UID filesystem/process/socket/cgroup and
+restricted Windows-access assertions. It provisions no accounts or models.
+However, a real non-elevated Windows owner task entered the owner-registered
+WSL distro as Linux root. That host path must be closed before protected
+role/company activation; Linux permissions alone are insufficient against a
+compromised owner-account Windows agent. Exact source provenance, failures,
+boundaries and remaining gates are in [the PC drill evidence](pc-wsl-identity-evidence.md).
 
 All four legacy suites and 64 core tests pass on the Mac; PR 2 adds 28 checks to
 PR 1's 36. The planner and both entry points also work under isolated Python

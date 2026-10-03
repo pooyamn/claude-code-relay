@@ -323,6 +323,19 @@ Codex observer (built 2026-10-01): the relay stays attached to every Codex threa
 
 Real boundaries:
 - **Separate local identities.** Worker roles, `reviewer`, `cto`, and `support` have separate OS identities; only the router runs as `relay` and holds Telegram, GitHub, mail, and payment credentials. Workers cannot use unrestricted sudo, read another role's home, attach to its runtime, or rewrite privileged identity mappings. A change of working directory cannot change the authenticated role.
+- **Protected Windows/WSL host boundary.** A non-administrator Windows owner
+  process was measured entering the current owner-registered WSL distro as
+  Linux root (2026-10-03). Do not put protected broker state there while
+  owner-account model processes retain that route. Use a reviewed protected
+  host identity/topology, prove root-launch and host-state denial from the real
+  Windows agent tokens, and preserve native phone/app control through scoped
+  protected interfaces. Role-host Windows interop/PATH, drive/fstab mounts,
+  WSL init/interop endpoints and manual namespace/mount escape must also be
+  controlled. Automount off alone is insufficient. The Windows migration
+  adapter remains owner-only until this is enforced; current full-access
+  owner defaults are not employee grants. [Measured gap and partial Linux
+  proof](pc-wsl-identity-evidence.md). This security-sensitive topology change
+  requires the protected owner/Jev review path, not automatic test clearance.
 - **Authenticated action requests.** The router checks the peer UID against a protected role registry and launcher-owned session binding. The reviewer alone can submit a review verdict; the CTO alone can request a policy-allowed merge. Sessions of one role share that role's authority; task/session attribution is enforced by the trusted launcher and broker, not caller-chosen names.
 - **No credentials in sessions.** Worktrees push only to a local mirror owned by `relay`; publishing to GitHub is a router action.
 - **One GitHub owner.** Separate local identities do not require additional human GitHub accounts. The router uses a scoped GitHub App installation for publication and records the requesting role/session. Commit author names and several personal tokens from the same account do not authenticate agent authority.

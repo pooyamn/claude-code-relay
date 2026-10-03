@@ -85,6 +85,19 @@ preparation. No service/scheduler/configuration change is implied by a commit.
 
 ## Migration still to prove
 
+Actual PC evidence now includes 47 focused bubblewrap regressions and 78
+credential-free cross-UID kernel assertions. It also exposes a host-side root
+launch bypass from a non-elevated Windows owner process; this must be closed
+before role/company activation. [Evidence and exact limitations](../../docs/pc-wsl-identity-evidence.md).
+`sh deploy/wsl/run-identity-drill.sh` only prints a plan. `--run` is an explicit
+trusted-root, reviewed-artifact disposable test on a credential-free target;
+it starts one restricted transient system service, not an installer or model.
+It refuses existing fixture state/provisioned role UIDs and uses only synthetic
+homes, sockets and processes, removed with the transient RuntimeDirectory.
+Do not run the root fixture manager as a worker or promote passing tests into
+deployment authorization. Original interop/automount configuration is not
+changed by the test.
+
 1. Choose a disposable Linux/WSL environment and verify distinct-UID filesystem,
    process, socket, group, namespace and cgroup boundaries there. Unit mocks on
    the Mac do not prove this. See [PR 2 evidence and runbook](../../docs/pr2-identity-broker.md).

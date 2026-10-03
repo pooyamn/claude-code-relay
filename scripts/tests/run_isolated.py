@@ -28,7 +28,7 @@ LEGACY_SOURCES = (
 )
 BROKER_SOURCES = ("ccrelay_broker.py", "ccrelay_broker_mcp.py", "ccrelay_owner_gate.py", "ccrelay_intake.py", "ccrelay_outbound.py", "ccrelay_native.py", "ccrelay_work.py", "ccrelay_admission.py", "ccrelayd.py", "relay_tg.py", "relay_bot_commands.py", "relay_model_controls.py", "relay_codex_bubble.py", "relay_codex_goal.py", "relay-codex-proto.py", "relay_ws.py", "relay-ws-edit-server.mjs")
 DEPLOY_SOURCES = (
-    "identity-plan.py", "setup-wsl.sh", "pull-from-mac.sh",
+    "identity-plan.py", "identity-drill.py", "run-identity-drill.sh", "setup-wsl.sh", "pull-from-mac.sh",
     "identities/ccrelay.sysusers.conf", "identities/ccrelay.tmpfiles.conf",
     "identities/broker-policy.json.example", "identities/session.service.in",
     "identities/binding-read-policy.json.example",

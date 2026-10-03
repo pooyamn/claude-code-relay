@@ -6,6 +6,17 @@ Build testable security and delivery foundations first. Introduce the builder wi
 
 ## Execution status
 
+2026-10-03 partial WSL acceptance: 47 focused regression tests passed on the PC
+through the enforced bubblewrap runner, including 10 existing untracked Linux
+wire fixtures (not committed by this work). A credential-free transient service
+passed 78 real cross-UID assertions for builder/reviewer/CTO, with no accounts,
+credentials or models installed. A separate real Interactive/Limited Windows
+owner task could nevertheless enter the owner-registered distro as Linux root.
+That host-side bypass now gates protected role/company deployment; the fixture
+success does not complete PR 2, native topology or PR 20. Current native/VPN/LG
+services and original WSL configuration remain unchanged.
+[Exact evidence, fixture mechanism and limits](pc-wsl-identity-evidence.md).
+
 2026-10-03 PC-only Khadang direction supersedes the legacy Mac activation below:
 the Mac test poller/watchers are stopped and its known plaintext token file is
 removed. The protected PC credential and non-elevated native owner launcher are
