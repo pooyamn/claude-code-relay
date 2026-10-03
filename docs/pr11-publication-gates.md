@@ -110,6 +110,38 @@ inside its worker journal.
 [Git alternate index contract](https://git-scm.com/docs/git),
 [Git stash documentation](https://git-scm.com/docs/git-stash).
 
+The ordinary stash path also lost a real unstaged edit hidden by
+`assume-unchanged`. The replay adapter now records every index entry's mode,
+object ID, semantic flags and actual source presence in hashed rows. A small
+manifest binds their count and ordered digest to the sealed raw index digest;
+paths are not embedded in the bounded request. Inspection uses NUL-framed output
+from the pinned Git binary and rejects changed debug framing, unknown extended
+flags and unrepresented unresolved index state. Git's debug format is explicitly
+unstable, so target compatibility checks remain mandatory.
+[Git index inspection](https://git-scm.com/docs/git-ls-files).
+
+Normalization clears hiding flags only in the private index copy. An absent
+`skip-worktree` file remains index-only rather than becoming an unintended
+deletion. Intent-to-add files come from the complete checkpoint and regain their
+intent flag without staging their contents. A separate durable restoration phase
+preserves combined flags and missing-file semantics. To restore an absent intent
+entry, a reservation precedes a temporary empty candidate placeholder; exact
+type, owner and content checks precede its removal. Sparse absence removes only
+a generated candidate file whose mode and bytes match its current Git blob. It
+never removes an original file or changed candidate work. Interrupted restoration
+reconciles those known effects without repeating the earlier dirty apply.
+[Git index flags](https://git-scm.com/docs/git-update-index),
+[Git intent to add](https://git-scm.com/docs/git-add).
+
+Restoration testing reproduced an `O_RDWR` permission failure when the overlay
+revalidated a completed file after restoring its original read-only mode.
+Completed files now use read-only handles and exact byte/identity checks;
+only incomplete copies require write access. Unchanged complete files are not
+rewritten or chmodded. Changed bytes, replaced paths and files that cannot be
+opened safely retain the candidate as a conflict, without changing source
+permissions or replaying dirty apply. The focused fault case also covers a
+process death after flags are restored with read-only file/directory modes.
+
 Untracked and ignored files, empty directories, modes and symlink targets are
 copied from the checkpoint without following links. A path that upstream now
 tracks produces a conflict, never an overwrite. File reservations precede copy;
@@ -126,11 +158,13 @@ reconciliation, independently verified conflict resolution, real protected
 merge/fence readers and native context reattachment are still required. This
 candidate step is not a replacement for that final workflow.
 
-Promotion must also verify special index flags, intent-to-add, sparse/submodule
-state and manually resolved merge semantics against the complete original
-checkpoint. Passing ordinary Git replay tests is not permission to omit work
-that Git's default operations do not represent. Such work stays preserved and
-requires a verified replay method before installation.
+Promotion must independently verify the restored index flags, intent-to-add and
+missing-file semantics against the complete original checkpoint. Full sparse
+configuration, submodule state and manually resolved merge semantics also remain
+gates; ordinary flag support is not proof of those workflows. Passing replay
+tests is not permission to omit work that Git's default operations do not
+represent. Such work stays preserved and requires a verified replay method
+before installation.
 
 ## Recovery inventory and rollout
 
@@ -141,11 +175,15 @@ work and model state, native registry, role bindings, protected decisions and
 referenced Git objects/checkpoint bytes. A publication-only copy cannot recover
 the system. Clean-machine restore starts held and reconciles external outcomes.
 
-Include `ccrelay.post_merge.v1` policy/Git pins, requests and every revision, file
-reservations, source/result checkpoint contents, retained refs and full object
-storage, staging worktree mappings and complete unfinished candidate directories
-in that same recovery cohort. A path or checkpoint header without its bytes/Git
-objects cannot recover later work. No replay journal is live-enabled yet.
+Include `ccrelay.post_merge.v2` policy/Git pins, requests and every revision, index
+entry rows and manifests, file/placeholder reservations, source/result checkpoint
+contents, retained refs and full object storage, staging worktree mappings and
+complete unfinished candidate directories in that same recovery cohort. Index
+rows include modes, object IDs, flags, actual presence and row digests; the
+manifest includes count, ordered digest and original raw index digest. A path or
+checkpoint header without its bytes/Git objects cannot recover later work. No
+replay journal is live-enabled yet. Existing v1 journals are rejected and
+preserved, not altered or silently recreated; any migration requires review.
 
 Unknown schema/policy bytes are preserved for reviewed migration. This code is
 not enabled in the live relay and creates no production state. Later rollback
@@ -180,11 +218,44 @@ staged secret scan passed. This is focused verification, not a new full-suite or
 target-PC run. No live service, bot, credential, native session or user-owned
 protocol edit was changed.
 
+The special-index extension was checked with focused hidden-edit, combined-flag,
+intent-to-add, missing-file, manifest-tamper and restoration-death cases during
+development. On the final staged code, five real-Git replay cases passed,
+including complete read-only revalidation, same-length candidate corruption,
+death after restored index flags and after an overlay write, and ordinary dirty
+replay. Sixteen parser, runner-selection and isolation checks plus all four
+legacy suites passed on the preceding staged snapshot; those test/runner/parser
+files are unchanged in the final snapshot. These results do not claim a new
+full-core, native Windows or WSL acceptance run.
+
+The isolated runner now accepts repeatable exact `--core-module` and
+`--core-test` selectors. It validates the entire discovered core catalog before
+selection, rejects invalid or duplicate selectors and labels focused runs as
+partial coverage. No selectors still runs the full catalog. Discovery and
+execution remain sandboxed, with a separate scratch directory per invocation,
+serial children and the unchanged 60-second child ceiling.
+
 The roadmap records staged regression results. Candidate execution uses copied
 staged source in the OS sandbox without host home, credentials or network, with
 serial batches and unchanged child timeouts. User-owned protocol edits are
 excluded. The previous full-suite result remains PR 10 evidence, not a new full
 run for this slice.
+
+Focused checks now use the same copied-source OS sandbox directly, without an
+ad-hoc unsandboxed runner:
+
+```
+/usr/bin/python3 scripts/tests/run_isolated.py --suite core \
+  --core-module test_core_replay_index --core-module test_core_test_batches
+```
+
+Repeat `--core-module` for complete exact modules or `--core-test` for exact
+discovered IDs. The complete catalog is still discovered and validated inside
+the sandbox; unknown/duplicate selectors fail, selected tests are not imported
+outside it, and the output explicitly identifies focused coverage. The default
+continues to run the entire suite. Each child retains its existing time limit;
+parallel invocations, if used, have separate scratch trees rather than a shared
+build directory. A focused result must not be reported as full-system coverage.
 
 Remaining work includes verified Git/checkpoint export, protected App and
 human/security readers, the real provider adapter and outcome audit, enforced

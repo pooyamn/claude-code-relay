@@ -147,13 +147,34 @@ def core_batches(catalog):
     return batches
 
 
+def select_core_tests(catalog, modules=(), tests=()):
+    """Select only discovered IDs; never import a selector outside the sandbox."""
+    core_batches(catalog)  # Validate the complete catalog, even for focused runs.
+    if not modules and not tests:
+        return list(catalog)
+    if len(set(modules)) != len(modules) or len(set(tests)) != len(tests) or \
+            any(type(module) is not str or not re.fullmatch(r"test_core[A-Za-z0-9_]*", module)
+                for module in modules) or any(test not in catalog for test in tests):
+        raise RuntimeError("invalid, duplicate or undiscovered focused core selector")
+    if any(not any(name.startswith(module + ".") for name in catalog) for module in modules):
+        raise RuntimeError("focused core module has no discovered tests")
+    return [name for name in catalog if name in tests or
+            any(name.startswith(module + ".") for module in modules)]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--suite", choices=("legacy", "core", "all"), default="all")
     parser.add_argument("--timeout", type=int, default=60)
+    parser.add_argument("--core-module", action="append", default=[],
+                        help="run every discovered test in this exact core module; repeatable")
+    parser.add_argument("--core-test", action="append", default=[],
+                        help="run this exact discovered core test ID; repeatable")
     args = parser.parse_args()
     if args.timeout < 1 or args.timeout > 60:
         parser.error("suite timeout must be between 1 and 60 seconds")
+    if args.suite == "legacy" and (args.core_module or args.core_test):
+        parser.error("core selectors require --suite core or all")
     source = Path(__file__).resolve().parent.parent
     with tempfile.TemporaryDirectory(prefix="ccrelay-test-") as folder, \
             tempfile.TemporaryDirectory(prefix="ccrelay-denied-") as forbidden:
@@ -184,7 +205,12 @@ def main() -> int:
                 return result.returncode
             if len(result.stdout) > 2 * 1024 * 1024:
                 raise RuntimeError("core test catalog exceeds bound")
-            batches = core_batches(json.loads(result.stdout))
+            catalog = json.loads(result.stdout)
+            selected = select_core_tests(catalog, args.core_module, args.core_test)
+            batches = core_batches(selected)
+            if args.core_module or args.core_test:
+                print(f"Focused core selection: {len(selected)} of {len(catalog)} discovered tests; "
+                      "not a full-core run", flush=True)
             print(f"Core catalog: {sum(map(len, batches))} tests in {len(batches)} serial batches", flush=True)
             for batch in batches:
                 command = [sys.executable, str(driver), "--run", *batch]

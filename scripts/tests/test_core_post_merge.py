@@ -11,7 +11,7 @@ import unittest
 from native_workspace_fixtures import git
 from owner_fixtures import writable_fixture_tree
 from post_merge_fixtures import commit, fields, loaded_fields, replay_fixture, request
-from relay_core.contracts import canonical_bytes
+from relay_core.contracts import canonical_bytes, fingerprint
 from relay_core.identity import Denied
 
 
@@ -200,6 +200,168 @@ class PostMergeTests(unittest.TestCase):
                 request(replay, self.data)
             self.assertIsNone(replay.load_replay("replay-1"))
 
+    def test_special_assume_unchanged_keeps_hidden_unstaged_bytes_and_flag(self):
+        git(["-C", str(self.source), "update-index", "--assume-unchanged", "src/main.py"])
+        with replay_fixture(self.data) as replay:
+            request(replay, self.data)
+            body = replay.run("replay-1")
+            self.assertEqual(body["phase"], "ready")
+            stage = replay._paths(body)[2]
+            self.assertEqual((stage / "src/main.py").read_bytes(), b"unstaged future bytes\n")
+            self.assertEqual(git(["-C", str(stage), "show", ":src/main.py"]), b"staged future bytes\n")
+            self.assertEqual(git(["-C", str(stage), "ls-files", "-v", "src/main.py"])[:1], b"h")
+            self.assertTrue(replay.snapshots.current(body["source_checkpoint"]))
+
+    def test_special_skip_worktree_keeps_hidden_unstaged_bytes_and_flag(self):
+        git(["-C", str(self.source), "update-index", "--skip-worktree", "src/main.py"])
+        with replay_fixture(self.data) as replay:
+            request(replay, self.data)
+            body = replay.run("replay-1")
+            self.assertEqual(body["phase"], "ready")
+            stage = replay._paths(body)[2]
+            self.assertEqual((stage / "src/main.py").read_bytes(), b"unstaged future bytes\n")
+            self.assertEqual(git(["-C", str(stage), "show", ":src/main.py"]), b"staged future bytes\n")
+            self.assertEqual(git(["-C", str(stage), "ls-files", "-v", "src/main.py"])[:1], b"S")
+            self.assertTrue(replay.snapshots.current(body["source_checkpoint"]))
+
+    def test_special_intent_to_add_keeps_unstaged_binary_and_intent_flag(self):
+        (self.source / "intent\nfile.bin").write_bytes(b"unfinished\x00binary")
+        git(["-C", str(self.source), "add", "--intent-to-add", "intent\nfile.bin"])
+        with replay_fixture(self.data) as replay:
+            request(replay, self.data)
+            body = replay.run("replay-1")
+            self.assertEqual(body["phase"], "ready")
+            stage = replay._paths(body)[2]
+            self.assertEqual((stage / "intent\nfile.bin").read_bytes(), b"unfinished\x00binary")
+            self.assertIn(b"flags: 20004000", git(["-C", str(stage), "ls-files", "--debug", "intent\nfile.bin"]))
+            self.assertTrue(replay.snapshots.current(body["source_checkpoint"]))
+
+    def test_special_combined_flags_and_missing_assume_file_keep_staged_state(self):
+        git(["-C", str(self.source), "update-index", "--assume-unchanged", "src/main.py", "later.txt"])
+        git(["-C", str(self.source), "update-index", "--skip-worktree", "src/main.py"])
+        (self.source / "later.txt").unlink()
+        with replay_fixture(self.data) as replay:
+            request(replay, self.data)
+            body = replay.run("replay-1")
+            self.assertEqual(body["phase"], "ready")
+            stage = replay._paths(body)[2]
+            self.assertEqual((stage / "src/main.py").read_bytes(), b"unstaged future bytes\n")
+            self.assertEqual(git(["-C", str(stage), "ls-files", "-v", "src/main.py"])[:1], b"s")
+            self.assertFalse((stage / "later.txt").exists())
+            self.assertEqual(git(["-C", str(stage), "show", ":later.txt"]), b"later committed work\n")
+            self.assertEqual(git(["-C", str(stage), "ls-files", "-v", "later.txt"])[:1], b"h")
+            self.assertTrue(replay.snapshots.current(body["source_checkpoint"]))
+
+    def test_special_missing_skip_file_stays_index_only_not_deleted(self):
+        git(["-C", str(self.source), "update-index", "--skip-worktree", "src/main.py"])
+        (self.source / "src/main.py").unlink()
+        with replay_fixture(self.data) as replay:
+            request(replay, self.data)
+            body = replay.run("replay-1")
+            self.assertEqual(body["phase"], "ready")
+            stage = replay._paths(body)[2]
+            self.assertFalse((stage / "src/main.py").exists())
+            self.assertEqual(git(["-C", str(stage), "show", ":src/main.py"]), b"staged future bytes\n")
+            self.assertEqual(git(["-C", str(stage), "ls-files", "-v", "src/main.py"])[:1], b"S")
+            self.assertTrue(replay.snapshots.current(body["source_checkpoint"]))
+
+    def test_special_absent_empty_executable_and_literal_intent_paths_are_not_staged(self):
+        paths = ["absent", "empty", "-exec[?]*\nfile"]
+        for name in paths:
+            (self.source / name).write_bytes(b"" if name != paths[2] else b"unfinished executable\n")
+        (self.source / paths[2]).chmod(0o700)
+        git(["-C", str(self.source), "--literal-pathspecs", "add", "--intent-to-add", "--", *paths])
+        (self.source / "absent").unlink()
+        with replay_fixture(self.data) as replay:
+            request(replay, self.data)
+            body = replay.run("replay-1")
+            self.assertEqual(body["phase"], "ready")
+            stage = replay._paths(body)[2]
+            self.assertFalse((stage / "absent").exists())
+            self.assertEqual((stage / "empty").read_bytes(), b"")
+            self.assertEqual((stage / paths[2]).read_bytes(), b"unfinished executable\n")
+            for name in paths:
+                raw = git(["-C", str(stage), "--literal-pathspecs", "ls-files", "--stage", "--debug", "--", name])
+                self.assertIn(b"flags: 20004000", raw)
+                self.assertTrue(raw.startswith(b"100755" if name == paths[2] else b"100644"))
+            self.assertTrue(replay.snapshots.current(body["source_checkpoint"]))
+
+    def test_special_intent_collision_preserves_upstream_and_original_versions(self):
+        data = fields(self.folder / "intent-collision", conflict="untracked")
+        source = data[2] / "worktrees/builder.task"
+        git(["-C", str(source), "add", "--intent-to-add", "unfinished\nnotes"])
+        with replay_fixture(data) as replay:
+            request(replay, data)
+            body = replay.run("replay-1")
+            self.assertEqual(body["phase"], "conflicted")
+            stage = replay._paths(body)[2]
+            self.assertEqual((stage / "unfinished\nnotes").read_bytes(), b"upstream owns this path\n")
+            self.assertEqual((source / "unfinished\nnotes").read_bytes(), b"untracked\x00binary")
+            self.assertTrue(replay.snapshots.current(body["source_checkpoint"]))
+
+    def test_special_complete_read_only_overlay_survives_restoration_revalidation(self):
+        (self.source / "unfinished\nnotes").chmod(0o400)
+        (self.source / "empty-dir").chmod(0o500)
+        with replay_fixture(self.data) as replay:
+            request(replay, self.data)
+            body = replay.run("replay-1")
+            self.assertEqual(body["phase"], "ready")
+            stage = replay._paths(body)[2]
+            self.assertEqual((stage / "unfinished\nnotes").read_bytes(), b"untracked\x00binary")
+            self.assertEqual((stage / "unfinished\nnotes").stat().st_mode & 0o777, 0o400)
+            self.assertEqual((stage / "empty-dir").stat().st_mode & 0o777, 0o500)
+            self.assertTrue(replay.snapshots.current(body["source_checkpoint"]))
+
+    def test_index_manifest_rejects_rehashed_row_and_missing_entry(self):
+        with replay_fixture(self.data) as replay:
+            request(replay, self.data)
+            body = replay.run("replay-1")
+            path, raw, hashed = replay.connection.execute("SELECT path,body,digest FROM replay_index_entries WHERE id=? ORDER BY path LIMIT 1", (body["id"],)).fetchone()
+            from relay_core.identity import strict_json
+            entry = strict_json(raw)
+            entry["present"] = not entry["present"]
+            replay.connection.execute("UPDATE replay_index_entries SET body=?,digest=? WHERE id=? AND path=?", (canonical_bytes(entry), fingerprint(entry), body["id"], path))
+            with self.assertRaises(Denied):
+                replay.run("replay-1")
+            replay.connection.execute("UPDATE replay_index_entries SET body=?,digest=? WHERE id=? AND path=?", (raw, hashed, body["id"], path))
+            replay.connection.execute("DELETE FROM replay_index_entries WHERE id=? AND path=?", (body["id"], path))
+            with self.assertRaises(Denied):
+                replay.load_replay("replay-1")
+            self.assertTrue(replay.snapshots.current(body["source_checkpoint"]))
+
+    def test_changed_complete_read_only_overlay_is_retained_as_conflict(self):
+        (self.source / "unfinished\nnotes").chmod(0o400)
+        changed = b"changed!\x00content"
+        self.assertEqual(len(changed), len((self.source / "unfinished\nnotes").read_bytes()))
+        def corrupt(point):
+            if point == "after_replay_restoring_index_commit":
+                target = replay._paths(replay.load_replay("replay-1"))[2] / "unfinished\nnotes"
+                target.chmod(0o600)
+                target.write_bytes(changed)
+                target.chmod(0o400)
+        with replay_fixture(self.data, checkpoint=corrupt) as replay:
+            request(replay, self.data)
+            body = replay.run("replay-1")
+            self.assertEqual(body["phase"], "conflicted")
+            self.assertIn("overlay bytes disagree", body["finding"]["reason"])
+            stage = replay._paths(body)[2]
+            self.assertEqual((stage / "unfinished\nnotes").read_bytes(), changed)
+            self.assertEqual((stage / "unfinished\nnotes").stat().st_mode & 0o777, 0o400)
+            self.assertEqual((self.source / "unfinished\nnotes").read_bytes(), b"untracked\x00binary")
+            self.assertTrue(replay.snapshots.current(body["source_checkpoint"]))
+            self.assertEqual(replay.run("replay-1"), body)
+
+    def test_old_replay_schema_is_preserved_without_automatic_migration(self):
+        with replay_fixture(self.data) as replay:
+            request(replay, self.data)
+            path = replay.path
+            replay.connection.execute("UPDATE replay_metadata SET schema='ccrelay.post_merge.v1'")
+        original = path.read_bytes()
+        with self.assertRaises(Denied):
+            with replay_fixture(self.data):
+                pass
+        self.assertEqual(path.read_bytes(), original)
+
     def test_alternate_index_cannot_select_original_outside_or_linked_files(self):
         pointer = Path((self.source / ".git").read_bytes()[8:-1].decode())
         with replay_fixture(self.data) as replay:
@@ -214,8 +376,18 @@ class PostMergeTests(unittest.TestCase):
     def _death(self, point):
         folder = self.folder / point
         data = fields(folder)
+        special_index = point in {"after_replay_index_flags_effect", "after_replay_intent_placeholder_effect", "after_replay_intent_index_effect", "after_replay_intent_absence_effect"}
+        if special_index:
+            source = data[2] / "worktrees/builder.task"
+            git(["-C", str(source), "update-index", "--assume-unchanged", "src/main.py"])
+            (source / "absent-intent").write_bytes(b"unfinished intent\n")
+            git(["-C", str(source), "add", "--intent-to-add", "absent-intent"])
+            (source / "absent-intent").unlink()
+            if point == "after_replay_index_flags_effect":
+                (source / "unfinished\nnotes").chmod(0o400)
+                (source / "empty-dir").chmod(0o500)
         (folder / "fixture-inputs.json").write_bytes(canonical_bytes({"published": data[5], "merged": data[6]}))
-        if point in {"after_replay_overlay_file", "after_replay_ready_commit"}:
+        if point in {"after_replay_overlay_file", "after_replay_ready_commit"} or special_index:
             class PreparedBoundary(Exception):
                 pass
             def pause(name):
@@ -242,6 +414,13 @@ class PostMergeTests(unittest.TestCase):
                 self.assertEqual(body["finding"]["reason"], "unconfirmed_dirty_apply_not_repeated")
             else:
                 self.assertEqual(body["phase"], "ready")
+            if special_index:
+                stage = replay._paths(body)[2]
+                self.assertEqual((stage / "src/main.py").read_bytes(), b"unstaged future bytes\n")
+                self.assertEqual(git(["-C", str(stage), "ls-files", "-v", "src/main.py"])[:1], b"h")
+                self.assertFalse((stage / "absent-intent").exists())
+                self.assertIn(b"flags: 20004000", git(["-C", str(stage), "ls-files", "--debug", "absent-intent"]))
+                self.assertTrue(replay.snapshots.current(body["source_checkpoint"]))
             self.assertEqual(replay.run("replay-1"), body)
 
     def test_death_before_replay_request_commit(self):
@@ -267,3 +446,15 @@ class PostMergeTests(unittest.TestCase):
 
     def test_death_after_replay_ready_commit(self):
         self._death("after_replay_ready_commit")
+
+    def test_death_after_replay_index_flags_effect(self):
+        self._death("after_replay_index_flags_effect")
+
+    def test_death_after_replay_intent_placeholder_effect(self):
+        self._death("after_replay_intent_placeholder_effect")
+
+    def test_death_after_replay_intent_index_effect(self):
+        self._death("after_replay_intent_index_effect")
+
+    def test_death_after_replay_intent_absence_effect(self):
+        self._death("after_replay_intent_absence_effect")

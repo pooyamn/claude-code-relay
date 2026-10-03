@@ -549,6 +549,16 @@ staged rename/deletion and binary changes, later merge topology and empty commit
 All 121 shared workspace/checkpoint/switch/publication/launcher/setup and batching
 checks passed in 31 serial sandbox batches; the strict staged secret scan passed.
 These focused results do not replace full-system/native/PC acceptance.
+
+Special index preparation now records hashed entry rows and a manifest bound to
+the complete original index. It exposes hidden unstaged edits in a private copy,
+restores combined assume-unchanged/skip-worktree flags and preserves intent-to-add
+without staging file contents. Missing skip files remain index-only; reserved
+candidate placeholders restore absent intent entries. Durable restoration phases
+reconcile these effects without repeating dirty apply or changing the source.
+The replay journal is v2; v1 bytes stay preserved for reviewed migration. Full
+sparse/submodule and manually resolved merge semantics still require independent
+verification before original-path promotion. No live activation is implied.
 [Publication and recovery contract](pr11-publication-gates.md).
 
 ## PR 12 Full system daily encrypted backups
