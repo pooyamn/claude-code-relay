@@ -21,6 +21,7 @@ from .artifacts import fsync_dir, relative_path, write_new
 from .contracts import canonical_bytes, fingerprint
 from .identity import Denied, exact, identifier, integer, protected_path
 from .intake import MAX_RESPONSE, provider_json
+from .snapshot_io import sqlite_copy as _sqlite_copy
 from .telegram_outbound import OutboundPolicy, validate_asset
 
 
@@ -155,31 +156,6 @@ def _frozen(ledger, grants):
             held.callback(connection.execute, "ROLLBACK")
         ledger._check_lock()
         yield
-
-
-def _sqlite_copy(source, destination):
-    write_new(destination, b"", mode=0o600)
-    # Do NOT back up the connection holding BEGIN IMMEDIATE: it waits on itself.
-    reader = sqlite3.connect(source.as_uri() + "?mode=ro", uri=True)
-    target = sqlite3.connect(destination)
-    try:
-        # The new target has no competing readers. Select exclusive locking
-        # BEFORE backup imports a WAL header, so no on-disk wal-index is made.
-        # https://www.sqlite.org/wal.html#use_of_wal_without_shared_memory
-        target.execute("PRAGMA locking_mode=EXCLUSIVE")
-        reader.backup(target)
-        # Publish a standalone database, not a WAL needing omitted sidecars.
-        if target.execute("PRAGMA journal_mode=DELETE").fetchone() != ("delete",):
-            raise Denied("snapshot database did not leave WAL mode")
-    finally:
-        target.close()
-        reader.close()
-    fd = os.open(destination, os.O_RDONLY | os.O_NOFOLLOW)
-    try:
-        os.fchmod(fd, 0o400)
-        os.fsync(fd)
-    finally:
-        os.close(fd)
 
 
 def _validate_databases(folder, manifest):

@@ -569,6 +569,25 @@ Extend the existing packager to cover all system records, role state, instructio
 
 Done when: synthetic packages decrypt and verify; interrupted capture/upload cannot advance success cursors or trigger unsafe pruning. A package reconstructs more than conversations, and an incomplete/missing component is not declared a complete backup. Choose storage credentials/key custody before live scheduling; quiet backups run without model calls.
 
+Local capture preparation: `system_snapshot.py` pins required components, source
+roots/UIDs/versions, registered databases and explicit exclusion recovery paths
+to protected policy. A mandatory whole-cohort writer guard and simultaneous
+SQLite write locks cover consistent standalone database copies and streaming
+file payloads. Literal names, modes, symlinks, empty directories and unknown
+action records are preserved; source/payload drift or missing components cannot
+publish a complete manifest. Database file identity is bound to the SQLite fence
+after a real replacement fault escaped a path-only check. Five actual process
+deaths cover the capture/manifest boundaries. The shared SQLite copy helper is
+also used by the existing Telegram snapshot. This is a configured-cohort local
+capture, explicitly unencrypted and not a proven full-system backup. Protected
+cross-UID/current-component readers, authoritative full inventory, encryption,
+off-machine receipt/freshness/retention and clean target restore remain pending.
+No scheduler, live credentials, PC service or bot changed.
+All 49 final clean-staged capture/Telegram/isolation/runner checks passed in 13
+serial sandbox children, with all four legacy suites and the strict staged secret
+scan. This is focused conformance evidence, not full-core or target-PC acceptance.
+[Capture and remaining recovery gates](pr12-system-backup.md).
+
 ## PR 13 Clean machine restoration and action reconciliation
 
 Depends on: PRs 5, 7, 8, 9, 11 and 12.
