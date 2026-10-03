@@ -33,11 +33,16 @@ chat and topic IDs unchanged. The existing PC LG topic remains intact.
 | qwen-lab | -1003550185469 | 10656 |
 | mpu6000-i9 | -1003550185469 | 8653 |
 | web | -1003550185469 | 8660 |
-| marginal-requests | -1004395661179 | 427 |
-| augur-1 | -1004395661179 | 18 |
-| duts | -1004395661179 | 53 |
-| schematic-pipeline-lab | -1004395661179 | 2697 |
-| mimic-fast-pcb | -1004395661179 | 3315 |
+| marginal-requests (Marginal Requests) | -1004395661179 | 427 |
+| augur-1 (Base board) | -1004395661179 | 18 |
+| duts (DUT Board Design) | -1004395661179 | 53 |
+| schematic-pipeline-lab (schematic pipeline speedup) | -1004395661179 | 2697 |
+| mimic-fast-pcb (Mimic Fast PCB) | -1004395661179 | 3315 |
+
+All five Oracova PCBA topics shown in Pouya's screenshot are required, including
+inactive sessions. Each retains its own topic address, handoff, selected backend
+and new PC session ID; preserving the General topic is not a replacement for
+migrating these five sessions.
 
 Selected tools and provider configuration must be read from source runtime
 state, not inferred from the `claude-` agent names. Preserve both tools' histories
@@ -70,9 +75,10 @@ Claude's pinned streaming control interface now also connects and disconnects
 authenticated native Remote Control on the PC through an explicit control
 request. A phone-message round trip and live Telegram steering remain unverified.
 Native remote connectivity alone does not supply those capabilities.
-The last membership check found Khadang unable to access Oracova and Startup
-Ideas, and only a member in Ai Dispatch. An owner request to add the bot is
-pending. Recheck actual membership before routing changes.
+At 4:39 PM PDT on October 3, Khadang was a member of both Ai Dispatch and
+Oracova PCBA. Startup Ideas remained inaccessible (Telegram HTTP 400). That
+group still needs bot access; the other two groups do not need another invitation.
+Membership does not establish a working topic route.
 
 ## Project handoffs
 
@@ -948,6 +954,40 @@ pass. The guard, config-0 pinout and firmware source were not weakened or edited
 Supervisor build resolution, project/runtime validation and physical USB/flash/
 debug/serial/hub-power acceptance remain pending. The hardware is still connected
 to the MacBook.
+
+### Active session checkpoint
+
+Pouya confirmed Mac to PC migration on October 3. The three live Mac Claude
+sessions, ai-hil, supervisor-fw and duts, saved task-specific handoffs and
+reported idle. Native metadata showed the other three project Codex threads,
+augur-1, web and marginal-requests, were not loaded and had no current goals.
+These observations are not a source-input fence: Mac processes and routing
+remain available until their PC replacements are verified.
+
+The latest workspace delta completed successfully, transferring 18 new or
+changed files without deletion and preserving replaced PC versions. The three
+live-agent handoffs have matching source and destination SHA-256 values.
+The PC supervisor worktree is at `816432b231da4f39ad636bd00b5bbea3c9aeee37`
+and retains all 260 commits ahead of `origin/supervisor-fw-v3`. Those commits
+were copied with Git metadata; no push of that branch was performed.
+
+The first fresh PC DUT Claude startup failed before project work: native
+Claude reported an expired OAuth session that could not refresh. The Windows
+cache was current, while the earlier Linux cache copy was stale. An independent
+Linux subscription login is awaiting Pouya's browser code; no API-key fallback
+or old project action was replayed. The failed attempt and its new PC UUID are
+retained for reconciliation, not silently replaced.
+
+Native stderr also identified a separate launcher error: explicitly setting
+`CLAUDE_CONFIG_DIR` looked for global JSON inside `.claude`, instead of the
+migrated `HOME/.claude.json`. The candidate now uses native defaults with the
+literal owner HOME; all 22 focused connector tests pass in an OS-verified
+sandbox. This code change is not deployed to the protected router.
+
+Original-topic cutovers remain **0 of 14**. The existing PC LG route, protected
+bot credential, production configuration and shared Mac Codex daemon remain
+unchanged. The three live handoffs are checkpoints, not evidence of completed
+PC routing or Mac retirement.
 
 Detailed historical implementation evidence remains in
 [deployment status](../pc-router/deployment-status.json) and the

@@ -140,7 +140,10 @@ def launch_arguments(session, owner_full_access=False):
 def launch_environment():
     # Windows launcher must remove WSLENV/provider/router secrets. Native
     # profile files still supply the original project/provider configuration.
-    return {'HOME': str(OWNER), 'CLAUDE_CONFIG_DIR': str(OWNER / '.claude'), 'USER': 'pou',
+    # Native defaults pair HOME/.claude.json with HOME/.claude. Explicitly
+    # setting CLAUDE_CONFIG_DIR relocates global JSON into that directory and
+    # silently misses the migrated account, MCP and project configuration.
+    return {'HOME': str(OWNER), 'USER': 'pou',
             'PATH': '/usr/bin:/bin:' + str(OWNER / '.local/bin'), 'LANG': 'C.UTF-8',
             'DISABLE_AUTOUPDATER': '1', 'DISABLE_UPDATES': '1',
             'CLAUDE_CODE_RESUME_INTERRUPTED_TURN': '0', 'CLAUDE_CODE_SDK_READS_SESSION_STATE': '1'}

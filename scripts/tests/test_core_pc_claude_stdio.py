@@ -113,10 +113,11 @@ class PcClaudeStdioTests(unittest.TestCase):
         lease.close.assert_called_once()
 
     def test_launch_env_never_copies_parent_tokens_or_creates_diagnostic_home(self):
-        with mock.patch.dict(os.environ,{'ANTHROPIC_API_KEY':'PRIVATE-FIXTURE','CCRELAY_BOT_TOKEN':'PRIVATE-FIXTURE','WSLENV':'PRIVATE-FIXTURE'}):
+        with mock.patch.dict(os.environ,{'ANTHROPIC_API_KEY':'PRIVATE-FIXTURE','CCRELAY_BOT_TOKEN':'PRIVATE-FIXTURE','WSLENV':'PRIVATE-FIXTURE',
+                                       'CLAUDE_CONFIG_DIR':'/tmp/wrong-global-config'}):
             environment = bridge.launch_environment()
         self.assertEqual(environment['HOME'],str(bridge.OWNER))
-        self.assertEqual(environment['CLAUDE_CONFIG_DIR'],str(bridge.OWNER/'.claude'))
+        self.assertNotIn('CLAUDE_CONFIG_DIR',environment)
         self.assertFalse(set(environment)&{'ANTHROPIC_API_KEY','CCRELAY_BOT_TOKEN','WSLENV'})
         self.assertNotIn('PRIVATE-FIXTURE',json.dumps(environment))
 
