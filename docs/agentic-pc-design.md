@@ -61,6 +61,16 @@ before shared live wiring, followed by private native phone pairing and actual
 phone-to-bubble/recovery/admission acceptance.
 [Working component, evidence and activation gates](pr6-telegram-outbound.md#shared-framing-and-native-goal-event-acceptance-2026-10-03).
 
+2026-10-03 protected peer milestone: an inactive Windows pipe component now
+joins kernel peer PID to the exact protected SYSTEM/session-0 process token,
+held generation and executable/artifact evidence on both ends. Real Windows
+tests reject forged peer pins and the ordinary owner, and keep the same listener
+generation through two client disconnects. The installed service/remotes/bubble
+and VPN/LG remain unchanged. This is not company-role isolation or native-daemon
+lifetime: protected lease/custody integration, exact-version security review,
+private native phone pairing and real continuity/recovery/admission gates remain.
+[Mechanism, actual proof and limits](pr6-telegram-outbound.md#protected-windows-pipe-peer-component-2026-10-03).
+
 2026-10-03 startup configuration: `Oracova-KhadangStartup` is a protected
 deterministic SYSTEM task with boot, owner-logon and minute triggers. SCM stays
 Manual: a stopped router may start only after the exact non-elevated physical

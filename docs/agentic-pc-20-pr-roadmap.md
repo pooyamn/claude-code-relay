@@ -109,6 +109,18 @@ owned daemon, exact-version security review, private phone pairing, actual
 phone/bubble acceptance, recovery and all-source admission remain gates.
 [Candidate mechanism and evidence](pr6-telegram-outbound.md#shared-framing-and-native-goal-event-acceptance-2026-10-03).
 
+2026-10-03 protected Windows peer component: a credential-free actual SYSTEM
+fixture verifies mutual kernel-PID/process-generation/token/image authentication,
+forged-pin refusal, continued listener lifetime across client disconnects and
+explicit denial of the ordinary owner. 353 local/356 Windows regressions and
+twelve argument guards pass. This candidate is not selected by production;
+native broker ownership, protected registry/lease, event/attempt custody and
+resolved-approval handling still need integration and exact-version review.
+Phone pairing/bubble acceptance, company roles, all-source reserve admission,
+Claude switching and daily full-system recovery remain required, not descopeable.
+No PR or full-PC completion is implied by the endpoint fixture.
+[Exact evidence and next gates](pr6-telegram-outbound.md#protected-windows-pipe-peer-component-2026-10-03).
+
 2026-10-03 PC-only Khadang direction supersedes the legacy Mac activation below:
 the Mac test poller/watchers are stopped and its known plaintext token file is
 removed. The protected PC credential and non-elevated native owner launcher are

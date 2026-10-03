@@ -363,6 +363,86 @@ tool/input/goal acceptance, recovery and all-source admission remain gates.
 This is a working framing/event component, not the full continuity fix or PR 6
 completion.
 
+## Protected Windows pipe peer component (2026-10-03)
+
+`WindowsPipePeer` and `WindowsProtectedPipe` are an **inactive candidate** for
+the local protected broker boundary, not reviewer/CTO/company identity or a
+complete native broker. There is no production caller or service installation.
+The launcher must supply the exact pin from protected state; a pin supplied by
+the peer, a forum identity, a folder or an arbitrary PID is not trusted.
+
+The endpoint explicitly grants only SYSTEM/Administrators, retains the first
+pipe instance across disconnects, allows one instance and sets
+`PIPE_REJECT_REMOTE_CLIENTS`. Both sides join the kernel's pipe peer PID to a
+held process handle, creation time, exact SYSTEM/session-0/elevated primary
+token, exact executable path and SHA256. Authentication checks the literal,
+administrator/SYSTEM-owned, ordinary-user-nonwritable artifact tree and holds a
+read-only executable handle that refuses write/delete sharing. `Current()`
+refuses exited/replaced peers. Clients request Identification SQOS, so even a
+squatting server cannot impersonate the SYSTEM client before authentication.
+[Microsoft identification-level contract](https://learn.microsoft.com/en-us/windows/win32/secauthz/impersonation-levels).
+No application data is sent before server authentication. Administrators/SYSTEM
+remain trusted; this does **not** isolate agents that share ordinary owner UID.
+The executable digest is not a managed-assembly closure digest: the entire
+sealed immutable release must be reviewed/pinned by the protected launcher.
+[Microsoft pipe access contract](https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipe-security-and-access-rights).
+
+Actual Windows fixture `a5e5854e66404cd7959153f4588886f6` completed at
+`2026-10-03T15:03:38.4985604Z`. Two different owned SYSTEM diagnostic clients
+mutually authenticated the same held server generation, exchanged fixed test
+strings and disconnected. Both directions refused forged PID, creation time,
+image and digest; grants for exited clients were refused. A real exact
+Interactive/Limited pou/session-1 task was explicitly denied both the kernel
+pipe connection and protected-component entry. During that denial window the
+server accepted no connection. These SYSTEM tasks run **only fixed deterministic
+fixtures**, never Codex/Claude, inference, credential helpers or external tools.
+353 local/356 actual Windows router regression checks and twelve argument
+guards pass. No native process, model, provider home, login, remote enrollment,
+Telegram call or live ledger was opened by this fixture.
+
+Independent readback at `2026-10-03T15:04:29.143Z` confirms fixture server PID
+9232 is gone; both tasks are Ready/result 0 with zero triggers/restarts and
+administrator-owned protected SYSTEM/Administrators-only task DACLs. The
+fixture/owner result, protected coordinator acknowledgement and immutable
+versioned installer/release are retained. The owner-writable denial report is
+diagnostic evidence, **never a production authorization**.
+
+Archive SHA256
+`0BB78DFEFEEC1D515DB3531104335972F7CCDB5D3E3758C5FAE92525FF0C4352`;
+candidate router DLL
+`C3C99E5F2CCFCD81A249D4B1EC60CAB8565A9A8EEA6242AA63ED8D1C6AAC1116`;
+fixture DLL
+`05A3F19E2CB6CD3DEE592C055475ADBAA5AFB24F19748A9547FB284EA05AACAD`;
+installer
+`1A2EC2FFA2F5E967F25C36335F2B3F9CBCFD259BC24AC7D0158B71ED5DF88076`.
+Initial run `2fc7952da0ad4d1bbb4320ec2a5b7d3e` and its failure remain intact:
+the duplicate-create assertion expected Win32 ACCESS_DENIED (5), but Windows
+enforced the one-instance ceiling with explicit PIPE_BUSY (231). The corrected
+assertion accepts these two failed-create results and records the actual code;
+it does not accept a successful duplicate, retry an action, enlarge a deadline
+or relax peer authentication. The actual peer code/DLL remained unchanged.
+
+Live invariant readback at `2026-10-03T15:04:45.459Z` confirms unchanged installed
+router/policy digests, original main/remote PIDs and creation times, LG exact
+binding/bubble 161, model/tool/Telegram receipts and zero unknown operations;
+all VPN/LG services run. No live deployment or native remote restart occurred.
+
+**Next gate:** compose this endpoint with an independently owned native stdio
+process, protected launcher/registry lease and persistent event/attempt custody.
+Client disconnect must not close native stdio; router replacement must not
+reinitialize/replay native effects or preserve stale approvals. Pending server
+requests must honor native `serverRequest/resolved` cleanup, not only response
+IDs. Official OpenAI documentation informed that bidirectional/event ownership
+contract; a protected pipe does not solve it by itself.
+[Native stdio and request-resolution protocol](https://learn.chatgpt.com/docs/app-server).
+Exact-version owner/security review still gates live deployment/credentials,
+then supported owner-private pairing, real phone-to-existing-bubble tool/input/
+goal acceptance, ambiguous-effect recovery and all-source reserve admission.
+Independent native-daemon lifetime is **not implemented or verified** by this
+listener test. Role/company boundary, Claude switching, daily off-machine
+recovery, secure auto-login/boot/TV-off and the other 20-PR requirements remain
+open. This does not complete PR 6 or the full PC goal.
+
 ## Prepared mechanism
 
 `relay_core/telegram_scheduler.py` extends the PR 5 outbox in a separate private
