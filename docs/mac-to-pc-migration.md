@@ -176,8 +176,8 @@ receive the final source delta rather than being treated as an up-to-date checko
 Matching native Linux Codex 0.160.0 and Claude 2.1.288 are installed in private
 owner preparation directories and both version checks pass. The Codex package
 matches the published release digest. Claude's manifest signature, pinned
-Anthropic key fingerprint and binary checksum all pass. No session has been
-resumed, and logins and router transport remain unchanged. Background and manual Claude
+Anthropic key fingerprint and binary checksum all pass. Preparation changed
+neither logins nor router transport. Background and manual Claude
 updates were disabled for the preparation invocation; permanent launch settings
 still require inspection and merging. A real model must launch from the limited
 interactive Windows owner token, not inherit the SSH administrator context.
@@ -259,18 +259,54 @@ completed with exit 0; private results are retained under migration probe
 `1885add62a8f45c7b8c25f781886d093` on the PC.
 
 This proves Codex can read the restored full histories, not native continuation
-or phone connectivity. Claude's native context recovery is still untested;
-DUT remains selected to Claude, not its older Codex pin. All real resumes,
+or phone connectivity. DUT remains selected to Claude, not its older Codex pin.
+Claude's subsequent context checks are recorded below; authenticated work,
 settings/logins, source-final checkpoints and topic cutovers remain pending.
+
+At 12:32 PM PDT, native Claude 2.1.288 idle-resume checks had covered all ten
+preserved pins. Nine passed: ai-hil, supervisor-fw, marginal-requests,
+schematic-pipeline-lab, mpu6000-i9, web, augur-1, DUT and mimic-fast-pcb. Each
+CLI loaded the exact stored conversation in its original workspace, reported
+idle, answered a native context query with nonempty message context, and exited
+with code 0. DUT reported 264,188 message-context tokens. Every preexisting
+transcript byte remained intact; the sole accepted append was a strictly
+validated `cost-state` record for that same session ID. Stored title events
+are also scoped to the exact pin, without publishing their contents.
+
+The relay's older Claude pin did not pass. Startup emitted a pending
+`task_notification` before initialization completed, and the resulting transcript
+append was not ordinary cost metadata. All 47,311,837 original bytes are intact;
+the 3,755 appended bytes contain queue, user-notification, last-prompt and cost
+records. The source seed remains unchanged. That attempt stopped and remains held
+for background-task outcome reconciliation. The subsequent inspection reused
+its retained failure and the two accepted checks after verifying their current
+transcript digests; it did not reopen that held conversation. All ten owned
+children are stopped. The overall task remains a failed acceptance gate, not an
+all-green native restore. Private results are under migration probe
+`b0e4553fac88b5773b54237296c683e3`, with the retained earlier evidence referenced
+there. Its reviewed runtime candidate remains in the protected probe directory;
+the source additionally guards retained evidence against foreign/duplicate
+workspaces and changed pins.
+
+These checks ran under Interactive/Limited Windows owner session 1 and Linux
+UID 1000. The checker sent no user prompt. Tools, MCP servers and customizations were
+disabled only for these diagnostic children, not removed from the migration
+requirements. Their clean environments contained no credentials and explicitly
+disabled [automatic interrupted-turn continuation](https://code.claude.com/docs/en/env-vars).
+The background notification demonstrates why that option alone is not a complete
+unfinished-work recovery protocol. Linux logins, actual tool-enabled work,
+phone visibility and the Claude production transport still need acceptance.
+Seven focused regressions pass, alongside the thirteen history/restore tests.
+Original preserved seeds and the source Mac sessions remain untouched.
 
 Five bindings still need source-state reconciliation. Startup Ideas,
 kicad-copilot-research and mimic-fast-pcb lack a selected backend marker;
 hardware-lite and qwen-lab have a Claude marker but no exact session pin.
 Mimic's existing Claude transcript is preserved, not silently selected. Qwen's
 actual provider configuration must also be preserved and checked. These are
-not missing-history permissions to invent replacement conversations. Claude
-native recovery, both tools' real resumes, final checkpoint capture and topic
-cutover remain separate pending checks.
+not missing-history permissions to invent replacement conversations. Native
+pending-work recovery, authenticated continuation, final checkpoint capture and
+topic cutover remain separate pending checks.
 
 ARM GCC 13.2.1, newlib, OpenOCD 0.12.0, CMake 3.28.3, Ninja 1.11.1,
 GDB, Python venv and build dependencies are installed. Tool versions were read
@@ -319,10 +355,10 @@ Public-IP checks from the LAN do not prove off-network reachability or router
 forward ownership. External acceptance and Mac-independent recovery still need
 to pass before retiring the Mac.
 
-Khadang membership remains unchanged: Ai Dispatch member only; Oracova and Startup
-Ideas inaccessible. The existing bot-add request is still pending. Target native
-resume, topic cutover, physical bench transfer, independent recovery and Mac
-retirement remain incomplete.
+The 12:32 PM PDT membership recheck remains unchanged: Ai Dispatch member only;
+Oracova and Startup Ideas inaccessible. The existing bot-add request is still
+pending. Authenticated native continuation, topic cutover, physical bench
+transfer, independent recovery and Mac retirement remain incomplete.
 
 Detailed historical implementation evidence remains in
 [deployment status](../pc-router/deployment-status.json) and the

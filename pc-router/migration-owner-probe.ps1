@@ -3,7 +3,10 @@ param(
  [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-f]{32}$')][string]$MigrationRun,
  [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-fA-F]{64}$')][string]$HistoryScriptSha256,
  [switch]$NativeReads,
- [ValidatePattern('^[0-9a-fA-F]{64}$')][string]$NativeScriptSha256
+ [ValidatePattern('^[0-9a-fA-F]{64}$')][string]$NativeScriptSha256,
+ [switch]$ClaudeContext,
+ [ValidatePattern('^[0-9a-fA-F]{64}$')][string]$ClaudeScriptSha256,
+ [ValidatePattern('^[0-9a-f]{32}$')][string]$ClaudeContinueRun
 )
 # One-shot migration evidence, not a new broker or production authorization.
 # Never read credential bytes, start models, replay actions or change routing.
@@ -28,6 +31,8 @@ if($PSScriptRoot -ne $expectedRoot){throw 'Reviewed literal migration probe requ
 $historyScript=Join-Path $PSScriptRoot 'verify-pc-migration-histories.py'
 if((Get-FileHash -LiteralPath $historyScript).Hash -ne $HistoryScriptSha256){throw 'Reviewed history checker digest mismatch'}
 if($NativeReads -and (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot 'restore-pc-native-histories.py')).Hash -ne $NativeScriptSha256){throw 'Reviewed native reader digest required'}
+if($ClaudeContext -and (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot 'check-pc-claude-context.py')).Hash -ne $ClaudeScriptSha256){throw 'Reviewed Claude context checker digest required'}
+if($NativeReads -and $ClaudeContext){throw 'Separate history restore from idle Claude inspection'}
 $state=Join-Path 'C:\Users\pou\.native-remote' ('migration-probe-'+$RunId)
 if(Test-Path -LiteralPath $state){throw 'Existing attempt preserved; never replay'}
 [IO.Directory]::CreateDirectory($state)|Out-Null
@@ -87,6 +92,19 @@ except OSError as error:
   $native=$raw|ConvertFrom-Json
   if(-not $native.complete -or -not $native.nativeStopped -or $native.nativeReads.Count -ne 5 -or $native.loadedThreadsAfterReads.Count -ne 0 -or $native.modelTurnsStarted -ne 0 -or $native.sessionsResumed){throw 'Native read acceptance missing'}
   $result.nativeReadComplete=$true
+ }
+ if($ClaudeContext){
+  $result.failureStage='claude-idle-context'
+  $claudeScript='/mnt/c/ProgramData/OracovaNativeRemote/migration-probe-'+$RunId+'/check-pc-claude-context.py'
+  $claudeArgs=@('-d','Ubuntu-24.04','-u','pou','--exec','/usr/bin/python3','-I','-B',$claudeScript,$MigrationRun,$RunId)
+  if($ClaudeContinueRun){$claudeArgs+=@($ClaudeContinueRun)}
+  $raw=& 'C:\Windows\System32\wsl.exe' @claudeArgs 2> (Join-Path $state 'claude-stderr.private.txt')
+  $result.claudeContextExit=$LASTEXITCODE
+  [IO.File]::WriteAllText((Join-Path $state 'claude-context.json'),($raw -join "`n"),$utf8)
+  if($result.claudeContextExit -ne 0){throw 'Idle Claude context inspection failed; retain evidence before another launch'}
+  $claude=$raw|ConvertFrom-Json
+  if(-not $claude.complete -or -not $claude.nativeStopped -or $claude.checks.Count -ne 10 -or $claude.modelPromptsSent -ne 0){throw 'Idle Claude acceptance missing'}
+  $result.claudeControlReadComplete=$true
  }
  $result.complete=$true
  $result.Remove('failureStage')
