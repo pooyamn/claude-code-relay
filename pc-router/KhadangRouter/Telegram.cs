@@ -77,10 +77,17 @@ public sealed class Telegram : IBot, IDisposable
         await outbound.WaitAsync(stop);
         try
         {
-            return await Call("sendMessage", new { chat_id = chat, message_thread_id = topic, text,
-                disable_notification = true, link_preview_options = new { is_disabled = true } }, stop, effect: true);
+            return await Call("sendMessage", SendParameters(chat, topic, text), stop, effect: true);
         }
         finally { outbound.Release(); }
+    }
+    internal static Dictionary<string, object> SendParameters(long chat, int topic, string text)
+    {
+        if (topic < 0) throw new InvalidDataException("Invalid Telegram topic");
+        var parameters = new Dictionary<string, object> { ["chat_id"] = chat, ["text"] = text,
+            ["disable_notification"] = true, ["link_preview_options"] = new { is_disabled = true } };
+        if (topic > 0) parameters["message_thread_id"] = topic;
+        return parameters;
     }
     public async Task Edit(long chat, int message, string text, CancellationToken stop)
     {

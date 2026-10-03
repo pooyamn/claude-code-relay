@@ -67,8 +67,8 @@ public sealed class Attachments(RouterPolicy policy, Ledger ledger, IBot bot) : 
     public async Task<IReadOnlyList<StagedAttachment>> Stage(JsonElement message, Binding binding, long updateId, CancellationToken stop)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Live attachment cache requires Windows ACLs");
-        var topic = message.TryGetProperty("message_thread_id", out var thread) ? thread.GetInt32() : 1;
-        if (!policy.OwnerMessage(message) || binding.Chat != policy.ChatId || binding.Topic != topic) throw new AttachmentFailure("Attachment source is not the bound owner/topic");
+        if (!policy.OwnerMessage(message) || !policy.TryAddress(message, out var address) || binding.Address != address)
+            throw new AttachmentFailure("Attachment source is not the bound owner/chat/topic");
         policy.Workspace(binding.Workspace);
         var references = References(message);
         if (references.Count == 0) return [];

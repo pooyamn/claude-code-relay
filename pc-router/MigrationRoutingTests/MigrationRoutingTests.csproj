@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Reference the exact frozen candidate, not a rebuild that could silently
+         replace it. This harness never executes its privileged service fixture. -->
+    <Reference Include="KhadangRouter">
+      <HintPath>$(CandidateRouterDirectory)/KhadangRouter.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+  <Target Name="RequireReviewedCandidate" BeforeTargets="ResolveReferences">
+    <Error Condition="'$(CandidateRouterDirectory)' == '' Or !Exists('$(CandidateRouterDirectory)/KhadangRouter.dll')"
+           Text="An explicit prebuilt CandidateRouterDirectory is required." />
+  </Target>
+</Project>

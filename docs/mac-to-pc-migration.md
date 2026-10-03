@@ -47,8 +47,10 @@ physical bench MacBook also holds bench projects and tools; it is not the Mac
 VM holding the relay workspace.
 
 The protected Windows Khadang service currently routes one test forum and uses
-Codex. Multiple-chat routing and a working native interactive Claude transport
-are required. Native remote connectivity alone does not supply that transport.
+Codex. A candidate now supports full chat/topic addresses and an explicit
+whole-group route; it is not yet deployed. A working native Linux transport for
+the preserved Codex and Claude sessions is still required. Native remote
+connectivity alone does not supply that transport.
 The last membership check found Khadang unable to access Oracova and Startup
 Ideas, and only a member in Ai Dispatch. An owner request to add the bot is
 pending. Recheck actual membership before routing changes.
@@ -425,6 +427,73 @@ The 12:32 PM PDT membership recheck remains unchanged: Ai Dispatch member only;
 Oracova and Startup Ideas inaccessible. The existing bot-add request is still
 pending. Authenticated native continuation, topic cutover, physical bench
 transfer, independent recovery and Mac retirement remain incomplete.
+
+### Routing candidate for the original chats
+
+The existing ledger already stores `(chat, topic)` bindings, but the live
+in-memory router previously indexed sessions by topic alone and sent bubbles
+to the primary forum. The candidate uses the complete address for input,
+attachments, approvals, questions, menus and rolling bubble delivery. Explicit
+additional chats still admit only Pouya; this does not grant employee access
+or activate the deferred company infrastructure. In an ordinary group, topic
+0 means no Telegram topic parameter. A missing topic in a forum remains its
+General topic, 1.
+
+Startup checks the complete registry and saved bubble destinations before
+resuming any thread. Duplicate native thread IDs across addresses are rejected
+instead of broadcasting their events ambiguously. Existing LG receipts remain
+compatible; newly written receipts also retain their chat/topic destination.
+Native resume excludes historical turns from the RPC response, not from the
+agent's context, avoiding a hundreds-of-megabytes response on the bounded event
+channel. The pinned native release already accepted that option in the prior
+two-client diagnostic; migrated-session continuity is not established by the
+routing fixtures alone.
+
+The candidate builds without warnings and passes 521 local checks. New joined
+tests route the same topic number in two forums and an ordinary group to three
+distinct native IDs. They verify exact active-turn steering, per-chat edits of
+identical message IDs, native-origin tool/input output, separate menus, denied
+cross-chat approval/answer attempts and whole-registry rejection before resume.
+These are deterministic fixtures, not live migrated-topic acceptance.
+
+The Windows package is staged, not installed, in
+`C:\ProgramData\OracovaRouterRouting-WWOQhn`. At 1:16 PM PDT, the separate
+Windows routing harness passed all 33 checks with exit 0 against that exact DLL.
+It ran under the non-elevated interactive Windows owner in session 1, after an
+actual open/close denial against the protected bot credential. No credential
+bytes were read. Candidate code is administrator-owned and read-only to that
+owner; the accepted private result is under
+`C:\Users\pou\.native-remote\router-routing-eu7EaP`. Its scheduled task is
+terminal with result 0, no triggers and no restart policy. The live LG thread,
+bubble, configuration and router process remain untouched.
+
+The complete Windows suite also contains an existing administrator-owned
+attachment-materialization fixture. An unprivileged attempt failed with
+`The security identifier is not allowed to be the owner of this object`
+in `Attachments.ProtectDirectory`, correctly enforcing the OS boundary. That
+privileged fixture is preserved, not weakened or counted as passed: the complete
+Windows suite and native attachment ACL probe must run after the exact-version
+deployment decision. A standalone harness references the frozen DLL, so the
+unprivileged routing checks can run without exposing the live bot secret to
+unapproved administrator code.
+
+Earlier diagnostic attempts and their output remain retained. Windows
+PowerShell initially lost native stderr under `ErrorActionPreference=Stop`;
+separate output capture then retained the privilege error. A later routing run
+printed all 33 passing checks but its `Start-Process` wrapper lost the exit code.
+The accepted runner instead owns the child process handle, records both streams
+and exit status, and reaps the child. These fresh deterministic fixtures do not
+resume or repeat any bound native task or external action.
+
+The exact router DLL SHA-256 is
+`26fa0d60980e3cc834178bfaf5719cafe9fdf9825a6ad677d3fcbfed06407959`.
+The self-contained package SHA-256 is
+`46cbee3a7e8565ade0ddc5caaede9c6b7d57f677166811c0f429185f263031fc`.
+This is credential-bearing router code and changes routing authorization, so
+activation needs Pouya's decision for this exact version and a matching native
+OS-ACL deployment probe. No source binding, native model or Hamal wiring is
+changed by staging it. Linux transport, per-topic quiescing/final delta capture
+and bot membership checks remain prerequisites for the original-topic cutovers.
 
 Detailed historical implementation evidence remains in
 [deployment status](../pc-router/deployment-status.json) and the

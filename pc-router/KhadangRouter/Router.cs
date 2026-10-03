@@ -27,11 +27,11 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
         public readonly HashSet<string> CompletedItems = new();
         public readonly Queue<string> CompletedOrder = new();
     }
-    private readonly ConcurrentDictionary<int, Session> sessions = new();
+    private readonly ConcurrentDictionary<TopicAddress, Session> sessions = new();
     private readonly ConcurrentDictionary<long, Task> handlers = new();
-    private sealed record Approval(JsonElement Id, string Method, int Topic, string Thread, string Turn, bool CanApprove);
+    private sealed record Approval(JsonElement Id, string Method, TopicAddress Address, string Thread, string Turn, bool CanApprove);
     private readonly ConcurrentDictionary<string, Approval> approvals = new();
-    private sealed record Question(JsonElement Id, int Topic, string Thread, string Turn, JsonElement Questions,
+    private sealed record Question(JsonElement Id, TopicAddress Address, string Thread, string Turn, JsonElement Questions,
         Dictionary<string, object> Answers);
     private readonly ConcurrentDictionary<string, Question> questions = new();
     private readonly SemaphoreSlim starts = new(1, 1);
@@ -42,11 +42,26 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
 
     public async Task Run(CancellationToken stop, bool canary = false)
     {
-        foreach (var binding in ledger.Bindings())
+        var bindings = ledger.Bindings();
+        // Validate the WHOLE registry and bubble destinations before the first
+        // native resume. A bad later row must not leave earlier tasks resumed.
+        policy.ValidateBindings(bindings);
+        foreach (var binding in bindings)
+            if (ledger.Get("bubble/" + binding.ThreadId) is { } receipt)
+            {
+                var hasChat = receipt.TryGetProperty("chat", out var savedChat);
+                var hasTopic = receipt.TryGetProperty("topic", out var savedTopic);
+                if (hasChat != hasTopic || hasChat && (savedChat.ValueKind != JsonValueKind.Number ||
+                    !savedChat.TryGetInt64(out var chat) || chat != binding.Chat || savedTopic.ValueKind != JsonValueKind.Number ||
+                    !savedTopic.TryGetInt32(out var topic) || topic != binding.Topic) || !hasChat && binding.Chat != policy.ChatId)
+                    throw new InvalidDataException("Bubble receipt belongs to another chat/topic");
+            }
+        foreach (var binding in bindings)
         {
-            policy.Workspace(binding.Workspace);
-            if (binding.Chat != policy.ChatId) throw new InvalidDataException("Foreign chat in PC registry");
-            var resumed = await rpc.Call("thread/resume", new { threadId = binding.ThreadId, cwd = binding.Workspace,
+            // Native context still loads in full; only the historical turn
+            // payload is excluded from the transport response. Migrated threads
+            // can have hundreds of MB of history, beyond the frame bound.
+            var resumed = await rpc.Call("thread/resume", new { threadId = binding.ThreadId, cwd = binding.Workspace, excludeTurns = true,
                 approvalPolicy = policy.NativeApprovalPolicy, approvalsReviewer = "user", permissions = policy.NativePermissionProfile }, stop);
             VerifyThread(resumed, binding.Workspace, binding.ThreadId);
             var session = new Session(binding);
@@ -60,7 +75,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
                 session.Carried = TimeSpan.FromMilliseconds(saved.GetProperty("elapsedMs").GetDouble());
                 session.Dirty = true;
             }
-            sessions[binding.Topic] = session;
+            sessions[binding.Address] = session;
         }
         rpc.Notification += OnNative;
         if (sessions.Count == 0) await CreateLg(stop);
@@ -72,8 +87,10 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
             if (canary && ledger.Get("native-canary") == null)
             {
                 ledger.Put("native-canary", new { state = "attempting", at = DateTimeOffset.UtcNow });
+                var address = sessions.Keys.Single();
+                if (address.Chat != policy.ChatId || address.Topic <= 0) throw new InvalidOperationException("Deployment canary requires the single primary-forum binding");
                 var sample = JsonSerializer.SerializeToElement(new { message = new { from = new { id = policy.OwnerId, is_bot = false },
-                    chat = new { id = policy.ChatId, is_forum = true }, message_thread_id = sessions.Keys.Single(), message_id = 0,
+                    chat = new { id = address.Chat, is_forum = true }, message_thread_id = address.Topic, message_id = 0,
                     text = "Router deployment verification: use the native tool to run whoami /user, then reply exactly PC-RELAY-OK. Do not change files, settings, services or credentials." } });
                 ledger.Receive(-1, sample.GetRawText());
                 if (ledger.Claim(-1)) await Handle(-1, sample, stop);
@@ -126,7 +143,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
         if (progress is { } existing)
         {
             id = existing.GetProperty("threadId").GetString()!;
-            var resumed = await rpc.Call("thread/resume", new { threadId = id, cwd = workspace, approvalPolicy = policy.NativeApprovalPolicy,
+            var resumed = await rpc.Call("thread/resume", new { threadId = id, cwd = workspace, excludeTurns = true, approvalPolicy = policy.NativeApprovalPolicy,
                 approvalsReviewer = "user", permissions = policy.NativePermissionProfile }, stop);
             VerifyThread(resumed, workspace, id);
         }
@@ -162,7 +179,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
             ledger.Put("lg-provision", new { phase = "topic-created", threadId = id, topicId });
         }
         var binding = new Binding(policy.ChatId, topicId, "LG Magic Remote · PC", workspace, id);
-        ledger.Bind(binding); sessions[topicId] = new Session(binding);
+        ledger.Bind(binding); sessions[binding.Address] = new Session(binding);
         ledger.Put("lg-provision", new { phase = "bound", threadId = id, topicId });
         await telegram.Send(policy.ChatId, topicId, "LG Magic Remote now has its own PC session. Source and handoff are in " + workspace +
             ". Receiver 0.2.18 is running; TV uses PC 10.0.0.35 / HDMI 3. Messages steer the active native Codex turn. " +
@@ -176,10 +193,10 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
         try
         {
             if (!update.TryGetProperty("message", out var message) || !policy.OwnerMessage(message)) { ledger.Finish(updateId, "denied"); return; }
-            var topic = message.TryGetProperty("message_thread_id", out var t) ? t.GetInt32() : 1;
-            if (!sessions.TryGetValue(topic, out var session))
+            if (!policy.TryAddress(message, out var address)) { ledger.Finish(updateId, "denied"); return; }
+            if (!sessions.TryGetValue(address, out var session))
             {
-                if (topic != 1) await telegram.Send(policy.ChatId, topic, "This topic has no PC session. Mac Khadang sessions are retired. Use the new LG Magic Remote · PC topic.", stop);
+                if (address.Topic != 1) await telegram.Send(address.Chat, address.Topic, "This chat/topic has no activated PC session. Migration is pending; no message was sent to a model or another session.", stop);
                 ledger.Finish(updateId, "unbound"); return;
             }
             target = session;
@@ -342,7 +359,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
                 answer = effortRead.GetProperty("thread").GetProperty("reasoningEffort").GetString() == argument ?
                     "Native reasoning effort verified: " + argument + "." : "Effort change accepted, but readback differs; not verified."; break;
             case "/approve": case "/deny":
-                if (!approvals.TryGetValue(argument, out var request) || request.Topic != session.Binding.Topic ||
+                if (!approvals.TryGetValue(argument, out var request) || request.Address != session.Binding.Address ||
                     request.Thread != session.Binding.ThreadId || request.Turn != session.Turn || !session.Busy)
                 { answer = "Approval is missing, stale, or belongs to another session."; break; }
                 if (command[0] == "/approve" && !request.CanApprove) { answer = "Full request exceeds the bubble's review limit. Review in the native PC client; Telegram can only /deny this request."; break; }
@@ -353,7 +370,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
                 answer = "Decision sent to that exact native request; no automatic replay."; break;
             case "/answer":
                 var response = argument.Split(' ', 3, StringSplitOptions.RemoveEmptyEntries);
-                if (response.Length != 3 || !questions.TryGetValue(response[0], out var question) || question.Topic != session.Binding.Topic ||
+                if (response.Length != 3 || !questions.TryGetValue(response[0], out var question) || question.Address != session.Binding.Address ||
                     question.Thread != session.Binding.ThreadId || question.Turn != session.Turn || !session.Busy)
                 { answer = "Use /answer <nonce> <question-id> <text> for a current request in this topic."; break; }
                 if (!question.Questions.EnumerateArray().Any(q => q.GetProperty("id").GetString() == response[1] &&
@@ -466,7 +483,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
                     if (method == "item/fileChange/requestApproval" && parameters.TryGetProperty("itemId", out var itemId) &&
                         session.Items.TryGetValue(itemId.GetString()!, out var item)) detail += "\n" + item.GetRawText();
                     var reviewable = detail.Length <= 1600 && (method != "item/fileChange/requestApproval" || detail.Contains("\"changes\""));
-                    approvals[nonce] = new Approval(requestId.Clone(), method, session.Binding.Topic, session.Binding.ThreadId, turn, reviewable);
+                    approvals[nonce] = new Approval(requestId.Clone(), method, session.Binding.Address, session.Binding.ThreadId, turn, reviewable);
                     session.Bubble.Append("\nNative approval required: " + method + "\n" +
                         (reviewable ? detail + "\n/approve " + nonce + " or " : "Full request requires the native PC review surface; Telegram cannot approve a truncated request.\n") +
                         "/deny " + nonce + "\n");
@@ -474,7 +491,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
                 else if (method == "item/tool/requestUserInput")
                 {
                     var qs = parameters.GetProperty("questions");
-                    questions[nonce] = new Question(requestId.Clone(), session.Binding.Topic, session.Binding.ThreadId,
+                    questions[nonce] = new Question(requestId.Clone(), session.Binding.Address, session.Binding.ThreadId,
                         parameters.GetProperty("turnId").GetString()!, qs.Clone(), new Dictionary<string, object>());
                     foreach (var question in qs.EnumerateArray())
                         session.Bubble.Append("\nQuestion " + question.GetProperty("id").GetString() + ": " + question.GetProperty("question").GetString() +
@@ -560,10 +577,10 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
                     if (message == null)
                     {
                         lock (session.Gate) { session.SendUnknown = true; Persist(session); }
-                        var sent = await telegram.Send(policy.ChatId, session.Binding.Topic, text, stop);
+                        var sent = await telegram.Send(session.Binding.Chat, session.Binding.Topic, text, stop);
                         lock (session.Gate) { session.Message = sent.GetProperty("message_id").GetInt32(); session.SendUnknown = false; Persist(session); }
                     }
-                    else await telegram.Edit(policy.ChatId, message.Value, text, stop);
+                    else await telegram.Edit(session.Binding.Chat, message.Value, text, stop);
                     lock (session.Gate) { session.LastRendered = text; session.Dirty = revision != session.Revision; Persist(session); }
                 }
                 catch (TelegramFailure failure)
@@ -582,22 +599,27 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
     }
     private async Task Menus(CancellationToken stop)
     {
-        var scope = new { type = "chat_member", chat_id = policy.ChatId, user_id = policy.OwnerId };
         var commands = new[] { ("help", "PC session controls"), ("status", "Exact PC session status"), ("cancel", "Interrupt the active native turn"),
             ("limits", "Read native subscription usage (no paid reset)"),
             ("remote", "Read THIS native process's Remote Control state"),
             ("goal", "Get, set, pause, resume or clear the native goal"), ("model", "List or set native model"), ("effort", "Set native reasoning effort"),
             ("approve", "Approve an exact pending native request"), ("deny", "Deny an exact pending native request"), ("answer", "Answer an exact native question") };
-        await telegram.Call("setMyCommands", new { scope, commands = commands.Select(c => new { command = c.Item1, description = c.Item2 }) }, stop, effect: true);
-        var readback = await telegram.Call("getMyCommands", new { scope }, stop);
-        if (!readback.EnumerateArray().Select(c => c.GetProperty("command").GetString()).SequenceEqual(commands.Select(c => c.Item1)))
-            throw new InvalidOperationException("Telegram command menu readback differs");
+        // Configure only activated bindings, not inaccessible migration chats.
+        foreach (var chat in sessions.Keys.Select(address => address.Chat).Distinct().Order())
+        {
+            var scope = new { type = "chat_member", chat_id = chat, user_id = policy.OwnerId };
+            await telegram.Call("setMyCommands", new { scope, commands = commands.Select(c => new { command = c.Item1, description = c.Item2 }) }, stop, effect: true);
+            var readback = await telegram.Call("getMyCommands", new { scope }, stop);
+            if (!readback.EnumerateArray().Select(c => c.GetProperty("command").GetString()).SequenceEqual(commands.Select(c => c.Item1)))
+                throw new InvalidOperationException("Telegram command menu readback differs");
+        }
     }
     private void Touch(Session session) { session.Revision++; session.Dirty = true; Persist(session); }
     private void Persist(Session session)
     {
         var goal = session.Goal.Snapshot;
         ledger.Put("bubble/" + session.Binding.ThreadId, new {
+            chat = session.Binding.Chat, topic = session.Binding.Topic,
             tail = session.Bubble.Tail, message = session.Message, sendUnknown = session.SendUnknown, held = session.Held,
             busy = session.Busy, status = session.Status, elapsedMs = (session.Carried + session.Elapsed.Elapsed).TotalMilliseconds,
             goal = goal.Goal, goalKnown = goal.Known, goalObservedAt = goal.ObservedAt });
