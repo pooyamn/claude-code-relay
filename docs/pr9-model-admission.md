@@ -74,8 +74,8 @@ Quota evidence is scoped to provider/account/model, observation source/time and
 every applicable account or model pool. Each window has its allowance, used units
 and reset time; each intent supplies a finite conservative estimate for every
 window. The protected adapter must establish complete window/account provenance
-and coverage of specific prior attempts. No live quota adapter or host-credential
-discovery is implemented here.
+and coverage of specific prior attempts. The PC read-only observer below is not
+connected to these admission receipts; no host-credential discovery is implemented.
 
 Automation leaves the ceiling of 10% of each window's total allowance untouched,
 not 10% of what happens to remain. Uncovered estimates from admitted attempts are
@@ -104,6 +104,55 @@ with a labeled reason. Incomplete, mismatched or changed stale observations cann
 be relabeled as outages to bypass negative evidence. An elapsed reset time requires
 a fresh provider observation rather than inventing availability. No paid fallback,
 model change or purchase path exists.
+
+### PC read-only native observer (2026-10-03)
+
+The owner-only Windows adapter adds `/limits`, using the documented
+[`account/read` and `account/rateLimits/read` protocol](https://learn.chatgpt.com/docs/app-server).
+Compatibility is pinned to native Codex 0.160.0 and checked against its generated
+schema, not an internal socket or an assumed token allowance. Three read-only
+RPCs bracket usage with the active managed ChatGPT account; no token/email is
+used as identity, no login refresh is requested and no model turn, quota reset,
+credit redemption, account change or paid fallback is available in this path.
+
+`NativeQuota.cs` retains every reported bucket and primary/secondary window,
+validates percentages/reset metadata, deduplicates the historical alias, rejects
+conflicting aliases and account IDs, and preserves unknown windows/permissions.
+Native account IDs are hashed; emails, credentials, origins, credit balances and
+upsell text are not persisted. Account binding is verified only if the active
+native routing ID and backend usage account ID are both present and agree.
+Absent identity is explicitly unverified, not an admission grant.
+
+Account-wide notifications are handled before thread routing. Sparse quota or
+account-change events invalidate the catalog; they cannot restore old windows
+or nullable spend permission. Revision guards prevent a delayed full read from
+overwriting this invalidation. `/limits` always requests a fresh full snapshot,
+amends the existing bubble, displays observation/reset times in UTC, and leaves
+the current turn, tool history and goal alone. The network read does not hold
+the session dispatch lock, so owner steering/interrupt/status can continue.
+Failure stays a read failure, not an unknown external action or held session.
+
+This is **observation, not 10% reserve enforcement**. The display says so.
+Provider percentages do not prove bounded future turn cost, covered outstanding
+attempts, complete model/pool applicability, Claude quota, outside consumption or
+an all-source pre-turn fence. Those gates, approved pacing/estimate parameters
+and integration with the existing common admission ledger remain required
+before autonomous/company work. A native goal continuation cannot be fenced
+retroactively by its `turn/started` notification.
+
+The observer stores only sanitized metadata beside the router ledger and status
+file. A restored observation is historical evidence: startup does not load it
+as fresh availability. Consistent daily recovery still needs the complete
+router/account/admission cohort and fresh provider/account verification.
+
+136 joined/offline checks pass locally, including the existing routing/goals
+suite and 59 new quota checks: malformed and missing data, account changes,
+alias conflicts, permission denial, sparse/delayed races, denied foreign input,
+same-bubble rendering, and an interrupt RPC acknowledged while a quota read waits
+(not a claim that tools stopped).
+Fixtures use no credentials, provider network or model inference. Actual PC
+quota/Windows/deployment evidence is recorded separately in
+[`pc-router/deployment-status.json`](../pc-router/deployment-status.json).
 
 ## Bounded quota estimates
 

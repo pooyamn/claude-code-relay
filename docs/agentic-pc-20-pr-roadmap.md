@@ -6,6 +6,19 @@ Build testable security and delivery foundations first. Introduce the builder wi
 
 ## Execution status
 
+2026-10-03 partial PR 9 provider integration: owner-only PC Khadang now has
+native read-only `/limits` and account-wide stale invalidation, with 136 joined
+checks passing both locally and on Windows. A no-inference read matched native
+active/backend account identities and observed 22% weekly usage (10080 minutes;
+secondary absent). Same-bubble and pending-read/owner-interrupt behavior is
+fixture-verified; actual Telegram owner command interaction remains untested.
+Live activation keeps LG thread/bubble 161, four model-start receipts, two sent
+messages and one topic. Both native remote PIDs and VPN/LG stay running.
+This observation is not complete admission telemetry or reserve enforcement:
+bounded costs/coverage, Claude/model pools, approved pacing parameters and
+all-source pre-turn fencing remain PR 9 gates. No role/company cutover is implied.
+[Exact observer contract](pr9-model-admission.md#pc-read-only-native-observer-2026-10-03).
+
 2026-10-03 partial WSL acceptance: 47 focused regression tests passed on the PC
 through the enforced bubblewrap runner, including 10 existing untracked Linux
 wire fixtures (not committed by this work). A credential-free transient service

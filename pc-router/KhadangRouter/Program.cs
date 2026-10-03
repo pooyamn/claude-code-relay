@@ -52,6 +52,8 @@ try
                 if (sandbox.GetProperty("exitCode").GetInt32() != 0 || !sandbox.GetProperty("stdout").GetString()!.Contains("CodexSandboxOffline", StringComparison.OrdinalIgnoreCase))
                     throw new InvalidOperationException("Native elevated Windows workspace sandbox did not execute as its dedicated offline identity");
                 var goalReads = new List<object>();
+                var quota = new NativeQuota();
+                await quota.Read(rpc, stop);
                 foreach (var binding in ledger.Bindings())
                 {
                     // Read stored state only: do not resume, start a turn or
@@ -66,6 +68,7 @@ try
                     aclProbeWithoutProviderSandbox = true,
                     nativeWindowsSandboxVerified = true,
                     nativeGoalReadSchemaVerified = true, nativeGoalReads = goalReads,
+                    nativeQuota = quota.Snapshot,
                     policySha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(args[2]))),
                     routerSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(typeof(Router).Assembly.Location))),
                     modelInference = false, telegramPolling = false, testedAt = DateTimeOffset.UtcNow }));
@@ -97,6 +100,6 @@ try
 }
 catch (Exception error)
 {
-    Console.Error.WriteLine("Khadang PC router stopped: " + error.GetType().Name);
+    Console.Error.WriteLine(args.SequenceEqual(new[] { "--self-test" }) ? error.ToString() : "Khadang PC router stopped: " + error.GetType().Name);
     Environment.ExitCode = 1;
 }

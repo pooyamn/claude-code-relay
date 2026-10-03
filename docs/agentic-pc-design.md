@@ -68,6 +68,18 @@ mismatch was rolled back; the corrected self-contained release is live and
 deployment now validates Windows candidates before stopping the service.
 [PC goal evidence and limits](codex-goals.md#pc-owner-only-adapter--2026-10-03).
 
+2026-10-03 quota-observation milestone: PC Khadang adds a read-only `/limits`
+command in the same rolling bubble and native menu. An actual native read
+verified the active/backend account identity and reported 22% used in a
+10080-minute window; no secondary window was supplied. 136 checks pass locally
+and on Windows, including a pending quota read that does not block owner
+interrupt requests/status. Native remotes, VPN/LG, exact thread and bubble stay intact;
+no model turn or paid reset was issued by this check. Account-wide updates now
+invalidate stale observations before thread routing. This is not 10% reserve
+enforcement or completed PR 9: bounded costs/coverage, Claude/account/model
+pool applicability, approved pacing and all-source pre-turn fences remain gates.
+[Observer mechanism, evidence and limits](pr9-model-admission.md#pc-read-only-native-observer-2026-10-03).
+
 ## 1. Goals and constraints
 
 Goals
@@ -264,7 +276,7 @@ Subscription-aware pacing (10% owner reserve approved; initial gap pending)
 - Introduce configurable minimum spacing between automated agent starts/handoffs, plus adaptive admission based on remaining allowance and time to reset. A single durable scheduler owns this pacing; independent sessions cannot each spend the same reported allowance. Keep the three-active-session ceiling, but allow fewer active sessions when the budget is tight.
 - Track capacity by provider and subscription account, not local role UID. All sessions using that account share its pacing state. Apply every reported quota window or model-specific pool, using the most restrictive applicable allowance. Store quota observations with their timestamp/source, estimated burn rate, in-flight usage reservations, cooldowns, and queued work's next eligible time; restart, new roles, or new message chains cannot reset them.
 - Reserve 10% of each applicable subscription allowance for Pouya's direct use; automation may use at most the other 90%, subject to actual remaining capacity and conservative in-flight estimates. This is 10% of the quota window's allowance, not 10% of whatever remains at each check. Autonomous support/urgent repair does not spend Pouya's reserve without his explicit authorization. Spread automated capacity across the remaining window; increase spacing and defer background coordination/maintenance when consumption outpaces the target. The initial gap remains to be chosen (§15); neither an account tier nor a fixed number of turns per window is assumed.
-- Use a compatible documented status/usage adapter where available. Missing or stale telemetry falls back to explicitly labeled conservative estimates and bounded automated starts, not invented remaining-quota figures. OpenAI documents variable per-task consumption and remaining limits through the usage dashboard or CLI `/status`; this does not by itself establish a supported machine-readable adapter for the installed runtime. [Official OpenAI documentation](https://learn.chatgpt.com/docs/pricing).
+- Use a compatible documented status/usage adapter where available. Missing or stale telemetry falls back only through the explicitly enrolled, bounded conservative-estimate path, not invented remaining-quota figures. OpenAI documents variable per-task consumption and remaining limits through the usage dashboard or CLI `/status`. The PC's pinned 0.160.0 native read-only adapter now also verifies the [app-server quota protocol](https://learn.chatgpt.com/docs/app-server); observations alone do not prove bounded future cost or enforce reserve admission. [Estimate and observer gates](pr9-model-admission.md#pc-read-only-native-observer-2026-10-03).
 - Quota adapters return typed windows, reset times, provider/account identity, observation source/time and explicit errors, with bounded polling and per-provider failure isolation. Probes are privileged, read-only and outside model sessions; workers do not receive subscription tokens. Paperclip's RPC/usage adapters are prior art, not authorization to discover host credentials or depend on unverified internal endpoints. Pin compatibility and verify account provenance; quota display and recorded dollar spending do not enforce our admission/reserve policy.
 - A fixed delay alone cannot guarantee avoiding the limit: one extended turn or activity outside the relay can consume substantial allowance. Prefer bounded evidence-producing work checkpoints and refresh usage before further admission. Defer new automated model work on observed exhaustion until provider-reported availability/reset is confirmed, preserving handoffs and pending actions; do not repeatedly wake agents or replay uncertain external actions to probe the limit. Do not enable paid credits, API fallback, or plan upgrades automatically.
 - Persist incoming messages immediately; pacing delays model execution, not durable intake or the delivery log. Owner steering into an active turn and stop/pause controls remain responsive. Owner-requested new turns get priority and access to his reserve within the same concurrency cap and actual available allowance. Autonomous urgent repair gets priority within the automated budget; using the owner reserve requires Pouya's explicit authorization. Required review and security gates are never skipped to save quota.

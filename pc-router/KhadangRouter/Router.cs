@@ -33,6 +33,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
         Dictionary<string, object> Answers);
     private readonly ConcurrentDictionary<string, Question> questions = new();
     private readonly SemaphoreSlim starts = new(1, 1);
+    private readonly NativeQuota quota = new();
     private DateTimeOffset lastStart = DateTimeOffset.MinValue;
 
     public async Task Run(CancellationToken stop, bool canary = false)
@@ -186,6 +187,14 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
             var text = textElement.GetString()!;
             if (text.TrimStart().StartsWith('/'))
             {
+                // Account reads do not mutate a turn. Don't hold the session
+                // dispatch lock across a network quota read: owner steering,
+                // interrupt and status must remain usable while it is pending.
+                var token = text.Trim().Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries)[0].Split('@')[0];
+                if (token.Equals("/limits", StringComparison.OrdinalIgnoreCase))
+                {
+                    await Control(session, text, stop); ledger.Finish(updateId, "control"); return;
+                }
                 await session.Dispatch.WaitAsync(stop);
                 try { await Control(session, text, stop); ledger.Finish(updateId, "control"); return; }
                 finally { session.Dispatch.Release(); }
@@ -256,7 +265,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
         string answer;
         switch (command[0].ToLowerInvariant())
         {
-            case "/help": answer = "PC Codex controls: /status, /cancel, /goal [objective | pause | resume | clear], /model [id], /effort <level>, /approve <nonce>, /deny <nonce>, /answer <nonce> <question-id> <text>. Native Claude routing and attachments are still pending; no Mac fallback is permitted."; break;
+            case "/help": answer = "PC Codex controls: /status, /limits, /cancel, /goal [objective | pause | resume | clear], /model [id], /effort <level>, /approve <nonce>, /deny <nonce>, /answer <nonce> <question-id> <text>. Native Claude routing and attachments are still pending; no Mac fallback is permitted."; break;
             case "/status": answer = "PC session: " + session.Binding.Name + "\nNative thread: " + session.Binding.ThreadId + "\n" +
                 (session.Held ? "Held — reconcile native/transport receipts before continuing." : session.Busy ? "Working; new messages steer this turn." : "Idle.") + "\nHeld/unknown operations: " + ledger.Unknown; break;
             case "/cancel":
@@ -266,6 +275,10 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
                 answer = "Interrupt requested; waiting for the native stopped state."; break;
             case "/goal":
                 answer = await GoalControl(session, argument, stop); break;
+            case "/limits":
+                await quota.Read(rpc, stop);
+                ledger.Put("native/quota", quota.Snapshot);
+                answer = quota.Render(); break;
             case "/model":
                 if (argument.Length == 0)
                 {
@@ -386,6 +399,13 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
     {
         if (!message.TryGetProperty("method", out var methodElement) || !message.TryGetProperty("params", out var parameters)) return;
         var method = methodElement.GetString()!;
+        if (!message.TryGetProperty("id", out _) && (method is "account/rateLimits/updated" or "account/updated"))
+        {
+            // Account-wide notifications have no threadId. They invalidate the
+            // catalog before thread routing; a sparse update cannot bless an
+            // old bucket, recover spend permission or win a delayed-read race.
+            quota.Invalidate(); ledger.Put("native/quota", quota.Snapshot); return;
+        }
         if (!parameters.TryGetProperty("threadId", out var id)) return;
         var session = sessions.Values.FirstOrDefault(s => s.Binding.ThreadId == id.GetString());
         if (session == null) return;
@@ -511,6 +531,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
     {
         var scope = new { type = "chat_member", chat_id = policy.ChatId, user_id = policy.OwnerId };
         var commands = new[] { ("help", "PC session controls"), ("status", "Exact PC session status"), ("cancel", "Interrupt the active native turn"),
+            ("limits", "Read native subscription usage (no paid reset)"),
             ("goal", "Get, set, pause, resume or clear the native goal"), ("model", "List or set native model"), ("effort", "Set native reasoning effort"),
             ("approve", "Approve an exact pending native request"), ("deny", "Deny an exact pending native request"), ("answer", "Answer an exact native question") };
         await telegram.Call("setMyCommands", new { scope, commands = commands.Select(c => new { command = c.Item1, description = c.Item2 }) }, stop, effect: true);
@@ -536,5 +557,5 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
     }
     private void StatusFile() => File.WriteAllText(Path.Combine(policy.StateDirectory, "status.json"), JsonSerializer.Serialize(new {
         host = Environment.MachineName, pcOnly = true, bot = policy.BotUsername, nativePid = rpc.Pid, offset = ledger.Offset,
-        unknown = ledger.Unknown, bindings = sessions.Values.Select(s => s.Binding), at = DateTimeOffset.UtcNow }));
+        unknown = ledger.Unknown, bindings = sessions.Values.Select(s => s.Binding), nativeQuota = quota.Snapshot, at = DateTimeOffset.UtcNow }));
 }
