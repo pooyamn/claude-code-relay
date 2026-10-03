@@ -158,6 +158,70 @@ joined-fixture and isolated-native results do **not** prove real authenticated
 owner steering through Telegram, phone-client attachment to the exact app-server,
 employee/company isolation, goal-continuation admission or clean restore.
 
+## Same-process phone transport diagnostics (2026-10-03)
+
+The adapter now reads `remoteControl/status/read` from its own private native
+app-server at startup and through owner-only `/remote`. The control amends the
+existing bubble, remains outside the session dispatch lock, and never enables,
+pairs, resumes, starts inference or changes a remote endpoint. It records the
+native PID, observation time and hashed installation/environment identities;
+host names, pairing tokens and unknown reply fields are not mirrored. Native
+account updates invalidate the view; revision guards prevent delayed reads from
+overwriting newer notifications. Read failures/cancellation do not turn a
+diagnostic into an uncertain action or a replay. This is **diagnosis/visibility,
+not a continuity fix**. A separate process's saved connected status is not
+evidence that a phone reaches this router's active thread.
+
+The deployment probe also reads exact stored thread metadata without resuming
+it, then compares default source listing with explicit `appServer` listing.
+Each listing uses `useStateDbOnly: true`, a 100-item page limit and at most two
+pages; exhausted absence differs from a truncated search. It never changes the
+thread's source to make it visible, mirrors history, or repairs metadata from
+rollouts. Native source defaults and read-versus-resume semantics follow the
+[official app-server contract](https://learn.chatgpt.com/docs/app-server).
+Current [Remote setup guidance](https://learn.chatgpt.com/docs/remote-connections)
+still requires the supported host/device/account pairing flow; an experimental
+CLI/RPC connected observation alone does not prove that mobile setup is complete.
+
+339 local and 342 actual Windows checks pass, including target candidate and
+installed-binary validation. Added fixtures cover status typing, private metadata,
+account/status races, failed/canceled reads without retry, wrong thread/workspace,
+bounded pagination, default-versus-explicit source filters, foreign owner denial
+and same-bubble command/menu integration. Real phone input/event continuity and
+all-source admission remain acceptance gates. Existing native remotes must not
+be restarted merely to make a diagnostic pass.
+
+The actual PC probe at `2026-10-03T13:42:01.7168311Z` passed the existing native
+identity, OS credential/code denial, offline sandbox, read-only attachment and
+goal-read checks. Diagnostic native PID 14224 reported Remote Control **disabled**.
+The exact LG thread's stored source is **`vscode`**, present in an exhausted
+one-page default listing and absent from an exhausted explicit `appServer`
+listing. This rules out the proposed default-source filter explanation for this
+thread; no source/identity was changed to conceal the result. The transport gap
+remains: the router's private app-server is not the separately running native
+remote host. Enabling another endpoint, sharing history, or a connected status
+alone would not establish one live owner/subscription, phone pairing or pre-turn
+admission. The next continuity gate needs that real shared-host path and a
+phone-to-existing-bubble test, not a filter workaround.
+
+The candidate archive SHA-256 is
+`E5AD5EBBE3D586FBEAD0550DD31F16CEB9B8ABD1B1F9DB7979D766182502ACF4`,
+installed DLL
+`AD0D4E1C3B0AAA267B1D31BF89A82B3008B9D54197911BD996E682B95E1F0E14`.
+The protected policy is unchanged; rollback binaries remain in
+`release-024efc8196454d4d84aed311b946a88a/previous-bin`. Neither the probe nor
+visibility/status reads submitted a model turn, polled Telegram, enabled or
+paired a remote endpoint, or resumed the diagnostic thread.
+
+Fresh live status at `2026-10-03T13:44:57.5873586Z` identifies owner-session native
+PID 4576 with the same LG binding, zero unknown operations and unchanged durable
+model-start (4), sent-message (2), topic (1) and bubble 161 receipts. The current
+remote view is **unavailable**, not a current disabled/connected assertion derived
+from the earlier probe. `/remote` asks for a new same-process read. Startup
+supervision was restored at `2026-10-03T13:45:34.8532400Z`; no extra endpoint,
+pairing or inference was enabled. These distinctions deliberately prevent
+historical/other-process status from being presented as live phone acceptance.
+
 ## Prepared mechanism
 
 `relay_core/telegram_scheduler.py` extends the PR 5 outbox in a separate private

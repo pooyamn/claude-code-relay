@@ -6,6 +6,16 @@ Build testable security and delivery foundations first. Introduce the builder wi
 
 ## Execution status
 
+2026-10-03 same-process remote diagnosis: 339 local and 342 Windows checks pass.
+The actual PC probe reports Remote Control disabled on the router's own native
+process. It rules out the proposed source-filter explanation: the existing LG
+thread is `vscode` and appears in a complete default listing. Owner-only `/remote`
+now reads this exact process and amends the existing bubble without inference,
+enrollment or remote-service changes. This is diagnostic visibility, **not** a
+phone-continuity fix; one real shared host/subscription, supported pairing,
+phone-to-bubble acceptance and all-source admission remain gates.
+[Evidence and remaining mechanism](pr6-telegram-outbound.md#same-process-phone-transport-diagnostics-2026-10-03).
+
 2026-10-03 native bubble/steering integration: the PC adapter now renders native
 user input and tool names/completions into the same bounded bubble, and verifies
 the exact returned steering turn ID before reporting acceptance. 284 local and

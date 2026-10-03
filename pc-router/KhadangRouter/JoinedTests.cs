@@ -46,6 +46,10 @@ public static class JoinedTests
             Check(!appBot.Last.Contains("FOREIGN-INPUT") && !appBot.Last.Contains("STALE-INPUT") && !appBot.Last.Contains("PRIVATE-"), "Foreign/stale events and private attachment/tool fields are not reflected");
             Check(appBot.Last.Split("Have you updated the source? Pushed?").Length == 2, "Repeated completed input item is displayed once");
             Check(appBot.Last.Length <= 3900 && appBot.Last.Contains("Done (") && appLedger.Unknown == 0, "Native-origin terminal footer and receipts remain bounded/durable");
+            Check(appNative.Called.Count(m => m == "remoteControl/status/read") == 1 && appBot.Last.Contains("Remote Control: disabled") && appBot.Last.Contains("Phone round trip"),
+                "Authenticated remote command reads exact process once; foreign sender denied, no connection inference");
+            Check(appBot.RemoteMenuVerified && appNative.Started == 0 && appBot.Sends == 0 && !appLedger.Get("bubble/exact-native-id")!.Value.GetProperty("held").GetBoolean(),
+                "Remote diagnostic registered/read back and amends existing bubble without inference or held session");
         }
         foreach (var mode in new[] { "missing", "foreign", "malformed" })
         {
@@ -140,6 +144,9 @@ public static class JoinedTests
                 case "thread/inject_items": return Task.FromResult(Json(new { }));
                 case "thread/read": return Task.FromResult(Json(new { thread = new { id = "exact-native-id" } }));
                 case "thread/goal/get": return Task.FromResult(Json(new { goal = (object?)null }));
+                case "remoteControl/status/read":
+                    if (effect) throw new Exception("Remote status became an effect");
+                    return Task.FromResult(Json(new { status = "disabled", serverName = "PRIVATE-HOST", installationId = "PRIVATE-INSTALLATION", environmentId = (string?)null }));
                 case "turn/start":
                     Started++; Event("turn/started", new { threadId = "exact-native-id", turn = new { id = "turn-1" } });
                     Event("item/started", new { threadId = "exact-native-id", turnId = "turn-1", item = new { id = "tool", type = "commandExecution", command = "whoami /user" } });
@@ -162,6 +169,7 @@ public static class JoinedTests
         private int polls;
         private JsonElement menus;
         public int Sends, Edits, CreatedTopics;
+        public bool RemoteMenuVerified;
         public string? Last;
         public TaskCompletionSource FirstSent { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Completed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -173,7 +181,7 @@ public static class JoinedTests
             switch (method)
             {
                 case "setMyCommands": menus = Json(parameters).GetProperty("commands").Clone(); return Json(true);
-                case "getMyCommands": return menus;
+                case "getMyCommands": RemoteMenuVerified = menus.EnumerateArray().Any(c => c.GetProperty("command").GetString() == "remote"); return menus;
                 case "getChat": return Json(new { is_forum = true });
                 case "getChatMember": return Json(new { status = "administrator", can_manage_topics = true });
                 case "createForumTopic": CreatedTopics++; return Json(new { message_thread_id = 42 });
@@ -182,7 +190,11 @@ public static class JoinedTests
                     var count = Interlocked.Increment(ref polls);
                     if (native.NativeOriginOnly)
                     {
-                        if (count == 1) native.NativeBurst();
+                        if (count == 1)
+                        {
+                            native.NativeBurst();
+                            return Json(new[] { Update(103, policy.OwnerId + 1, "/remote"), Update(104, policy.OwnerId, "/remote") });
+                        }
                         await Task.Delay(Timeout.Infinite, stop); return Json(Array.Empty<object>());
                     }
                     if (count == 1) return Json(new[] { Update(100, policy.OwnerId, "first owner message") });

@@ -67,6 +67,9 @@ try
                     throw new InvalidOperationException("Native owner attachment read-only ACL proof failed");
                 var quota = new NativeQuota();
                 await quota.Read(rpc, stop);
+                var remote = new NativeRemote();
+                await remote.Read(rpc, stop);
+                var visibility = new List<object>();
                 foreach (var binding in ledger.Bindings())
                 {
                     // Read stored state only: do not resume, start a turn or
@@ -74,6 +77,7 @@ try
                     var read = await rpc.Call("thread/goal/get", new { threadId = binding.ThreadId }, stop, effect: false);
                     var view = new NativeGoal(binding.ThreadId); view.Apply(read.GetProperty("goal"));
                     goalReads.Add(new { threadId = binding.ThreadId, known = view.Known, goal = view.Value });
+                    visibility.Add(await NativeVisibility.Read(rpc, binding, stop));
                 }
                 File.WriteAllText(Path.Combine(policy.StateDirectory, "probe.json"), JsonSerializer.Serialize(new {
                     verified = true, pcOnly = true, bot = policy.BotUsername, nativeOwnerSid = policy.OwnerSid,
@@ -82,6 +86,7 @@ try
                     nativeWindowsSandboxVerified = true,
                     nativeGoalReadSchemaVerified = true, nativeGoalReads = goalReads,
                     nativeQuota = quota.Snapshot,
+                    nativeRemote = remote.Snapshot, nativeThreadVisibility = visibility,
                     nativeAttachmentReadOnlyAclVerified = true, nativeAttachmentFixture = asset,
                     policySha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(args[2]))),
                     routerSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(typeof(Router).Assembly.Location))),
@@ -99,7 +104,9 @@ try
                     proof.GetProperty("nativeOwnerSid").GetString() != policy.OwnerSid) throw new InvalidOperationException("Matching native identity/OS-ACL/code proof required before polling");
                 await using var rpc = new NativeRpc(WindowsOwnerProcess.Start(policy, policy.WorkspaceRoot + "\\lg-magic"), ledger);
                 await rpc.Initialize(stop);
-                await new Router(policy, ledger, telegram, rpc).Run(stop, canary: args[0] == "--canary-service");
+                var remote = new NativeRemote();
+                await remote.Read(rpc, stop);
+                await new Router(policy, ledger, telegram, rpc, nativeRemote: remote).Run(stop, canary: args[0] == "--canary-service");
             }
         }
         catch (Exception error) when (error is not OperationCanceledException)

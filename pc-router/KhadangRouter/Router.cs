@@ -6,7 +6,7 @@ namespace KhadangRouter;
 
 // Owner-only Windows migration adapter. It does not claim company/role gates or
 // replace the prepared WSL authorization/admission/deployment components.
-public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, INative rpc, IAttachments? attachments = null)
+public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, INative rpc, IAttachments? attachments = null, NativeRemote? nativeRemote = null)
 {
     private sealed class Session(Binding binding)
     {
@@ -36,6 +36,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
     private readonly ConcurrentDictionary<string, Question> questions = new();
     private readonly SemaphoreSlim starts = new(1, 1);
     private readonly NativeQuota quota = new();
+    private readonly NativeRemote remote = nativeRemote ?? new();
     private readonly IAttachments attachmentStore = attachments ?? new Attachments(policy, ledger, telegram);
     private DateTimeOffset lastStart = DateTimeOffset.MinValue;
 
@@ -199,7 +200,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
                 // dispatch lock across a network quota read: owner steering,
                 // interrupt and status must remain usable while it is pending.
                 var token = text.Trim().Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries)[0].Split('@')[0];
-                if (token.Equals("/limits", StringComparison.OrdinalIgnoreCase))
+                if (token.Equals("/limits", StringComparison.OrdinalIgnoreCase) || token.Equals("/remote", StringComparison.OrdinalIgnoreCase))
                 {
                     await Control(session, text, stop); ledger.Finish(updateId, "control"); return;
                 }
@@ -300,7 +301,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
         string answer;
         switch (command[0].ToLowerInvariant())
         {
-            case "/help": answer = "PC Codex controls: /status, /limits, /cancel, /goal [objective | pause | resume | clear], /model [id], /effort <level>, /approve <nonce>, /deny <nonce>, /answer <nonce> <question-id> <text>. Photos and files download into a protected read-only cache (hosted Telegram limit 20 MB); captions stay with them. Images use native localImage; audio/video are files, not verified transcripts. Native Claude routing, large-file transport and albums remain pending; no Mac fallback is permitted."; break;
+            case "/help": answer = "PC Codex controls: /status, /limits, /remote, /cancel, /goal [objective | pause | resume | clear], /model [id], /effort <level>, /approve <nonce>, /deny <nonce>, /answer <nonce> <question-id> <text>. Photos and files download into a protected read-only cache (hosted Telegram limit 20 MB); captions stay with them. Images use native localImage; audio/video are files, not verified transcripts. Native Claude routing, large-file transport and albums remain pending; no Mac fallback is permitted."; break;
             case "/status": answer = "PC session: " + session.Binding.Name + "\nNative thread: " + session.Binding.ThreadId + "\n" +
                 (session.Held ? "Held — reconcile native/transport receipts before continuing." : session.Busy ? "Working; new messages steer this turn." : "Idle.") + "\nHeld/unknown operations: " + ledger.Unknown; break;
             case "/cancel":
@@ -314,6 +315,10 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
                 await quota.Read(rpc, stop);
                 ledger.Put("native/quota", quota.Snapshot);
                 answer = quota.Render(); break;
+            case "/remote":
+                await remote.Read(rpc, stop);
+                ledger.Put("native/remote", remote.Snapshot);
+                answer = remote.Render(); break;
             case "/model":
                 if (argument.Length == 0)
                 {
@@ -432,8 +437,12 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
 
     private void OnNative(JsonElement message)
     {
+        remote.Observe(message, rpc.Pid);
         if (!message.TryGetProperty("method", out var methodElement) || !message.TryGetProperty("params", out var parameters)) return;
         var method = methodElement.GetString()!;
+        // Global remote state has no thread. Malformed optional diagnostics
+        // must not fall through to thread routing and disconnect the stream.
+        if (method == "remoteControl/status/changed" && !message.TryGetProperty("id", out _)) return;
         if (!message.TryGetProperty("id", out _) && (method is "account/rateLimits/updated" or "account/updated"))
         {
             // Account-wide notifications have no threadId. They invalidate the
@@ -576,6 +585,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
         var scope = new { type = "chat_member", chat_id = policy.ChatId, user_id = policy.OwnerId };
         var commands = new[] { ("help", "PC session controls"), ("status", "Exact PC session status"), ("cancel", "Interrupt the active native turn"),
             ("limits", "Read native subscription usage (no paid reset)"),
+            ("remote", "Read THIS native process's Remote Control state"),
             ("goal", "Get, set, pause, resume or clear the native goal"), ("model", "List or set native model"), ("effort", "Set native reasoning effort"),
             ("approve", "Approve an exact pending native request"), ("deny", "Deny an exact pending native request"), ("answer", "Answer an exact native question") };
         await telegram.Call("setMyCommands", new { scope, commands = commands.Select(c => new { command = c.Item1, description = c.Item2 }) }, stop, effect: true);
@@ -601,5 +611,6 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
     }
     private void StatusFile() => File.WriteAllText(Path.Combine(policy.StateDirectory, "status.json"), JsonSerializer.Serialize(new {
         host = Environment.MachineName, pcOnly = true, bot = policy.BotUsername, nativePid = rpc.Pid, offset = ledger.Offset,
-        unknown = ledger.Unknown, bindings = sessions.Values.Select(s => s.Binding), nativeQuota = quota.Snapshot, at = DateTimeOffset.UtcNow }));
+        unknown = ledger.Unknown, bindings = sessions.Values.Select(s => s.Binding), nativeQuota = quota.Snapshot,
+        nativeRemote = remote.Snapshot, at = DateTimeOffset.UtcNow }));
 }
