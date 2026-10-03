@@ -54,6 +54,9 @@ whole-group route; it is not yet deployed. A working native Linux transport for
 Codex now passes isolated Windows-to-Linux native acceptance, including shared
 events and actual tool identity. A persistent shared daemon, operational runtime
 routing and the Claude transport are still required for the preserved sessions.
+Claude's pinned streaming control interface initializes on the PC with and
+without the Remote Control flag; authenticated phone synchronization and live
+steering are not yet proven by that credential-free compatibility check.
 Native remote connectivity alone does not supply those capabilities.
 The last membership check found Khadang unable to access Oracova and Startup
 Ideas, and only a member in Ai Dispatch. An owner request to add the bot is
@@ -553,6 +556,37 @@ remain pending. The interface is experimental according to
 [official OpenAI documentation](https://learn.chatgpt.com/docs/app-server), so
 the adapter stays version-pinned and must pass compatibility checks before an
 upgrade. No deferred role or broker service was activated.
+
+### Claude control interface compatibility
+
+At 2:15 PM PDT, a fresh Windows-to-WSL diagnostic completed with task result 0
+against pinned Claude Code 2.1.288. Both `--print` streaming JSON modes, with
+and without `--remote-control`, accepted a single `initialize` control request,
+reported an idle session, and exited with code 0 after input closed. Each used
+a separate empty profile and fresh session ID. No credentials were copied, no
+prompt or model turn was sent, and no original conversation was resumed.
+
+The runner used the exact Interactive/Limited Windows owner in session 1 and
+explicit Linux UID 1000. It verified the actual child's UID and executable inode
+against the pinned binary hash. Both Windows and Linux open/close probes denied
+the protected bot credential without reading its bytes. All diagnostic children
+and the Windows launcher stopped. The accepted private receipt is under
+`C:\Users\pou\.native-remote\migration-claude-transport-81dcd8100b7a6e8a2917b41cc7cf8bd6`.
+Production routing, native remote tasks, the LG conversation and source bindings
+were not changed. All nine focused regression tests pass in the verified OS
+sandbox, including fresh-profile isolation, owner denial, failure retention and
+child shutdown. This is not a full 992-test suite run.
+
+This establishes parser and idle control compatibility only. Accepting the flag
+does not establish that a remote connection was made or that the headless process
+can synchronize phone messages. The [official CLI reference](https://code.claude.com/docs/en/cli-reference)
+describes `--remote-control` as an interactive-session flag, while the
+[Remote Control documentation](https://code.claude.com/docs/en/remote-control)
+requires an eligible subscription login and a running local process. A fresh
+authenticated session must still prove native phone/Telegram continuity,
+active-turn steering, controls and permission/question handling before selecting
+the operational Claude transport. Existing imported tasks must not serve as
+diagnostic fixtures. No deferred role or broker service was activated.
 
 ### Physical bench preservation and PC builds
 

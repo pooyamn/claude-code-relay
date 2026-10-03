@@ -27,6 +27,7 @@ LEGACY_SOURCES = (
     "claude-tui-backend-multi", "relay-alt-launch", "claude-relay-group",
 )
 BROKER_SOURCES = ("ccrelay_broker.py", "ccrelay_broker_mcp.py", "ccrelay_owner_gate.py", "ccrelay_intake.py", "ccrelay_outbound.py", "ccrelay_native.py", "ccrelay_work.py", "ccrelay_admission.py", "ccrelayd.py", "relay_tg.py", "relay_bot_commands.py", "relay_model_controls.py", "relay_codex_bubble.py", "relay_codex_goal.py", "relay-codex-proto.py", "relay_ws.py", "relay-ws-edit-server.mjs", "pc_native_stdio.py")
+DIAGNOSTIC_SOURCES = ("check-pc-claude-transport.py",)
 DEPLOY_SOURCES = (
     "identity-plan.py", "identity-drill.py", "run-identity-drill.sh", "setup-wsl.sh", "pull-from-mac.sh",
     "identities/ccrelay.sysusers.conf", "identities/ccrelay.tmpfiles.conf",
@@ -81,7 +82,7 @@ def copy_age_runtime(source, destination):
 
 def copy_sources(source: Path, target: Path) -> None:
     target.mkdir()
-    for name in (*LEGACY_SOURCES, *BROKER_SOURCES):
+    for name in (*LEGACY_SOURCES, *BROKER_SOURCES, *DIAGNOSTIC_SOURCES):
         path = source / name
         if path.is_symlink() or not path.is_file():
             raise RuntimeError(f"not a regular source file: {name}")
