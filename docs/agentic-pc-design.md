@@ -35,6 +35,19 @@ event label is not proof of overheating; preserve raw events, owner evidence
 and measured temperatures separately rather than classifying every sleep as
 thermal.
 
+2026-10-03 shared native transport test: two authenticated clients can share one
+pinned Windows native app-server over a loopback-only bearer-protected
+WebSocket; missing/wrong credentials are rejected. The actual one-shot owner
+test used an empty, credential-free native home with no thread/model/remote
+enrollment or Telegram activity. Existing native processes and LG bubble,
+receipts, router policy and VPN/LG stayed unchanged. This is a verified
+**experimental/unsupported transport primitive**, not live phone continuity or
+company identity. A reviewed shared adapter and event ownership, owner-private
+pairing, phone-to-exact-bubble acceptance and all-source admission remain gates;
+never expose pairing secrets in employee-accessible topics or restart existing
+native remotes to force migration.
+[Evidence and protected next step](pr6-telegram-outbound.md#actual-windows-shared-transport-primitive-2026-10-03).
+
 2026-10-03 startup configuration: `Oracova-KhadangStartup` is a protected
 deterministic SYSTEM task with boot, owner-logon and minute triggers. SCM stays
 Manual: a stopped router may start only after the exact non-elevated physical

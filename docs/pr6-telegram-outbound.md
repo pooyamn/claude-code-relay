@@ -222,6 +222,59 @@ supervision was restored at `2026-10-03T13:45:34.8532400Z`; no extra endpoint,
 pairing or inference was enabled. These distinctions deliberately prevent
 historical/other-process status from being presented as live phone acceptance.
 
+## Actual Windows shared-transport primitive (2026-10-03)
+
+`pc-router/NativeSharingProbe` now verifies the missing multi-client local
+transport against the pinned PC CLI, without changing production. The actual
+0.160.0 `app-server --help` advertises capability-token authentication and
+`--ws-token-sha256`; the [official transport contract](https://learn.chatgpt.com/docs/app-server)
+specifies bearer authentication before JSON-RPC initialization. WebSocket
+transport is **experimental and unsupported**, so this is a release-specific
+adapter candidate, not a generally supported daemon or a production guarantee.
+
+The one-shot task runs as the exact non-elevated `pou` in Session 1. It starts
+only its own pinned native executable, with an empty child-only native home and
+file-only credential storage; no production credentials/configuration/history
+are copied. Inherited provider/token variables are removed. A random 256-bit
+bearer stays in memory; only its SHA256 verifier reaches native argv. The
+listener is explicitly loopback-only, with no firewall/public listener change.
+Fixed read-only readiness polls do not retry initialization or native effects.
+
+At `2026-10-03T14:06:02.3409292Z`, run
+`d2284fb1efca48a3acf9ebabd12192ad` passed: missing and wrong bearer connections
+were rejected with HTTP 401/403, two authenticated clients initialized against
+one owned native process, and both returned the same hashed installation
+identity. Both account reads returned null, Remote Control was disabled, and
+loaded-thread lists were empty. There was no thread creation/resume, model turn,
+tool command, enrollment, phone pairing or Telegram activity. Only the probe's
+owned native PID 8384 was terminated after the test; its result/claim and native
+home/private diagnostics remain under `.native-remote/sharing-probe-<run>` for
+recovery. Nine method-whitelist guards pass locally and on Windows.
+
+Independent readback at `2026-10-03T14:08:01.3136739Z` confirms PID 8384 is gone;
+main native 4576 and existing remotes 5420/9188 retain their original creation
+times. Khadang, all VPN services and LG remain running. Code/policy digests,
+exact LG binding/bubble 161 and existing turn/start (4), sendMessage (2), topic
+(1), resume and tool receipts remain unchanged; unknown is zero. The diagnostic
+task is Interactive/Limited, Ready/result 0, with no restart policy or triggers.
+The installer rejects a prior run before task/native effects; the actual check
+at `2026-10-03T14:09:23.1391341Z` confirms an unchanged result digest, no triggers
+or restart policy, and the diagnostic native PID still absent. Source and
+runtime artifacts are sealed administrator-owned before
+execution; this does not establish company-role isolation.
+
+The live gap remains structural: both existing app-servers have private stdio,
+and cannot acquire a shared local listener through a demonstrated live RPC.
+Neither borrowing pipe handles nor tailing shared history is a continuity fix.
+Next, implement a **reviewed** shared native owner connection and event
+subscription while preserving the exact LG thread and existing remotes. Changes
+to listener credentials/authentication, enrollment or deployment policy require
+the protected owner/security review, not clearance inferred from this test.
+Pairing secrets must never enter employee-accessible forum bubbles; use a
+verified owner-private/native pairing surface. Phone input/output/tools/goals
+in the existing bubble, ambiguous-effect recovery and all-source admission
+remain unpassed gates. This test does not complete PR 6 or the full PC goal.
+
 ## Prepared mechanism
 
 `relay_core/telegram_scheduler.py` extends the PR 5 outbox in a separate private

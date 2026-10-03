@@ -84,6 +84,18 @@ they do not enable anything or label masked SLAT readings a hardware failure.
 No VM/distro/account/network change or reboot was performed.
 [Host evidence and required boundary](pc-agent-host-boundary.md).
 
+2026-10-03 shared native transport evidence: the pinned Windows app-server
+accepts two authenticated loopback WebSocket clients on one owned process and
+rejects missing/wrong bearer credentials. A one-shot non-elevated owner test
+used an empty credential-free native home, no threads/models/enrollment or
+Telegram calls, and exited only its own process. Existing main/remote PIDs,
+LG bubble/binding, receipts, router policy and VPN/LG remained unchanged.
+This verifies a transport primitive, not a live continuity fix. The transport is
+experimental/unsupported; a reviewed shared native adapter, owner-private
+pairing, exact-thread phone event acceptance and all-source admission remain
+required. No security-sensitive live wiring was changed.
+[Actual test and next gates](pr6-telegram-outbound.md#actual-windows-shared-transport-primitive-2026-10-03).
+
 2026-10-03 PC-only Khadang direction supersedes the legacy Mac activation below:
 the Mac test poller/watchers are stopped and its known plaintext token file is
 removed. The protected PC credential and non-elevated native owner launcher are
