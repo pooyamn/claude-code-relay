@@ -25,6 +25,19 @@ var run = args[1]; var exe = Environment.ProcessPath!;
 var artifactRoot = Path.GetDirectoryName(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar))!;
 var digest = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(exe)));
 using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+if (args[0] == "--lease-contender" && args.Length == 2 && Environment.MachineName == "DESKTOP-8SO9HDK")
+{
+    var called = false; var refused = false;
+    try
+    {
+        await using var unexpected = NativeBroker.Own(Path.Combine(artifactRoot, "state"), artifactRoot, _ => {
+            called = true; throw new InvalidOperationException("Contender must never start another native process"); });
+    }
+    catch (IOException error) when ((error.HResult & 0xffff) == 32) { refused = true; }
+    File.WriteAllText(Path.Combine(artifactRoot, "state", "lease-contender.json"), JsonSerializer.Serialize(new { refused, nativeLauncherCalled = called }));
+    if (!refused || called) throw new InvalidDataException("Kernel lease did not exclude contender before SQLite/native startup");
+    return;
+}
 if (args[0] == "--client" && args.Length == 5 && args[4] is "first" or "second")
 {
     var server = new WindowsPipePin(uint.Parse(args[2]), long.Parse(args[3]), exe, digest);
@@ -58,11 +71,32 @@ try
     var policy = new RouterPolicy("TheKhadangBot", 123, 456, -100123, "S-1-5-21-71459778-1164188569-2276148161-1001",
         @"C:\Users\pou\AppData\Local\Programs\OpenAI\Codex\bin\codex.exe", "FDDA5FA3CF3FB3D000B876720742857676293E4315E4B045FAE6F8BD7E866D1D",
         Path.Combine(artifactRoot, "unused-credential"), state, ownerRoot);
-    nativeProcess = WindowsOwnerProcess.StartDiagnostic(policy, workspace, home);
+    broker = NativeBroker.Own(state, artifactRoot, privateLedger => {
+        ledger = privateLedger; nativeProcess = WindowsOwnerProcess.StartDiagnostic(policy, workspace, home);
+        try { return rpc = new NativeRpc(nativeProcess, privateLedger); }
+        catch { nativeProcess.Dispose(); throw; }
+    });
+    if (nativeProcess == null || ledger == null || rpc == null) throw new InvalidDataException("Owned diagnostic startup missing");
     var birth = nativeProcess.ObserveOwner(); report["nativeOwner"] = birth;
-    ledger = new Ledger(Path.Combine(state, "broker.db"));
-    rpc = new NativeRpc(nativeProcess, ledger); broker = NativeBroker.Own(rpc, ledger);
     await broker.Ready.WaitAsync(deadline.Token);
+    stage = "independent-journal-contender";
+    var sentinel = ledger.Attempt("diagnostic/lease-constructor-sentinel", new { });
+    var contender = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true };
+    contender.ArgumentList.Add("--lease-contender"); contender.ArgumentList.Add(run);
+    client = Process.Start(contender) ?? throw new IOException("Lease contender missing");
+    await client.WaitForExitAsync(deadline.Token);
+    using (var receipt = JsonDocument.Parse(File.ReadAllText(Path.Combine(state, "lease-contender.json"))))
+        if (client.ExitCode != 0 || !receipt.RootElement.GetProperty("refused").GetBoolean() || receipt.RootElement.GetProperty("nativeLauncherCalled").GetBoolean() ||
+            ledger.Get("broker/current-epoch")!.Value.GetProperty("epoch").GetString() != broker.Epoch)
+            throw new InvalidDataException("Contender reached live journal/native startup");
+    // Read actual protected DB without constructing another Ledger: its
+    // constructor would intentionally rewrite this sentinel on real recovery.
+    // Only this diagnostic uses an attempting row with no external action.
+    if (ledger.Unknown != 0) throw new InvalidDataException("Contender rewrote active constructor sentinel");
+    report["independentKernelLeaseContenderDenied"] = true;
+    report["contenderNativeLauncherNeverCalled"] = true;
+    report["activeEpochAndConstructorSentinelUnchanged"] = true;
+    client.Dispose(); client = null;
     var server = WindowsPipePeer.Capture(checked((uint)Environment.ProcessId), exe, digest);
     report["brokerServer"] = server; report["nativeEpoch"] = broker.Epoch;
     using var listener = new WindowsProtectedPipe(run);

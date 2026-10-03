@@ -89,9 +89,10 @@ public static class NativeBrokerTests
         // Reproduce shutdown with a reply whose underlying write has not yet
         // settled. Closing the private journal early loses outcome custody.
         var draining = new Fake { BlockReplies = true, FailReplyAfterRelease = true };
-        var drainPath = Path.Combine(root, "broker-reply-drain.db");
-        var drainLedger = new Ledger(drainPath);
-        var drainBroker = NativeBroker.Fixture(draining, draining, drainLedger, draining.Initialize);
+        var drainDirectory = Path.Combine(root, "broker-reply-drain"); Directory.CreateDirectory(drainDirectory);
+        var drainPath = Path.Combine(drainDirectory, "broker.db");
+        var drainJournal = NativeBrokerJournal.Fixture(drainDirectory); var drainLedger = drainJournal.Ledger;
+        var drainBroker = NativeBroker.Fixture(draining, draining, drainLedger, draining.Initialize, drainJournal);
         await drainBroker.Ready;
         using (var client = drainBroker.AttachFixture(() => { }))
         {
@@ -103,16 +104,33 @@ public static class NativeBrokerTests
             var closedBeforeReplySettled = shutdown.IsCompleted;
             var sameDrain = ReferenceEquals(shutdown, drainBroker.DisposeAsync().AsTask());
             var journalStillOpen = drainLedger.Query("SELECT status FROM broker_replies").Single()[0] == "attempting";
+            var leaseStillHeld = false;
+            try { using var contender = NativeBrokerJournal.Fixture(drainDirectory); }
+            catch (IOException) { leaseStillHeld = true; }
             draining.ReplyRelease.TrySetResult();
             try { await reply; throw new Exception("Failed native write accepted"); } catch (IOException) { checks++; }
             await shutdown;
             Check(!closedBeforeReplySettled, "Broker shutdown must retain journal until every in-flight reply settles");
             Check(sameDrain && draining.Disposals == 1, "Concurrent shutdown waiters join one owner closure/drain");
             Check(journalStillOpen, "Private journal remains usable until actual reply settlement");
+            Check(leaseStillHeld, "Journal lease stays held throughout native reply/owner shutdown drain");
         }
         using (var reopened = new Ledger(drainPath))
             Check(reopened.Query("SELECT status FROM broker_replies").Single()[0] == "unknown",
                 "Shutdown retains ambiguous reply evidence, not an abandoned attempting row");
+        using (var reacquired = NativeBrokerJournal.Fixture(drainDirectory))
+            Check(File.Exists(Path.Combine(drainDirectory, "broker.lease")), "Closed broker releases kernel lease without deleting the retained filename");
+        var leaseDirectory = Path.Combine(root, "journal-before-sqlite"); Directory.CreateDirectory(leaseDirectory);
+        using (var first = NativeBrokerJournal.Fixture(leaseDirectory))
+        {
+            var sentinel = first.Ledger.Attempt("diagnostic/constructor-sentinel", new { });
+            try { using var second = NativeBrokerJournal.Fixture(leaseDirectory); throw new Exception("Second journal acquired live lease"); }
+            catch (IOException) { checks++; }
+            Check(first.Ledger.Query("SELECT status FROM operations WHERE id=?", sentinel).Single()[0] == "attempting",
+                "Lease refusal happens before SQLite constructor can rewrite active attempt state");
+        }
+        using (var recovered = NativeBrokerJournal.Fixture(leaseDirectory))
+            Check(recovered.Ledger.Unknown == 1, "Actual reacquisition performs recovery once previous holder closes, without replay");
         var cleanup = new Fake { BlockReplies = true, ResolveDuringReply = true };
         var cleanupPath = Path.Combine(root, "broker-reply-shutdown-cleanup.db");
         var cleanupBroker = NativeBroker.Fixture(cleanup, cleanup, new Ledger(cleanupPath), cleanup.Initialize);

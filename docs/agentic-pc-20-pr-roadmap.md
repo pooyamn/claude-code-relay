@@ -142,6 +142,16 @@ production facade/lease/service remain integration gates, not silently deployed
 by these fixes; native/company/phone/all-source/recovery requirements remain.
 [Mechanisms, reproduced failures and Windows proof](pr6-telegram-outbound.md#native-request-custody-and-shutdown-regression-fixes).
 
+2026-10-03 native journal lease: the inactive broker now takes a protected kernel
+lease before SQLite recovery and native startup, retaining it through reply/
+owner shutdown. 420 local/423 Windows checks and the separate-process Windows
+contender proof pass, together with unchanged native client replacement and
+missed-goal-event readback. The live router still owns its separate native
+process; the production facade, launch/orphan registry, service/review, phone,
+all-source admission, company and recovery gates remain open. No PR is complete
+or candidate activated by this component acceptance.
+[Exact ownership contract and evidence](pr6-telegram-outbound.md#exclusive-broker-journal-ownership--2026-10-03).
+
 2026-10-03 PC-only Khadang direction supersedes the legacy Mac activation below:
 the Mac test poller/watchers are stopped and its known plaintext token file is
 removed. The protected PC credential and non-elevated native owner launcher are

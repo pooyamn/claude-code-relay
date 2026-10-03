@@ -604,6 +604,69 @@ restart or phone-pairing acceptance occurred. The remaining protected production
 facade/lease/service, private pairing, all-source admission, company isolation,
 Claude switching and full recovery gates above still apply.
 
+### Exclusive broker journal ownership — 2026-10-03
+
+`NativeBroker.Own` now acquires a private kernel lease before opening SQLite or
+calling the reviewed native launcher. Previously the factory accepted an
+already-open ledger and relied on its caller to obtain a lease; constructing a
+second `Ledger` can run recovery updates against an active owner's attempt rows.
+The factory now owns fixed journal paths under an administrator-owned protected
+root, validates SYSTEM/Administrators-only data ACLs and rejects reparses. No
+wire caller chooses a database, executable or launcher callback.
+
+The lease uses a retained `broker.lease` filename and a held `FileShare.None`
+handle, not PID-file deletion or a timer. It remains held through initialization,
+calls, replies and native-reader/owner shutdown, then closes SQLite before the
+lease. A retained filename alone is not a live lock. Actual reacquisition can
+perform conservative recovery after closure, without replaying unknown actions.
+This does not prove the future launch registry's native-orphan or broker-crash
+reconciliation, or cleanup of every failed native startup.
+
+420 local and 423 actual Windows router checks pass, plus twelve fixed method
+guards. Fresh protected Windows run `417320e1380b44e0b3969c85f9b2b00d` completed
+at `2026-10-03T16:30:42.1408042Z`. A separate SYSTEM contender received the actual
+Windows sharing violation before its launcher callback ran; the existing epoch
+and inert constructor sentinel stayed unchanged. The sentinel represents no
+external action. The same diagnostic retains native PID 2328, Session 1,
+non-elevated owner, creation FILETIME `134355186414048532`, across replacement
+clients, with epoch `306b489d06934f378a3ef65a6a9167a4`, one initialization,
+four events, matching missed goal update/clear delivery and zero unknown native
+broker intents. No sign-in, model, remote enrollment or Telegram action occurs.
+
+Independent readback at `2026-10-03T16:31:06.9414015Z` confirmed task Ready/result
+0 and unchanged live router/policy, original main/remote PIDs and nine Running
+services. Exported task XML at `2026-10-03T16:32:12.4234575Z` confirmed zero trigger
+elements and zero restarts; task/state have protected administrator-owned
+SYSTEM/Administrators-only ACLs. In PowerShell, `@($task.Triggers).Count` returned
+1 for the null value, so the reported trigger count uses actual XML elements,
+not that misleading array wrapper. Journal, lease, claim, contender receipt and
+result are retained. The reviewed helper was invoked with a child-process-only
+execution-policy override after its default-policy refusal, not a machine/user
+execution-policy change or a replay of an existing diagnostic task.
+
+Read-only live ledger inspection at `2026-10-03T16:33:36.3879812Z` confirmed the
+same LG thread/topic, bubble 161, Done/not-busy/not-held, unchanged native/tool/
+Telegram receipt counts and zero unknown live operations. Both diagnostic PIDs
+2328/17404 were independently absent; the installed main and remote processes
+were not stopped to obtain that result.
+
+Archive SHA256 `F446E2D0D244803E7F5A6494D8415C2226D07B03DEC10DD20F60586E50CECD34`;
+router DLL `A3D76E142B6F5BD68875D1A34C77D6179A97F46AEDA801E5A21D9A421E3E6D04`;
+probe DLL `A840073A3687FA68753C590D8491AE7108CE44A78DF0438980E4255C81CF894F`.
+The sealed installer remains
+`E91D47B20DAC5F467280C6C31BB51534DD7B06E43FD16741F0AD54BA9AED090C`.
+
+The candidate is **inactive**. The live router still constructs and owns its
+private native process in `Program.cs`; the protected broker-to-router facade,
+launch/discovery registry, approved always-on service integration, request
+handler/shutdown reconciliation and consistent backup enrollment remain needed.
+OpenAI Docs confirms one initialization per native connection, not per attached
+router client; the broker owns that existing handshake.
+[Official native connection lifecycle](https://learn.chatgpt.com/docs/app-server).
+Company isolation, private native phone pairing, real phone/bubble acceptance,
+all-source reserve admission, Claude switching and full-system recovery remain
+uncompleted requirements, not implied by the lease or client-replacement proof.
+
 ## Prepared mechanism
 
 `relay_core/telegram_scheduler.py` extends the PR 5 outbox in a separate private

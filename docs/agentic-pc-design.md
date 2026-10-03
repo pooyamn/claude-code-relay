@@ -95,6 +95,16 @@ phone/all-source admission, company identity and full-system recovery are still
 pending; synthetic request tests are not real OAuth or crash/reboot acceptance.
 [Regression evidence and exact Windows candidate](pr6-telegram-outbound.md#native-request-custody-and-shutdown-regression-fixes).
 
+2026-10-03 journal ownership milestone: the inactive native broker acquires its
+exclusive kernel journal lease before SQLite recovery or native launch. 420 local
+and 423 Windows checks pass; a separate protected Windows contender is rejected
+before its launcher callback and cannot rewrite the live epoch/attempt sentinel.
+The same native client-replacement/goal-event proof passes without production
+changes. This is not the live router facade or complete launch/orphan registry;
+service/review, native phone continuity, company/admission and full recovery
+gates remain required.
+[Mechanism and exact Windows proof](pr6-telegram-outbound.md#exclusive-broker-journal-ownership--2026-10-03).
+
 2026-10-03 startup configuration: `Oracova-KhadangStartup` is a protected
 deterministic SYSTEM task with boot, owner-logon and minute triggers. SCM stays
 Manual: a stopped router may start only after the exact non-elevated physical

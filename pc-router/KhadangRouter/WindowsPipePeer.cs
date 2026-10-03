@@ -144,13 +144,14 @@ public sealed class WindowsPipePeer : IDisposable
         }
         finally { CloseHandle(token); }
     }
-    private static void ProtectedImage(string path, string root)
+    private static void ProtectedImage(string path, string root) => ProtectedPath(path, root, directory: false);
+    internal static void ProtectedPath(string path, string root, bool directory)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
         path = RouterPolicy.WindowsPath(path); root = RouterPolicy.WindowsPath(root);
         if (!path.StartsWith(root + "\\", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("Peer image is outside the reviewed protected artifact root");
-        for (FileSystemInfo? item = new FileInfo(path); item != null; item = item is FileInfo file ? file.Directory : ((DirectoryInfo)item).Parent)
+        for (FileSystemInfo? item = directory ? new DirectoryInfo(path) : new FileInfo(path); item != null; item = item is FileInfo file ? file.Directory : ((DirectoryInfo)item).Parent)
         {
             if (!item.Exists || (item.Attributes & FileAttributes.ReparsePoint) != 0)
                 throw new InvalidDataException("Literal protected peer artifact required");

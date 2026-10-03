@@ -7,13 +7,14 @@ namespace KhadangRouter;
 // Inactive candidate custody core. The protected broker, NOT an attached router,
 // owns this native connection. No discovery, listener enrollment, production
 // policy, role/admission grant, automatic reconnect or action replay is here.
-// The caller transfers native/ledger ownership and must first take the private
-// journal's exclusive process lock; never pass the live router ledger.
+// Own acquires a private journal lease before SQLite/native startup. Never pass
+// the live router ledger or reopen it to inspect a running broker.
 public sealed class NativeBroker : IAsyncDisposable
 {
     private readonly INative native;
     private readonly IAsyncDisposable owner;
     private readonly Ledger ledger;
+    private readonly NativeBrokerJournal? journal;
     private readonly object gate = new();
     private readonly CancellationTokenSource stop = new();
     private readonly Dictionary<string, Task<JsonElement>> running = [];
@@ -28,13 +29,29 @@ public sealed class NativeBroker : IAsyncDisposable
     public long Position { get { lock (gate) return position; } }
     public int Unknown => int.Parse(ledger.Query("SELECT (SELECT COUNT(*) FROM broker_calls WHERE status='unknown') + (SELECT COUNT(*) FROM broker_replies WHERE status='unknown')")[0][0]!);
 
-    public static NativeBroker Own(NativeRpc native, Ledger privateLedger)
-    { WindowsPipePeer.RequireSystem(); return new(native, native, privateLedger, () => native.Initialize(CancellationToken.None)); }
-    internal static NativeBroker Fixture(INative native, IAsyncDisposable owner, Ledger privateLedger, Func<Task> initialize) =>
-        new(native, owner, privateLedger, initialize);
-    private NativeBroker(INative native, IAsyncDisposable owner, Ledger ledger, Func<Task> initialize)
+    public static NativeBroker Own(string stateDirectory, string protectedRoot, Func<Ledger, NativeRpc> launchNative)
     {
-        this.native = native; this.owner = owner; this.ledger = ledger;
+        WindowsPipePeer.RequireSystem(); ArgumentNullException.ThrowIfNull(launchNative);
+        var journal = NativeBrokerJournal.Open(stateDirectory, protectedRoot); NativeRpc? native = null;
+        try
+        {
+            // Only a reviewed same-process protected launcher supplies this
+            // delegate. No RPC client chooses a path, executable or callback.
+            native = launchNative(journal.Ledger);
+            return new(native, native, journal.Ledger, () => native.Initialize(CancellationToken.None), journal);
+        }
+        catch
+        {
+            try { native?.DisposeAsync().AsTask().GetAwaiter().GetResult(); }
+            finally { journal.Dispose(); }
+            throw;
+        }
+    }
+    internal static NativeBroker Fixture(INative native, IAsyncDisposable owner, Ledger privateLedger, Func<Task> initialize, NativeBrokerJournal? journal = null) =>
+        new(native, owner, privateLedger, initialize, journal);
+    private NativeBroker(INative native, IAsyncDisposable owner, Ledger ledger, Func<Task> initialize, NativeBrokerJournal? journal)
+    {
+        this.native = native; this.owner = owner; this.ledger = ledger; this.journal = journal;
         ledger.Transaction(() => {
             ledger.Exec("CREATE TABLE IF NOT EXISTS broker_calls (intent TEXT PRIMARY KEY,epoch TEXT NOT NULL,method TEXT NOT NULL,fingerprint TEXT NOT NULL,status TEXT NOT NULL,result TEXT)");
             ledger.Exec("CREATE TABLE IF NOT EXISTS broker_events (epoch TEXT NOT NULL,position INTEGER NOT NULL,frame TEXT NOT NULL,PRIMARY KEY(epoch,position))");
@@ -272,7 +289,12 @@ public sealed class NativeBroker : IAsyncDisposable
                 async Task Settle() { try { await Task.WhenAll(pending); } catch (Exception) { /* persisted unknown/rejected evidence remains */ } }
                 async Task StopOwner() { await owner.DisposeAsync(); }
                 try { await Task.WhenAll(StopOwner(), Settle()); }
-                finally { native.Notification -= Capture; ledger.Dispose(); stop.Dispose(); }
+                finally
+                {
+                    native.Notification -= Capture;
+                    try { if (journal != null) journal.Dispose(); else ledger.Dispose(); }
+                    finally { stop.Dispose(); }
+                }
             });
             return new(shutdown); // Every disposal waiter joins the same drain.
         }
