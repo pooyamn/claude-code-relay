@@ -96,6 +96,19 @@ pairing, exact-thread phone event acceptance and all-source admission remain
 required. No security-sensitive live wiring was changed.
 [Actual test and next gates](pr6-telegram-outbound.md#actual-windows-shared-transport-primitive-2026-10-03).
 
+2026-10-03 shared framing/event component: the candidate native RPC recorder
+now supports stdio or bounded WebSocket frames with the same no-replay receipts.
+353 local/356 Windows candidate checks and twenty probe guards pass. In an
+actual credential-free Windows test, a second client resumed a checkpointed
+diagnostic thread and received/verified the first client's paused goal update
+and clear, with no inference, enrollment or Telegram changes. Only its owned
+process exited; the live router/remotes, policy, LG bubble and receipts stayed
+unchanged. This candidate is not activated. Client bearer authentication is not
+server/role authentication: a protected peer/launcher lease and independently
+owned daemon, exact-version security review, private phone pairing, actual
+phone/bubble acceptance, recovery and all-source admission remain gates.
+[Candidate mechanism and evidence](pr6-telegram-outbound.md#shared-framing-and-native-goal-event-acceptance-2026-10-03).
+
 2026-10-03 PC-only Khadang direction supersedes the legacy Mac activation below:
 the Mac test poller/watchers are stopped and its known plaintext token file is
 removed. The protected PC credential and non-elevated native owner launcher are

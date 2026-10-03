@@ -6,4 +6,5 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
+  <ItemGroup><ProjectReference Include="../KhadangRouter/KhadangRouter.csproj" /></ItemGroup>
 </Project>

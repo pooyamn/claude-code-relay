@@ -5,21 +5,21 @@ namespace KhadangRouter;
 
 public sealed class NativeRpc : INative, IAsyncDisposable
 {
-    private readonly WindowsOwnerProcess process;
+    private readonly INativeChannel channel;
     private readonly Ledger ledger;
     private readonly ConcurrentDictionary<long, TaskCompletionSource<JsonElement>> pending = new();
     private readonly SemaphoreSlim writes = new(1, 1);
     private readonly CancellationTokenSource stop = new();
-    private readonly Task reader, drain;
+    private readonly Task reader;
     private long sequence;
     private volatile bool disconnected;
     public event Action<JsonElement>? Notification;
-    public uint Pid => process.Pid;
-    public NativeRpc(WindowsOwnerProcess process, Ledger ledger)
+    public uint Pid => channel.Pid;
+    public NativeRpc(WindowsOwnerProcess process, Ledger ledger) : this(new StdioNativeChannel(process), ledger) { }
+    public NativeRpc(INativeChannel channel, Ledger ledger)
     {
-        this.process = process; this.ledger = ledger;
+        this.channel = channel; this.ledger = ledger;
         reader = Task.Run(Read);
-        drain = Task.Run(async () => { while (await process.Error.ReadLineAsync(stop.Token) != null) { /* Never mirror native diagnostics containing credentials. */ } });
     }
     public async Task Initialize(CancellationToken token)
     {
@@ -58,14 +58,14 @@ public sealed class NativeRpc : INative, IAsyncDisposable
     private async Task Write(object message, CancellationToken token)
     {
         await writes.WaitAsync(token);
-        try { await process.Input.WriteLineAsync(JsonSerializer.Serialize(message).AsMemory(), token); }
+        try { await channel.Write(JsonSerializer.Serialize(message), token); }
         finally { writes.Release(); }
     }
     private async Task Read()
     {
         try
         {
-            while (await process.Output.ReadLineAsync(stop.Token) is { } line)
+            while (await channel.Read(stop.Token) is { } line)
             {
                 if (line.Length > 2_097_152) throw new InvalidDataException("Native frame too large");
                 using var document = JsonDocument.Parse(line);
@@ -80,8 +80,9 @@ public sealed class NativeRpc : INative, IAsyncDisposable
     }
     public async ValueTask DisposeAsync()
     {
-        stop.Cancel(); process.Dispose();
-        try { await Task.WhenAll(reader, drain); } catch (OperationCanceledException) { }
-        stop.Dispose(); writes.Dispose();
+        stop.Cancel();
+        try { await Task.WhenAll(reader, channel.DisposeAsync().AsTask()); }
+        catch (OperationCanceledException) { }
+        finally { stop.Dispose(); writes.Dispose(); }
     }
 }

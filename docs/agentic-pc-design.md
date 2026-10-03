@@ -48,6 +48,19 @@ never expose pairing secrets in employee-accessible topics or restart existing
 native remotes to force migration.
 [Evidence and protected next step](pr6-telegram-outbound.md#actual-windows-shared-transport-primitive-2026-10-03).
 
+2026-10-03 shared event milestone: the candidate native RPC layer can use the
+same durable protocol over stdio or bounded WebSocket framing. An actual
+credential-free Windows test confirms cross-client paused-goal update/clear
+notifications and matching reads on one checkpointed diagnostic thread, without
+inference or touching live owner state. 353 local/356 Windows candidate checks
+and twenty method guards pass. The candidate is **not live**; the existing
+private stdio service/remotes/bubble and VPN/LG remain unchanged. A bearer proves
+client access, not server/role identity: protected server/launcher authentication,
+independent daemon ownership and exact-version security review are required
+before shared live wiring, followed by private native phone pairing and actual
+phone-to-bubble/recovery/admission acceptance.
+[Working component, evidence and activation gates](pr6-telegram-outbound.md#shared-framing-and-native-goal-event-acceptance-2026-10-03).
+
 2026-10-03 startup configuration: `Oracova-KhadangStartup` is a protected
 deterministic SYSTEM task with boot, owner-logon and minute triggers. SCM stays
 Manual: a stopped router may start only after the exact non-elevated physical

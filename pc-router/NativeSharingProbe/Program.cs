@@ -5,17 +5,26 @@ using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text.Json;
+using KhadangRouter;
 
 // Transport acceptance only. No production credential/home, router ledger,
-// Telegram poller, enrollment, thread resume, model or shell/tool invocation.
+// Telegram poller, enrollment, model or shell/tool invocation. --events uses
+// only its isolated diagnostic thread/checkpoint and a paused goal.
 if (args.SequenceEqual(new[] { "--self-test" }))
 {
     var checks = 0;
     foreach (var method in new[] { "initialize", "account/read", "remoteControl/status/read", "thread/loaded/list" })
-    { Rpc.Allowed(method); checks++; }
+    { GuardedRpc.Allowed(method, false); checks++; }
     foreach (var method in new[] { "turn/start", "thread/resume", "remoteControl/enable", "account/login/start", "command/exec" })
     {
-        try { Rpc.Allowed(method); throw new Exception("Mutation accepted"); }
+        try { GuardedRpc.Allowed(method, false); throw new Exception("Mutation accepted"); }
+        catch (InvalidDataException) { checks++; }
+    }
+    foreach (var method in new[] { "thread/start", "thread/resume", "thread/inject_items", "thread/goal/set", "thread/goal/get", "thread/goal/clear" })
+    { GuardedRpc.Allowed(method, true); checks++; }
+    foreach (var method in new[] { "turn/start", "turn/steer", "remoteControl/enable", "account/login/start", "command/exec" })
+    {
+        try { GuardedRpc.Allowed(method, true); throw new Exception("Model/auth/tool operation accepted"); }
         catch (InvalidDataException) { checks++; }
     }
     Console.WriteLine($"{checks} sharing-probe method guards passed; no credentials/network/models.");
@@ -26,12 +35,13 @@ string? state = null;
 Process? child = null;
 Task<string>? output = null, error = null;
 var stage = "identity";
+var events = args.Length == 3 && args[2] == "--events";
 var report = new Dictionary<string, object?> { ["schema"] = "ccrelay.native_sharing_probe.v1", ["complete"] = false,
     ["productionChanged"] = false, ["modelTurns"] = 0, ["remoteEnrollment"] = false,
     ["isolatedCredentialFreeHome"] = true, ["phoneRoundTripVerified"] = false };
 try
 {
-    if (!OperatingSystem.IsWindows() || args.Length != 2 || args[0] != "--run" || !Guid.TryParseExact(args[1], "N", out var run))
+    if (!OperatingSystem.IsWindows() || (args.Length != 2 && !events) || args[0] != "--run" || !Guid.TryParseExact(args[1], "N", out var run))
         throw new InvalidDataException("Windows one-shot probe requires a run ID");
     using var identity = WindowsIdentity.GetCurrent();
     var elevated = new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
@@ -95,12 +105,14 @@ try
         }
     }
     stage = "authentication-rejection";
-    report["missingBearerRejected"] = await Rpc.Rejected(uri, null, deadline.Token);
-    report["wrongBearerRejected"] = await Rpc.Rejected(uri, Convert.ToHexString(RandomNumberGenerator.GetBytes(32)), deadline.Token);
+    report["missingBearerRejected"] = await GuardedRpc.Rejected(uri, null, deadline.Token);
+    report["wrongBearerRejected"] = await GuardedRpc.Rejected(uri, Convert.ToHexString(RandomNumberGenerator.GetBytes(32)), deadline.Token);
     stage = "two-client-sharing";
-    using var first = new Rpc(); using var second = new Rpc();
-    await first.Connect(uri, token, deadline.Token); await second.Connect(uri, token, deadline.Token);
-    await first.Initialize("oracova_sharing_probe_a", deadline.Token); await second.Initialize("oracova_sharing_probe_b", deadline.Token);
+    using var firstLedger = new Ledger(Path.Combine(state, "client-a.db"));
+    using var secondLedger = new Ledger(Path.Combine(state, "client-b.db"));
+    await using var first = await GuardedRpc.Connect(uri, token, checked((uint)child.Id), firstLedger, events, deadline.Token);
+    await using var second = await GuardedRpc.Connect(uri, token, checked((uint)child.Id), secondLedger, events, deadline.Token);
+    await first.Initialize(deadline.Token); await second.Initialize(deadline.Token);
     var identities = new List<string>();
     foreach (var client in new[] { first, second })
     {
@@ -117,6 +129,66 @@ try
     if (identities[0] != identities[1] || child.HasExited) throw new InvalidDataException("Clients do not share one live native installation");
     report["sharedInstallationFingerprint"] = identities[0]; report["authenticatedLocalClients"] = 2;
     report["nativeAccountAbsent"] = true; report["nativeRemoteState"] = "disabled";
+    if (events)
+    {
+        stage = "cross-client-goal-events";
+        // Persist an inert diagnostic checkpoint, as the pinned native release
+        // has no resumable rollout until history exists. This is not inference.
+        var started = await first.Call("thread/start", new { cwd = state, sandbox = "read-only", approvalPolicy = "never",
+            environments = Array.Empty<object>(), allowProviderModelFallback = false }, deadline.Token);
+        var thread = started.GetProperty("thread").GetProperty("id").GetString()!;
+        if (string.IsNullOrWhiteSpace(thread) || started.GetProperty("cwd").GetString() != state) throw new InvalidDataException("Wrong diagnostic thread workspace");
+        await first.Call("thread/inject_items", new { threadId = thread, items = new[] { new { type = "message", role = "user",
+            content = new[] { new { type = "input_text", text = "[Inert transport checkpoint, not a task.] Never run tools, models or external actions." } } } } }, deadline.Token);
+        var resumed = await second.Call("thread/resume", new { threadId = thread, excludeTurns = true }, deadline.Token);
+        if (resumed.GetProperty("thread").GetProperty("id").GetString() != thread || resumed.GetProperty("cwd").GetString() != state)
+            throw new InvalidDataException("Second client subscribed to wrong diagnostic thread");
+        var objective = "Paused transport test " + Convert.ToHexString(RandomNumberGenerator.GetBytes(12));
+        var updated = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cleared = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        int observedTurns = 0;
+        void Observe(JsonElement notification)
+        {
+            if (!notification.TryGetProperty("method", out var method) || !notification.TryGetProperty("params", out var p) ||
+                !p.TryGetProperty("threadId", out var id) || id.GetString() != thread) return;
+            if (method.GetString() == "turn/started") Interlocked.Increment(ref observedTurns);
+            if (method.GetString() == "thread/goal/updated" && p.TryGetProperty("goal", out var goal) &&
+                goal.GetProperty("objective").GetString() == objective && goal.GetProperty("status").GetString() == "paused") updated.TrySetResult();
+            if (method.GetString() == "thread/goal/cleared") cleared.TrySetResult();
+        }
+        first.Notification += Observe; second.Notification += Observe;
+        // Only the second client's delivery is acceptance evidence.
+        var secondUpdated = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondCleared = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void ObserveSecond(JsonElement n)
+        {
+            if (!n.TryGetProperty("params", out var p) || !p.TryGetProperty("threadId", out var id) || id.GetString() != thread) return;
+            var method = n.GetProperty("method").GetString();
+            if (method == "thread/goal/updated" && p.GetProperty("goal").GetProperty("objective").GetString() == objective &&
+                p.GetProperty("goal").GetProperty("status").GetString() == "paused") secondUpdated.TrySetResult();
+            if (method == "thread/goal/cleared") secondCleared.TrySetResult();
+        }
+        second.Notification += ObserveSecond;
+        try
+        {
+            var set = await first.Call("thread/goal/set", new { threadId = thread, objective, status = "paused" }, deadline.Token);
+            if (set.GetProperty("goal").GetProperty("status").GetString() != "paused") throw new InvalidDataException("Diagnostic goal was not paused");
+            await secondUpdated.Task.WaitAsync(TimeSpan.FromSeconds(5), deadline.Token);
+            var read = await second.Call("thread/goal/get", new { threadId = thread }, deadline.Token);
+            if (read.GetProperty("goal").GetProperty("objective").GetString() != objective || read.GetProperty("goal").GetProperty("status").GetString() != "paused")
+                throw new InvalidDataException("Second client goal read differs");
+            await first.Call("thread/goal/clear", new { threadId = thread }, deadline.Token);
+            await secondCleared.Task.WaitAsync(TimeSpan.FromSeconds(5), deadline.Token);
+            var empty = await second.Call("thread/goal/get", new { threadId = thread }, deadline.Token);
+            if (empty.GetProperty("goal").ValueKind != JsonValueKind.Null || observedTurns != 0) throw new InvalidDataException("Unexpected goal or turn after clear");
+            report["diagnosticThreadFingerprint"] = Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(thread)));
+            report["crossClientGoalUpdatedAndCleared"] = true; report["diagnosticGoalOnlyPaused"] = true;
+            report["observedTurnStarts"] = observedTurns;
+        }
+        finally { first.Notification -= Observe; second.Notification -= Observe; second.Notification -= ObserveSecond; }
+    }
+    if (firstLedger.Unknown != 0 || secondLedger.Unknown != 0) throw new InvalidDataException("Unknown diagnostic effect; no replay");
+    report["unknownDiagnosticEffects"] = 0;
     report["complete"] = true;
 }
 catch (Exception failure)
@@ -146,43 +218,27 @@ finally
     Console.WriteLine(JsonSerializer.Serialize(report));
 }
 
-sealed class Rpc : IDisposable
+sealed class GuardedRpc(NativeRpc rpc, bool events) : IAsyncDisposable
 {
-    private readonly ClientWebSocket socket = new();
-    private int next;
-    public static void Allowed(string method)
+    public event Action<JsonElement>? Notification { add => rpc.Notification += value; remove => rpc.Notification -= value; }
+    public static void Allowed(string method, bool events)
     {
-        if (method is not ("initialize" or "account/read" or "remoteControl/status/read" or "thread/loaded/list"))
-            throw new InvalidDataException("Mutation is outside transport-probe scope");
+        if (method is "initialize" or "account/read" or "remoteControl/status/read" or "thread/loaded/list") return;
+        if (events && method is "thread/start" or "thread/resume" or "thread/inject_items" or "thread/goal/set" or "thread/goal/get" or "thread/goal/clear") return;
+        throw new InvalidDataException("Method is outside transport-probe scope");
     }
-    public Task Connect(Uri uri, string token, CancellationToken stop)
-    { socket.Options.Proxy = null; socket.Options.SetRequestHeader("Authorization", "Bearer " + token); return socket.ConnectAsync(uri, stop); }
-    public async Task Initialize(string name, CancellationToken stop)
+    public static async Task<GuardedRpc> Connect(Uri uri, string token, uint pid, Ledger ledger, bool events, CancellationToken stop)
     {
-        await Call("initialize", new { clientInfo = new { name, version = "1" }, capabilities = new { experimentalApi = true } }, stop);
-        await Send(new { method = "initialized" }, stop);
+        var socket = new ClientWebSocket(); socket.Options.Proxy = null;
+        socket.Options.SetRequestHeader("Authorization", "Bearer " + token);
+        try { await socket.ConnectAsync(uri, stop); return new(new NativeRpc(new WebSocketNativeChannel(socket, pid), ledger), events); }
+        catch { socket.Dispose(); throw; }
     }
-    private Task Send(object message, CancellationToken stop) => socket.SendAsync(new ArraySegment<byte>(JsonSerializer.SerializeToUtf8Bytes(message)), WebSocketMessageType.Text, true, stop);
-    public async Task<JsonElement> Call(string method, object parameters, CancellationToken stop)
+    public Task Initialize(CancellationToken stop) => rpc.Initialize(stop);
+    public Task<JsonElement> Call(string method, object parameters, CancellationToken stop)
     {
-        Allowed(method); var id = ++next;
-        await Send(new { id, method, @params = parameters }, stop);
-        for (var messages = 0; messages < 100; messages++)
-        {
-            using var data = new MemoryStream(); var buffer = new byte[8192]; WebSocketReceiveResult frame;
-            do
-            {
-                frame = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), stop);
-                if (frame.MessageType != WebSocketMessageType.Text || data.Length + frame.Count > 65536) throw new InvalidDataException("Unexpected native frame");
-                data.Write(buffer, 0, frame.Count);
-            } while (!frame.EndOfMessage);
-            using var document = JsonDocument.Parse(data.ToArray()); var reply = document.RootElement;
-            if (reply.TryGetProperty("method", out _))
-            { if (reply.TryGetProperty("id", out _)) throw new InvalidDataException("Unexpected server request"); continue; }
-            if (reply.GetProperty("id").GetInt32() != id || reply.TryGetProperty("error", out _)) throw new InvalidDataException("Native read rejected or wrong receipt");
-            return reply.GetProperty("result").Clone();
-        }
-        throw new InvalidDataException("Native notification bound exceeded");
+        Allowed(method, events);
+        return rpc.Call(method, parameters, stop, effect: method is "thread/start" or "thread/resume" or "thread/inject_items" or "thread/goal/set" or "thread/goal/clear");
     }
     public static async Task<bool> Rejected(Uri uri, string? token, CancellationToken stop)
     {
@@ -193,5 +249,5 @@ sealed class Rpc : IDisposable
         catch (WebSocketException) when (denied.HttpStatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden) { return true; }
         throw new InvalidDataException("Bearer denial was not proven by HTTP 401/403");
     }
-    public void Dispose() { socket.Abort(); socket.Dispose(); }
+    public ValueTask DisposeAsync() => rpc.DisposeAsync();
 }

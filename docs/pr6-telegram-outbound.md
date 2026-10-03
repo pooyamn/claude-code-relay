@@ -275,6 +275,94 @@ verified owner-private/native pairing surface. Phone input/output/tools/goals
 in the existing bubble, ambiguous-effect recovery and all-source admission
 remain unpassed gates. This test does not complete PR 6 or the full PC goal.
 
+## Shared framing and native goal-event acceptance (2026-10-03)
+
+`NativeRpc` now has a transport-independent framing boundary while preserving
+its durable request receipts, explicit rejection handling and no-replay behavior.
+The existing protected owner launcher still selects owned stdio; neither
+`Program.cs` nor the live policy selects WebSocket. The candidate
+`WebSocketNativeChannel` wraps an already-connected socket, bounds complete
+UTF-8 text frames to 2,097,152 bytes, and translates transport failures into the
+existing disconnected/unknown semantics. It never discovers, connects, enrolls,
+reconnects or restarts a server. Closing a shared channel closes only that client
+socket, not an external native process. A supplied PID is observation metadata,
+not authentication or a role grant.
+
+353 local and 356 actual Windows candidate router checks pass; fourteen new
+checks cover fragmented Unicode, binary/invalid/oversized frames, close,
+oversized outgoing refusal, notifications, confirmed/rejected/unknown effects
+and denial of submission after disconnect. Twenty probe guards allow only the
+fixed diagnostic methods and refuse turns, tools, login and remote enrollment.
+These counts are **candidate** evidence; the installed live router stays at the
+previous immutable release and its existing 342-check acceptance record.
+
+The actual Windows `--events` test passed at
+`2026-10-03T14:29:11.5212078Z`, run
+`ac09f1fbb79b49738ae67e0c9a09db40`, using that candidate RPC/framing code.
+It first repeated both explicit bearer denials and credential-free status
+checks. Client A then created one diagnostic thread and an inert history
+checkpoint in the empty child home; client B resumed the exact thread without
+configuration overrides and subscribed to its events. A set a randomized goal
+**paused**, then cleared it. B received both exact-thread native notifications
+and verified both states by independent goal reads. No active goal, inference,
+tool command, remote enrollment or Telegram action was submitted; zero turn
+starts were observed during goal testing and both diagnostic ledgers have zero
+unknown effects. The thread/checkpoint, ledgers/claims and native home remain
+as recovery evidence; only the owned diagnostic process was terminated.
+[Native goal and subscription contract](https://learn.chatgpt.com/docs/app-server).
+
+Candidate archive SHA256:
+`799CD6031482963861BDF168EC2809C6BE2F5091F81DD616881F09C66B22AAF9`;
+candidate router DLL
+`2B92C6703A1429C36581626677B61078C2FFE759CF5F923E83EC67E742C08F56`;
+probe DLL
+`2662976E8AB55C29558441FC2CBF73BF89CC3A9EB8BFCB30C46746461BCD672A`;
+installer
+`E4698399432AD6869C3B4DA99095373F4ACCFDF631872D77582972D0C03F4D05`.
+The versioned installer preserves the previous test installer/artifacts.
+
+Final cleanup retains the original disposal guarantee: even if a channel's
+disposal fails, the reader is joined before resources are released. The final
+source was rebuilt and passed all 353 local/356 Windows checks plus twenty
+probe guards. Its cross-client goal-event test passed again at
+`2026-10-03T14:41:03.812399Z`, run
+`a096ac28cc4c46b9bdcbfb6487455bd3`, with both events/readbacks, paused-only goal,
+zero model turns/unknown effects and its owned native process exited.
+The earlier successful run/artifacts above are retained, not replayed.
+Final archive SHA256
+`308214C6EC508E8448D919511BAC906CF6FAFEA98A3DAA228D6330E455AB8180`;
+candidate router DLL
+`BDE16BE183B98D37F522F339FE792CA9318E3B735FF3C27D041E39BFB1CED0F0`;
+probe DLL
+`F5D9267841C911A4E7A76298037FD53A2EE733FCB2AA5E266A7A9FB5D0D42928`.
+The same versioned installer above is used. This final candidate is not live.
+Fresh readbacks at `2026-10-03T14:42:37.2305086Z` and
+`2026-10-03T14:43:39.1612745Z` confirm matching final DLL digests, PID 17132
+absent, unchanged live code/policy/PIDs/bubble/receipts, and all VPN/LG running.
+
+Independent readback at `2026-10-03T14:31:29.5072234Z` confirms diagnostic PID
+11740 is gone; the task is Ready/result 0, Interactive/Limited with no triggers
+or restart policy. Main native 4576 and remotes 5420/9188 retain their original
+creation times. All VPN/LG services are running; live code/policy digests,
+LG binding, bubble 161, tool/resume/model/send/topic receipts and zero unknown
+operations are unchanged. The candidate was not copied into the live service.
+
+**Do not promote bearer acceptance into server authentication.** Client bearer
+authentication and loopback placement do not establish a trusted upstream peer
+under the prompt-injection threat model. The framing class deliberately cannot
+authorize a native peer/role from a claimed PID or socket. A live shared adapter
+still needs a protected, authenticated server/launcher lease and independent
+daemon ownership so a router deployment does not terminate phone work. An
+owned-stdio broker with a separately authenticated protected client endpoint is
+a candidate way to preserve the existing native process boundary; it is not
+implemented or approved here. Raw loopback sockets are not the company boundary.
+Any listener/credential/deployment change requires protected exact-version
+owner/security review. Existing remote processes must not be killed/restarted
+for migration; supported private/native phone pairing and phone-to-bubble
+tool/input/goal acceptance, recovery and all-source admission remain gates.
+This is a working framing/event component, not the full continuity fix or PR 6
+completion.
+
 ## Prepared mechanism
 
 `relay_core/telegram_scheduler.py` extends the PR 5 outbox in a separate private

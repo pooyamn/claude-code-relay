@@ -1,12 +1,15 @@
 param(
  [Parameter(Mandatory=$true)][ValidatePattern('^C:\\ProgramData\\OracovaNativeRemote\\sharing-probe-[0-9a-f]{32}\.zip$')][string]$Archive,
  [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-fA-F]{64}$')][string]$ExpectedSha256,
- [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-f]{32}$')][string]$RunId
+ [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-f]{32}$')][string]$RunId,
+ [switch]$Events
 )
 # One-shot transport test, not a production endpoint or remote enrollment.
 # Administrator only installs/seals deterministic code; native execution uses
 # the exact ordinary interactive owner, an empty credential-free child home,
 # two authenticated local clients and two explicit bearer-denial checks.
+# -Events writes only an isolated diagnostic checkpoint and paused goal; it
+# never starts inference or alters the owner's live thread/goal/bot wiring.
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
 $principal=[Security.Principal.WindowsPrincipal]::new($identity)
@@ -46,12 +49,16 @@ $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($owner,'Re
 Set-Acl $release $acl
 & $exe --self-test
 if($LASTEXITCODE -ne 0){throw 'Sharing-probe method guards failed'}
-$action=New-ScheduledTaskAction -Execute $exe -Argument ('--run '+$RunId) -WorkingDirectory (Join-Path $release 'publish-sharing')
+& (Join-Path $release 'publish-sharing\KhadangRouter.exe') --self-test
+if($LASTEXITCODE -ne 0){throw 'Actual Windows candidate connection/router checks failed'}
+$arguments='--run '+$RunId
+if($Events){$arguments+=' --events'}
+$action=New-ScheduledTaskAction -Execute $exe -Argument $arguments -WorkingDirectory (Join-Path $release 'publish-sharing')
 $limited=New-ScheduledTaskPrincipal -UserId $owner.Value -LogonType Interactive -RunLevel Limited
 $settings=New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 2) -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 # No triggers, repetition, restart policy, credential arguments or SYSTEM agent.
 Register-ScheduledTask -TaskName $taskName -Action $action -Principal $limited -Settings $settings | Out-Null
 [IO.File]::WriteAllText((Join-Path $release 'reviewed-run.json'),(@{run=$RunId;archiveSha256=$ExpectedSha256;task=$taskName;
- oneShot=$true;modelsStarted=$false;productionChanged=$false;phoneRoundTripVerified=$false} | ConvertTo-Json -Compress))
+ oneShot=$true;modelsStarted=$false;productionChanged=$false;phoneRoundTripVerified=$false;isolatedGoalEvents=[bool]$Events} | ConvertTo-Json -Compress))
 Start-ScheduledTask -TaskName $taskName
 [Console]::WriteLine((@{task=$taskName;state=(Get-ScheduledTask -TaskName $taskName).State.ToString();result=(Join-Path $state 'result.json')} | ConvertTo-Json -Compress))
