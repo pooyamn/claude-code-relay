@@ -48,6 +48,7 @@ public static class SelfTests
             Check(ledger.Unknown == 2, "Unknown attempt cannot be blindly confirmed/replayed");
         }
         checks += JoinedTests.Run(root, policy).GetAwaiter().GetResult();
+        checks += GoalTests.Run(root, policy).GetAwaiter().GetResult();
         // A unique test-owned directory, never a workspace/service path.
         Directory.Delete(root, recursive: true);
         Console.WriteLine("All " + checks + " PC-router checks passed (no credentials/network/models).");

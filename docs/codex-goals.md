@@ -1,8 +1,10 @@
 # Native Codex goal controls and rolling status
 
 Prepared in repository code on 2026-10-02 and activated only on the legacy Mac
-Khadang test watcher after Pouya authorized testing and deployment. Protected PC
-integration and live mutation acceptance remain pending.
+Khadang test watcher after Pouya authorized testing and deployment. The Windows
+owner-only migration adapter now includes the PC controls/recovery changes
+below; protected role/company integration and live mutation acceptance remain
+pending.
 The installed Codex CLI is 0.160.0. Its generated standard (not experimental)
 schema includes `thread/goal/get`, `thread/goal/set`, `thread/goal/clear`,
 `thread/goal/updated` and `thread/goal/cleared`. A separate read-only daemon
@@ -11,6 +13,41 @@ it did not resume a thread, change a goal, interrupt work or start inference.
 Schema generation is compatibility evidence, not live mutation acceptance.
 
 ## Commands and UI
+
+### PC owner-only adapter — 2026-10-03
+
+PC Khadang now reads the exact bound native goal on recovery and before a
+control. `/goal status` is no longer mistaken for a new objective; explicit
+`set`, missing/completed resume, cleared notifications, stale replies and
+validated goal accounting are handled. Pause/resume change status only; pause
+does not claim running tools have stopped. Bound controls amend the existing
+rolling text message, including while idle. Native goal evidence, accounting
+and observation time persist beside the same bubble; restart reads fresh
+native state rather than declaring cached data current. Literal/redacted goal
+footers reserve room within the 3900-unit message limit.
+
+The self-contained Windows build passes 77 router checks both locally and on
+Windows. Additional joined fixtures exercise foreign/stale/malformed evidence,
+pause during an active turn, clear and exact-thread/bubble recovery without
+model/network/credential calls. A real no-inference native read returned
+`goal: null` for LG thread `01a10114-cbad-7a80-ae57-b9af8f8478c7`; activation
+kept topic 159, bubble 161, four accepted turns and two sendMessage receipts.
+No owner's goal was created, paused, resumed or cleared as a fixture. Human
+mutations, active-goal rendering, native-app continuity and all-source
+continuation admission remain acceptance gates. Owner-only defaults are not
+company/employee grants or the 10% quota-reserve controller.
+
+An initial framework-dependent package failed because the PC has no global
+.NET runtime. The previous self-contained release was restored before the
+corrected package was staged. Deployment now validates the included runtime
+and executes Windows candidate tests **before** interrupting the service. Its
+startup supervisor is fenced during staging, with protected SCM/probe/task
+preimages and enabled-state restoration after verified activation. Both native
+remote processes and all VPN/LG services remained running. This fixes the
+packaging/deployment mechanism; it is not a runtime-install workaround.
+[Current PC evidence](../pc-router/deployment-status.json).
+
+### Native command semantics
 
 | Command | Native action |
 | --- | --- |

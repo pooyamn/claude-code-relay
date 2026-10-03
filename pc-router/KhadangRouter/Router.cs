@@ -16,9 +16,10 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
         public RollingBubble Bubble = new();
         public Stopwatch Elapsed = new();
         public TimeSpan Carried;
-        public string? Turn, Goal;
+        public string? Turn;
+        public NativeGoal Goal = new(binding.ThreadId);
         public int? Message;
-        public string LastRendered = "", Status = "Working";
+        public string LastRendered = "", Status = "Ready";
         public bool Busy, SendUnknown, Dirty, Held;
         public long Revision;
         public readonly Dictionary<string, JsonElement> Items = new();
@@ -58,6 +59,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
         }
         rpc.Notification += OnNative;
         if (sessions.Count == 0) await CreateLg(stop);
+        foreach (var session in sessions.Values) await ReadGoal(session, stop);
         var edits = Task.Run(() => EditLoop(stop), stop);
         try
         {
@@ -182,7 +184,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
                 ledger.Finish(updateId, "held-media"); return;
             }
             var text = textElement.GetString()!;
-            if (text.StartsWith('/'))
+            if (text.TrimStart().StartsWith('/'))
             {
                 await session.Dispatch.WaitAsync(stop);
                 try { await Control(session, text, stop); ledger.Finish(updateId, "control"); return; }
@@ -247,7 +249,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
 
     private async Task Control(Session session, string text, CancellationToken stop)
     {
-        var parts = text.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+        var parts = text.Trim().Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries);
         var command = parts[0].Split('@');
         if (command.Length > 1 && !command[1].Equals(policy.BotUsername, StringComparison.OrdinalIgnoreCase)) return;
         var argument = parts.Length > 1 ? parts[1].Trim() : "";
@@ -263,18 +265,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
                 await rpc.Call("turn/interrupt", new { threadId = session.Binding.ThreadId, turnId = turn }, stop);
                 answer = "Interrupt requested; waiting for the native stopped state."; break;
             case "/goal":
-                JsonElement goal;
-                if (argument == "clear") goal = await rpc.Call("thread/goal/clear", new { threadId = session.Binding.ThreadId }, stop);
-                else if (argument is "pause" or "resume") goal = await rpc.Call("thread/goal/set", new { threadId = session.Binding.ThreadId, status = argument == "pause" ? "paused" : "active" }, stop);
-                else if (argument.Length > 0) goal = await rpc.Call("thread/goal/set", new { threadId = session.Binding.ThreadId, objective = argument }, stop);
-                else goal = await rpc.Call("thread/goal/get", new { threadId = session.Binding.ThreadId }, stop, effect: false);
-                if (goal.TryGetProperty("goal", out var g) && g.ValueKind == JsonValueKind.Object)
-                {
-                    session.Goal = g.GetProperty("objective").GetString() + " [" + g.GetProperty("status").GetString() + "]";
-                    answer = "Goal: " + session.Goal + "\nStatus: " + g.GetProperty("status").GetString();
-                }
-                else { session.Goal = null; answer = "No ongoing goal."; }
-                lock (session.Gate) Touch(session); break;
+                answer = await GoalControl(session, argument, stop); break;
             case "/model":
                 if (argument.Length == 0)
                 {
@@ -326,7 +317,69 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
                 break;
             default: answer = "That control is not activated. /help lists the PC controls; commands are never sent to the model as prompts."; break;
         }
-        await telegram.Send(policy.ChatId, session.Binding.Topic, answer, stop);
+        // Commands share the rolling receipt, including while idle. A separate
+        // command reply would recreate the multi-message UI the owner rejected.
+        lock (session.Gate) { session.Bubble.Append("\n" + answer + "\n"); Touch(session); }
+    }
+
+    private async Task<bool> ReadGoal(Session session, CancellationToken stop)
+    {
+        var revision = session.Goal.Revision;
+        try
+        {
+            var reply = await rpc.Call("thread/goal/get", new { threadId = session.Binding.ThreadId }, stop, effect: false);
+            session.Goal.Apply(reply.GetProperty("goal"), revision);
+            lock (session.Gate) Touch(session);
+            return session.Goal.Known;
+        }
+        catch (Exception error) when (error is NativeRejected or IOException or InvalidDataException or KeyNotFoundException or InvalidOperationException or TimeoutException)
+        {
+            session.Goal.Unavailable(revision); lock (session.Gate) Touch(session); return false;
+        }
+    }
+
+    private async Task<string> GoalControl(Session session, string argument, CancellationToken stop)
+    {
+        GoalCommand command;
+        try { command = GoalCommand.Parse(argument); }
+        catch (InvalidDataException error) { return error.Message + " No goal change sent."; }
+        if (!await ReadGoal(session, stop)) return "Goal status unavailable. No goal change sent.";
+        if (command.Action == "status") return session.Goal.Footer is { } line ? "Goal: " + line : "No ongoing goal.";
+        var current = session.Goal.Value;
+        if (command.Action is "pause" or "resume" && (current == null || current.Value.GetProperty("status").GetString() == "complete"))
+            return "No resumable goal. Set a new objective explicitly; a completed goal is not recreated.";
+        if (command.Action is "set" or "resume" && (session.Held || ledger.Unknown != 0))
+            return "Goal activation held: reconcile uncertain effects first. No change sent.";
+        var revision = session.Goal.Revision;
+        var method = command.Action == "clear" ? "thread/goal/clear" : "thread/goal/set";
+        object parameters = command.Action switch {
+            "clear" => new { threadId = session.Binding.ThreadId },
+            "set" => new { threadId = session.Binding.ThreadId, objective = command.Objective, status = "active" },
+            _ => new { threadId = session.Binding.ThreadId, status = command.Action == "pause" ? "paused" : "active" }
+        };
+        var reply = await rpc.Call(method, parameters, stop);
+        try
+        {
+            if (command.Action == "clear")
+            {
+                if (!await ReadGoal(session, stop)) return "Goal clear acknowledged; current state unavailable. Not retried.";
+                return "Goal clear acknowledged. " + (session.Goal.Footer is { } remaining ? "Current goal: " + remaining : "No goal remains.");
+            }
+            session.Goal.Apply(reply.GetProperty("goal"), revision);
+            var expectedStatus = command.Action == "pause" ? "paused" : "active";
+            var returned = reply.GetProperty("goal");
+            if (returned.GetProperty("status").GetString() != expectedStatus ||
+                command.Action == "set" && returned.GetProperty("objective").GetString() != command.Objective)
+                return "Goal change acknowledged but requested state differs. Use /goal status; no automatic replay.";
+            lock (session.Gate) Touch(session);
+            return "Goal control acknowledged. Goal: " + session.Goal.Footer +
+                (command.Action == "pause" ? "\nThe current turn was not interrupted; running tools may still be active." : "");
+        }
+        catch (Exception error) when (error is InvalidDataException or KeyNotFoundException or InvalidOperationException)
+        {
+            session.Goal.Unavailable(revision); lock (session.Gate) Touch(session);
+            return "Goal change acknowledged but state is unverified. Use /goal status; no automatic replay.";
+        }
     }
 
     private void OnNative(JsonElement message)
@@ -407,8 +460,11 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
                 if (item.GetProperty("type").GetString() == "agentMessage" && !session.DeltaItems.Contains(item.GetProperty("id").GetString()!))
                     session.Bubble.Append(item.GetProperty("text").GetString()!);
             }
-            else if (method == "thread/goal/updated" && parameters.TryGetProperty("goal", out var goal))
-                session.Goal = goal.ValueKind == JsonValueKind.Object ? goal.GetProperty("objective").GetString() + " [" + goal.GetProperty("status").GetString() + "]" : null;
+            else if (method is "thread/goal/updated" or "thread/goal/cleared")
+            {
+                try { session.Goal.Apply(method == "thread/goal/cleared" ? JsonSerializer.SerializeToElement<object?>(null) : parameters.GetProperty("goal")); }
+                catch (Exception error) when (error is InvalidDataException or KeyNotFoundException or InvalidOperationException) { return; }
+            }
             Touch(session);
         }
     }
@@ -423,7 +479,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
                 lock (session.Gate)
                 {
                     if (session.SendUnknown || !session.Dirty && !session.Busy) continue;
-                    text = session.Bubble.Render(session.Carried + session.Elapsed.Elapsed, session.Goal, session.Status); message = session.Message; revision = session.Revision;
+                    text = session.Bubble.Render(session.Carried + session.Elapsed.Elapsed, session.Goal.Footer, session.Status); message = session.Message; revision = session.Revision;
                     if (text == session.LastRendered) continue;
                 }
                 try
@@ -463,9 +519,14 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
             throw new InvalidOperationException("Telegram command menu readback differs");
     }
     private void Touch(Session session) { session.Revision++; session.Dirty = true; Persist(session); }
-    private void Persist(Session session) => ledger.Put("bubble/" + session.Binding.ThreadId, new {
-        tail = session.Bubble.Tail, message = session.Message, sendUnknown = session.SendUnknown, held = session.Held,
-        busy = session.Busy, status = session.Status, elapsedMs = (session.Carried + session.Elapsed.Elapsed).TotalMilliseconds });
+    private void Persist(Session session)
+    {
+        var goal = session.Goal.Snapshot;
+        ledger.Put("bubble/" + session.Binding.ThreadId, new {
+            tail = session.Bubble.Tail, message = session.Message, sendUnknown = session.SendUnknown, held = session.Held,
+            busy = session.Busy, status = session.Status, elapsedMs = (session.Carried + session.Elapsed.Elapsed).TotalMilliseconds,
+            goal = goal.Goal, goalKnown = goal.Known, goalObservedAt = goal.ObservedAt });
+    }
     private void VerifyThread(JsonElement result, string cwd, string? id = null)
     {
         if (result.GetProperty("cwd").GetString() is not { } actual || !actual.Equals(cwd, StringComparison.OrdinalIgnoreCase) ||

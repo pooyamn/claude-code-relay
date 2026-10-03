@@ -72,6 +72,19 @@ password went into argv, a file or plaintext registry. No reboot or
 stopped-service startup test was performed; these configuration changes do not
 complete PR 19/20, recovery, native app attachment or company isolation.
 
+PC owner-only goal/control preparation is now deployed with fresh native reads
+on restart, validated/stale-safe updated/cleared events and accounting, proper
+status/set parsing and same-bubble replies. 77 checks pass locally and on
+Windows; the actual native read confirms no goal in LG's exact thread, and
+idle activation preserves bubble/topic/model-turn receipts. A framework-
+dependent package initially failed and was rolled back; the corrected
+self-contained release is live. Windows candidate/runtime validation now
+precedes service interruption, with startup supervision fenced during staging
+and restored after verified activation. This does not complete PR 6–9 or the
+goal gate: live human mutations, active-goal rendering, all-source/root-budget
+admission, provider/app continuity and role/company acceptance remain pending.
+[Goal implementation and evidence](codex-goals.md#pc-owner-only-adapter--2026-10-03).
+
 Pouya requested sequential implementation for PC readiness and authorized committing and pushing verified changes. Repository publication is separate from deployment. The separately authorized legacy Mac Khadang test release has now been retired; the protected Windows migration evidence above is distinct from target WSL/company acceptance. No GitHub PRs or production/HamalBot migration have been performed by this implementation run. Unrelated uncommitted edits and runtime/media files are excluded from this series.
 
 PR 1 is locally implemented. PRs 2–5 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel/runtime integration still pending; evidence and limits are recorded below. PR 6's outbound foundation, bounded format/media repair, receipt-bound owner-prompt bridge, current source-grant dispatch and Telegram-local recovery are prepared offline; real protected producer/context wiring and target integration remain pending. PR 7's native registry, launch-bundle, worker-UID worktree and context-installation foundations are prepared as dependencies for that wiring, without completing PR 6 or its own native/launcher gates. PR 8's durable root/work custody and bounded-diagnosis guard are prepared offline, without granting activity slots or completing real evidence/admission/report/controller integration. PR 9's shared admission/account-pacing ledger, diagnostic transaction bridge, owner-first dispatch offers, bounded quota estimates and durable capacity-retry linkage are prepared offline; real all-source native enforcement, quota/source/stop/usage readers, approved estimate policy, protected priority/diagnostic producers and results, native retry/steering/continuation adapters and target acceptance remain pending. PR 10's worktree checkpoint and joined switch controller are prepared offline, including task/action references and atomic custody transfer; protected export, real source/loading/fence readers, issue delivery, admitted repair and target acceptance remain pending. PR 11's publication/review/merge-intent foundation and real-Git post-merge candidate replay are prepared offline; verified Git export, protected GitHub/CI enforcement, same-path promotion/conflict resolution and target acceptance remain pending. PR 12's coordinated capture and experimental encrypted package/paused verifier are prepared offline; production format/key custody, full inventory, off-machine upload and target restore remain pending. PRs 13–20 remain to be implemented, apart from separately requested early preparations noted below. Linux/WSL OS-boundary and integrated-system tests remain pending; macOS conformance tests do not satisfy those gates.

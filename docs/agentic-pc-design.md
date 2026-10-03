@@ -55,6 +55,19 @@ signed-in host and an unlocked Windows desktop for Computer Use; configured
 tasks alone do not establish native phone pairing or reboot recovery.
 [Remote host requirements](https://learn.chatgpt.com/docs/remote-connections).
 
+2026-10-03 PC goal/control update: owner-only Khadang now reads the exact native
+goal on recovery, handles updated/cleared notifications and stale replies, and
+keeps control replies in the existing rolling bubble. Status no longer sets an
+objective named "status"; status-only pause/resume preserve native accounting
+and do not assert that running tools stopped. The LG thread currently has no
+native goal. 77 joined/offline checks pass on Mac and Windows, with actual
+no-inference goal-read and idle restart evidence; live owner mutations,
+active-goal UI and all-source continuation admission remain gates. Native
+remote processes and VPN/LG services stayed running. An initial runtime-package
+mismatch was rolled back; the corrected self-contained release is live and
+deployment now validates Windows candidates before stopping the service.
+[PC goal evidence and limits](codex-goals.md#pc-owner-only-adapter--2026-10-03).
+
 ## 1. Goals and constraints
 
 Goals

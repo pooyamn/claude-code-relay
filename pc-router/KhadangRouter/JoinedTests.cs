@@ -91,6 +91,7 @@ public static class JoinedTests
                         sandbox = new { type = !MisreportProfile && LastProfile == ":danger-full-access" ? "dangerFullAccess" : "workspaceWrite" }, thread = new { id = "exact-native-id" } }));
                 case "thread/inject_items": return Task.FromResult(Json(new { }));
                 case "thread/read": return Task.FromResult(Json(new { thread = new { id = "exact-native-id" } }));
+                case "thread/goal/get": return Task.FromResult(Json(new { goal = (object?)null }));
                 case "turn/start":
                     Started++; Event("turn/started", new { threadId = "exact-native-id", turn = new { id = "turn-1" } });
                     Event("item/started", new { threadId = "exact-native-id", turnId = "turn-1", item = new { id = "tool", type = "commandExecution", command = "whoami /user" } });

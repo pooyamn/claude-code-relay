@@ -18,6 +18,32 @@ $release = Join-Path $root ('release-'+[Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory $release | Out-Null
 Expand-Archive -LiteralPath $Archive -DestinationPath $release
 if (-not (Test-Path "$release\publish-live\KhadangRouter.exe")) { throw 'Unexpected reviewed archive layout' }
+$runtime = Get-Content "$release\publish-live\KhadangRouter.runtimeconfig.json" -Raw | ConvertFrom-Json
+if (-not ($runtime.runtimeOptions.includedFrameworks | Where-Object name -eq 'Microsoft.NETCore.App') -or
+    -not (Test-Path "$release\publish-live\coreclr.dll") -or -not (Test-Path "$release\publish-live\System.Private.CoreLib.dll")) {
+    throw 'Windows router release must include its reviewed self-contained runtime; live service untouched'
+}
+# Validate the actual target runtime BEFORE interrupting the service. A Mac
+# compile cannot prove Windows packaging, and a mixed overlay is not a runtime.
+& "$release\publish-live\KhadangRouter.exe" --self-test
+if ($LASTEXITCODE -ne 0) { throw 'Windows candidate tests failed; live service untouched' }
+Copy-Item "$root\state\probe.json" (Join-Path $release 'previous-probe.json')
+[IO.File]::WriteAllText((Join-Path $release 'previous-service.json'), (@{path=$service.PathName;startMode=$service.StartMode} | ConvertTo-Json))
+# Serialize administrative staging with deterministic boot supervision. Without
+# this fence the new startup task could relaunch a half-replaced release.
+$startup = Get-ScheduledTask -TaskName 'Oracova-KhadangStartup' -ErrorAction SilentlyContinue
+$startupWasEnabled = $false
+if ($startup) {
+    if ($startup.Actions.Count -ne 1 -or $startup.Actions[0].Execute -ne 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -or
+        $startup.Actions[0].Arguments -ne '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "C:\ProgramData\OracovaNativeRemote\router-startup.ps1"' -or
+        $startup.Principal.UserId -notin @('SYSTEM','NT AUTHORITY\SYSTEM','S-1-5-18')) { throw 'Unexpected startup supervisor; preserve it and review' }
+    $startupWasEnabled = $startup.State.ToString() -ne 'Disabled'
+    [IO.File]::WriteAllText((Join-Path $release 'startup-supervisor-before.json'), (@{task=$startup.TaskName;wasEnabled=$startupWasEnabled;restoreAfterMatchingLiveProbe=$true} | ConvertTo-Json))
+    if ($startupWasEnabled) {
+        Disable-ScheduledTask -TaskName 'Oracova-KhadangStartup' | Out-Null
+        if ((Get-ScheduledTask -TaskName 'Oracova-KhadangStartup').State.ToString() -eq 'Running') { Stop-ScheduledTask -TaskName 'Oracova-KhadangStartup' }
+    }
+}
 Stop-Service KhadangRouter
 (Get-Service KhadangRouter).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(20))
 if ($OwnerFullAccess) {
@@ -59,4 +85,4 @@ $changed = Invoke-CimMethod -InputObject $service -MethodName Change -Arguments 
 if ($changed.ReturnValue -ne 0) { throw 'SCM configuration failed' }
 if (Test-Path "$root\state\failure.json") { Move-Item "$root\state\failure.json" (Join-Path $release 'previous-failure.json') }
 Start-Service KhadangRouter
-[PSCustomObject]@{service=(Get-Service KhadangRouter).Status.ToString();mode=$Mode;previousBin=$backup;credentials='Protected PC-only store; no plaintext output'} | ConvertTo-Json -Compress
+[PSCustomObject]@{service=(Get-Service KhadangRouter).Status.ToString();mode=$Mode;previousBin=$backup;startupSupervisorHeld=$startupWasEnabled;credentials='Protected PC-only store; no plaintext output'} | ConvertTo-Json -Compress

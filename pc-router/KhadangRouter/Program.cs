@@ -51,11 +51,21 @@ try
                         writableRoots = new[] { policy.WorkspaceRoot + "\\lg-magic" }, networkAccess = false }, timeoutMs = 10000 }, stop);
                 if (sandbox.GetProperty("exitCode").GetInt32() != 0 || !sandbox.GetProperty("stdout").GetString()!.Contains("CodexSandboxOffline", StringComparison.OrdinalIgnoreCase))
                     throw new InvalidOperationException("Native elevated Windows workspace sandbox did not execute as its dedicated offline identity");
+                var goalReads = new List<object>();
+                foreach (var binding in ledger.Bindings())
+                {
+                    // Read stored state only: do not resume, start a turn or
+                    // mutate the owner's goal as a deployment fixture.
+                    var read = await rpc.Call("thread/goal/get", new { threadId = binding.ThreadId }, stop, effect: false);
+                    var view = new NativeGoal(binding.ThreadId); view.Apply(read.GetProperty("goal"));
+                    goalReads.Add(new { threadId = binding.ThreadId, known = view.Known, goal = view.Value });
+                }
                 File.WriteAllText(Path.Combine(policy.StateDirectory, "probe.json"), JsonSerializer.Serialize(new {
                     verified = true, pcOnly = true, bot = policy.BotUsername, nativeOwnerSid = policy.OwnerSid,
                     nativePid = rpc.Pid, nativeAccountAuthenticated = loggedIn, commandOwnerVerified = true, credentialAndCodeDenied = true,
                     aclProbeWithoutProviderSandbox = true,
                     nativeWindowsSandboxVerified = true,
+                    nativeGoalReadSchemaVerified = true, nativeGoalReads = goalReads,
                     policySha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(args[2]))),
                     routerSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(typeof(Router).Assembly.Location))),
                     modelInference = false, telegramPolling = false, testedAt = DateTimeOffset.UtcNow }));
