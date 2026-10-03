@@ -18,6 +18,23 @@ with approvals never. This is not company/role acceptance: native Claude, media,
 all-source admission, goal recovery and automatic startup remain pending.
 [Current PC cutover evidence](../pc-router/deployment-status.json).
 
+2026-10-03 native remote milestone: both PC Codex and Claude Remote Control
+report Connected as the non-elevated owner. Sign-in/single-instance supervisor
+tasks are installed. Codex uses a **workaround for characterized Windows CLI
+launch defects**: supported native app-server stdio plus remote-control RPC;
+the stock daemon/foreground CLI commands are not fixed. Claude's dedicated
+workspace trust and exact first-use consent are accepted. A separate protected,
+deterministic SYSTEM availability task holds Windows system/execution power
+requests, not a model agent; it prevents idle standby on AC without forcing the
+TV/display on or overriding explicit sleep/thermal safety. Before-login,
+auto-login, reboot, orphan/resume recovery, phone round trip and shared
+Telegram/app transport remain acceptance gates. TV SIMPLINK/HDMI-CEC must be
+disabled in both directions; its settings service denied remote access, so the
+owner setting and TV-off/PC-online test remain pending. The Windows thermal
+event label is not proof of overheating; preserve raw events, owner evidence
+and measured temperatures separately rather than classifying every sleep as
+thermal.
+
 ## 1. Goals and constraints
 
 Goals

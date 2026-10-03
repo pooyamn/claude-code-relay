@@ -24,6 +24,36 @@ Current evidence and remaining gates are in
 Do not restart Khadang on the Mac or turn these owner-only defaults into employee
 grants. Hamal's wiring and the shared Mac native daemon remain untouched.
 
+Separately authorized remote-access milestone (2026-10-03): PC Codex native
+remote status and Claude Remote Control both report Connected under the
+non-elevated owner. Protected startup tasks use Interactive/Limited plus
+single-instance supervision; S4U/Limited actually elevated and was rejected.
+Claude needed slash-normalized workspace trust and its exact first-use consent.
+Codex's stock daemon launch fails under Task Scheduler's breakaway restriction;
+foreground mode additionally rejects the inherited Windows tempfile ACL. The
+native stdio/remoteControl RPC adapter is explicitly a workaround for those
+upstream CLI paths, not their repair: see the pinned
+[foreground launch](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/cli/src/remote_control_cmd.rs),
+[Windows launch check](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/app-server-daemon/src/backend/windows.rs),
+and [native remote protocol](https://github.com/openai/codex/blob/rust-v0.160.0/codex-rs/app-server-protocol/src/protocol/v2/remote_control.rs).
+No connected native agent was restarted for the later status-observer staging.
+Five Claude status-parser checks passed on Windows; the router's 38 offline
+checks still pass locally and on Windows. This does not prove native Claude Telegram routing,
+phone/app round trips, the shared thread transport or all-source admission.
+
+`Oracova-RemoteAvailability` is a protected deterministic SYSTEM power-policy
+task, never a model agent. Actual `powercfg /requests` lists its system and
+execution requests, with no display/away-mode request. It addresses idle
+Modern Standby on AC while leaving explicit sleep and firmware thermal safety
+intact. [Windows power-request semantics](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-powersetrequest).
+The TV's developer SSH works when awake, but its settings service denies access;
+SIMPLINK/HDMI-CEC disable and a TV-off/PC-online test await the owner TV setting.
+Treat the firmware's thermal sleep label as uncorroborated, not an overheating
+diagnosis. Owner confirms fan/vents clear and reports no CPU load at the event;
+later ACPI/CPU readings do not reconstruct event-time temperature. Secure
+auto-login, before-login/reboot, orphan/resume and clean-machine recovery remain
+gates, not claims of an always-recoverable system.
+
 Pouya requested sequential implementation for PC readiness and authorized committing and pushing verified changes. Repository publication is separate from deployment. The separately authorized legacy Mac Khadang test release has now been retired; the protected Windows migration evidence above is distinct from target WSL/company acceptance. No GitHub PRs or production/HamalBot migration have been performed by this implementation run. Unrelated uncommitted edits and runtime/media files are excluded from this series.
 
 PR 1 is locally implemented. PRs 2–5 code/template preparation is implemented, with target-OS acceptance and trusted owner-channel/runtime integration still pending; evidence and limits are recorded below. PR 6's outbound foundation, bounded format/media repair, receipt-bound owner-prompt bridge, current source-grant dispatch and Telegram-local recovery are prepared offline; real protected producer/context wiring and target integration remain pending. PR 7's native registry, launch-bundle, worker-UID worktree and context-installation foundations are prepared as dependencies for that wiring, without completing PR 6 or its own native/launcher gates. PR 8's durable root/work custody and bounded-diagnosis guard are prepared offline, without granting activity slots or completing real evidence/admission/report/controller integration. PR 9's shared admission/account-pacing ledger, diagnostic transaction bridge, owner-first dispatch offers, bounded quota estimates and durable capacity-retry linkage are prepared offline; real all-source native enforcement, quota/source/stop/usage readers, approved estimate policy, protected priority/diagnostic producers and results, native retry/steering/continuation adapters and target acceptance remain pending. PR 10's worktree checkpoint and joined switch controller are prepared offline, including task/action references and atomic custody transfer; protected export, real source/loading/fence readers, issue delivery, admitted repair and target acceptance remain pending. PR 11's publication/review/merge-intent foundation and real-Git post-merge candidate replay are prepared offline; verified Git export, protected GitHub/CI enforcement, same-path promotion/conflict resolution and target acceptance remain pending. PR 12's coordinated capture and experimental encrypted package/paused verifier are prepared offline; production format/key custody, full inventory, off-machine upload and target restore remain pending. PRs 13–20 remain to be implemented, apart from separately requested early preparations noted below. Linux/WSL OS-boundary and integrated-system tests remain pending; macOS conformance tests do not satisfy those gates.

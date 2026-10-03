@@ -59,12 +59,59 @@
     "backup_directory": "C:\\ProgramData\\KhadangRouter\\owner-settings-before-full-access-23f898b8cba0457f9b0b2cc8e1659c2f",
     "scope": "Native user defaults and explicit owner-only Windows router profile. Actual thread/start readback confirms dangerFullAccess and never. No SYSTEM agents, employee grants or Windows administrator bypass."
   },
+  "native_remote_access": {
+    "observed_connected_at": "2026-10-03T09:52:16Z",
+    "codex_version": "0.160.0",
+    "claude_version": "2.1.288",
+    "codex": "Native remoteControl/status/changed reported connected with a registered environment; app-server PID 5420, non-elevated owner Session 1.",
+    "claude": "Native Remote Control server reported Connected, PC - Native Claude; PID 9188, non-elevated owner Session 1. Exact first-use enable prompt accepted; slash-normalized dedicated workspace trust verified.",
+    "tasks": ["Oracova-CodexRemote", "Oracova-ClaudeRemote"],
+    "startup": "Interactive/Limited owner sign-in plus one-minute single-instance supervision; neither model runs as SYSTEM. S4U/Limited was rejected because the observed token was elevated.",
+    "codex_workaround": "Stock Windows daemon launch was denied detached-child breakaway; foreground remote-control used a tempfile directory rejected by its own private-ACL check. Supported native app-server over private stdio plus initialize/remoteControl/enable bypasses these characterized upstream launch defects without a public listener, API key or model prompt. This does not fix the stock CLI commands.",
+    "active_runner_sha256": "9D9D8B698842D3507AACDEA1CEFD047BA098BAC9ECB513813036276F24EAD9EE",
+    "next_launch_runner_sha256": "288EF1B2670CE6690B98E5B6F147C7E2E998DF5F1D87A743FBF45AB7117CAA44",
+    "next_launch_change": "Bounded Claude native status observer staged without restarting either connected agent; five parser checks and Windows source parsing passed.",
+    "worktree_prerequisites": "Empty pc-control repository now has initial HEAD c78dd7a6d66e0c855b66cedd2b2c17aafd91c3dd. Control and LG repository roots/.git ownership changed from Administrators to exact pou SID, retaining DACLs and a protected ownership preimage. No global safe.directory exemption or Git remote added. Native worktree/model round trip remains pending.",
+    "before_login_verified": false,
+    "reboot_verified": false,
+    "phone_round_trip_verified": false,
+    "shared_telegram_transport_verified": false,
+    "claude_telegram_adapter_verified": false
+  },
+  "availability": {
+    "task": "Oracova-RemoteAvailability",
+    "guard_sha256": "0A5E8F5FD18292D3396E88C880D704D9FB36C9AB98B95C5752792453FF4A44D0",
+    "running": true,
+    "system_and_execution_requests_verified": true,
+    "display_request": false,
+    "scope": "Protected deterministic SYSTEM power-policy task, not a model agent. Windows powercfg /requests confirms system/execution requirements for remote services; no synthetic input, busy CPU load, away-mode request or thermal override. Prevents idle standby on AC, not explicit user/firmware sleep.",
+    "boot_trigger_installed": true,
+    "boot_acceptance_pending": true,
+    "auto_admin_logon_observed": false,
+    "full_recovery_verified": false
+  },
+  "tv_power_sync": {
+    "tv_address": "10.0.0.224",
+    "hdmi_input": 3,
+    "requested": "Disable SIMPLINK/HDMI-CEC power synchronization in both directions",
+    "status": "Pending owner TV setting: developer SSH authenticated, but settings-service read returned Access denied. No TV setting has been silently changed; owner asked to turn off SIMPLINK.",
+    "both_directions_disabled_verified": false,
+    "tv_off_pc_remains_online_tested": false
+  },
+  "sleep_diagnosis": {
+    "event_label": "Thermal Zone",
+    "overheating_proven": false,
+    "owner_evidence": "Owner reports no CPU load at sleep, says firmware labels normal sleep as thermal, and confirms fan/vents clear.",
+    "later_observation": "3 percent CPU, approximately 54 C from ACPI thermal-zone data; no stress processes. These later readings do not establish event-time temperature or TV causality.",
+    "thermal_protection_modified": false
+  },
   "remaining": [
     "Real owner input/active steering and durable goal-state acceptance",
     "Native Claude interactive adapter and tool-switch continuity",
     "Media delivery and native phone/app attachment",
     "Joined quota/admission/progress enforcement including the 10 percent owner reserve",
     "Role/company/employee authorization and publication gates",
-    "Startup without console sign-in, reboot and clean-machine recovery drills"
+    "Startup without console sign-in, secure auto-login, reboot and clean-machine recovery drills",
+    "TV SIMPLINK disable/readback and TV-off/PC-online acceptance; native daemon/orphan and resume recovery"
   ]
 }
