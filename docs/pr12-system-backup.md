@@ -28,6 +28,77 @@ not relabel the inner capture as complete-system coverage or authorize activatio
 
 ## Protected sources and coordinated capture
 
+### Actual PC candidate inventory (2026-10-03)
+
+`pc-router/inspect-backup-inventory.ps1` now discovers metadata on the actual
+Windows host, without reading recovery-file contents, opening live SQLite
+connections, starting models or changing source permissions/services. It records
+literal UTF-16 names, sizes, attributes, ACLs, volume/file identities and link
+counts. Final-entry handles request only `FILE_READ_ATTRIBUTES` and use
+`FILE_FLAG_OPEN_REPARSE_POINT`; directory junctions are not traversed. This is a
+**mutable-source diagnostic**, not a protected policy or coherent capture. Its
+ancestor paths are not fenced, and 64-bit file indexes are not guaranteed unique
+on ReFS. [Windows file metadata](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfileinformationbyhandle),
+[symbolic-link handle semantics](https://learn.microsoft.com/en-us/windows/win32/fileio/symbolic-link-effects-on-file-systems-functions).
+
+The completed observation at `2026-10-03T12:59:04.6661113Z` contains 27 candidate
+components, 6,059 entries and 5,506,010,424 logical bytes summed per pathname;
+this is not deduplicated storage or a backup-size estimate. Ten SQLite candidates
+include native goal, memory, queue, history and router state, with live WAL/SHM
+sidecars. Required proposals include full workspaces and Git/dirty/ignored work,
+both native runtimes and histories, router/media/action ledgers, LG/VPN state,
+SSH host keys/configuration, GitHub login configuration, user/machine DPAPI and
+credential stores, deployment artifacts, rollback copies and WSL state. These
+are discovered candidates, not automatically authorized snapshot enrollment.
+
+Two native-history reparse entries and one installed-runtime reparse entry remain
+explicitly unresolved. Alternate streams, complete hardlink alias closure,
+timestamps/SACLs, runtime/database-generation provenance and source consistency
+are not established. Service definitions/credentials, task XML, firewall,
+power/boot/driver/network state, VM/WSL registration and portable machine-bound
+credential recovery still require protected API exporters or explicit owner
+re-login/bootstrap paths. Copying DPAPI blobs is not proof of usable credentials
+on a clean machine. Future company/role memories and registries must join the
+same authoritative inventory after their host boundary is selected.
+
+The detailed report is PC-local, administrator-owned, with only SYSTEM/admin
+access inherited from its protected new directory:
+`C:\ProgramData\KhadangRouter\state\recovery-inventory-da3483d6df3b452dbee63fc975b5ed0f\candidate-inventory.json`.
+Its SHA-256 is
+`5344FC6792DABB37E6D29D237E589D8E6E6F31A11214A11FD153FF6AC62F8AD7`.
+Only sanitized counts/limitations are recorded here. This digest does not
+authenticate a recovery catalog or certify source freshness. The report remains
+`fullSystemBackup:false`, `encrypted:false`, `writersFrozen:false`, restore
+paused; no daily job, encryption, off-machine upload or restore was performed.
+
+Twenty-two actual Windows fixture checks cover a real NTFS junction/hardlink,
+ACL metadata, empty directories, literal/surrogate names, entry bounds, absent
+required sources, private no-overwrite output and truthful summary scope. The
+first real discovery exposed PowerShell expression-list `+` precedence collapsing
+dynamic folder tuples; named source fields fix the mechanism, and the regression
+now tests actual dynamic-folder discovery and collector binding. Fixture success
+and a published inventory are not PR 12 acceptance.
+
+After this inventory, the router source was added at
+`C:\Users\pou\workspaces\claude-code-relay`, branch
+`codex/agentic-pc-preparation`, commit
+`9ef8fad61643a2efe11dcde2537561ff79f12a5c`. A one-shot Interactive/Limited task
+verified the exact ordinary owner, expected branch/commit and non-shallow history;
+the task completed with result 0 at `2026-10-03T13:01:39.8796589Z`, and independent
+ACL inspection confirms owner `pou` for the repository and `.git`. GitHub CLI's
+existing login returned **HTTP 401: Requires authentication**, so this used a
+**transport workaround**: an administrator-sealed, digest-pinned `git bundle
+create --all` archive, then ordinary-owner Git clone and a repository-local
+GitHub origin URL. [Git bundle semantics](https://git-scm.com/docs/git-bundle).
+The retained bundle SHA-256 is
+`54908CFD95BBDD192F1E5B2AA29E09C72CEB0708F62BFCD795773759C1325AC2`.
+GitHub authentication remains unresolved; no credential was extracted or moved,
+global config changed, model started or service restarted. Uncommitted/ignored
+Mac work is not in this Git transfer and remains intact on the Mac. This source
+copy and its one-shot evidence must join the next inventory/capture; the earlier
+report is not retroactively current. Clone availability is not enforced
+review/merge/deployment authority, publication acceptance or full-system recovery.
+
 `relay_core/system_snapshot.py` requires a protected `SnapshotPolicy`, explicit
 component instances, a whole-cohort filesystem/native writer guard and a clock.
 The policy pins each component's source root, original owner UID, deployed

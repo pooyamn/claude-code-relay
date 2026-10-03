@@ -6,6 +6,15 @@ Build testable security and delivery foundations first. Introduce the builder wi
 
 ## Execution status
 
+2026-10-03 partial PR 12 PC discovery: a protected metadata-only report now
+records 27 candidate components, 6,059 entries and ten SQLite candidates on the
+actual Windows host. Twenty-two Windows checks pass, including real junctions,
+hardlinks, ACLs and a dynamic-source regression found during discovery. Three
+reparse entries and OS API/machine-bound credential recovery remain unresolved.
+This neither freezes writers nor enrolls an authoritative backup cohort; there
+is no encrypted off-machine daily backup or clean-machine restore acceptance.
+[Exact observation and remaining gates](pr12-system-backup.md#actual-pc-candidate-inventory-2026-10-03).
+
 2026-10-03 inbound media integration: owner-only PC photo/file staging now keeps
 captions and native localImage/file references in a protected read-only cache,
 without credential URLs in native input. 254 local and 257 actual Windows checks
