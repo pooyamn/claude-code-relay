@@ -44,7 +44,19 @@
     "handoff_state": "C:\\Users\\pou\\workspaces\\lg-magic\\LG-SUBTASK.json updated to pc_topic_connected with confirmed topic/thread IDs; private preimage retained.",
     "native_persistence": "Confirmed inert thread/inject_items checkpoint and includeTurns readback before Telegram creation; exact resume succeeded across process restart.",
     "native_profile_readback": {"permissions": ":danger-full-access", "sandbox": "dangerFullAccess", "approvalPolicy": "never", "approvalsReviewer": "user"},
-    "next_gate": "Real owner input/active steering, goal recovery, media, Claude continuity, all-source admission and automatic startup/recovery. This owner-only adapter does not establish company or role isolation."
+    "owner_input": "Readback on 2026-10-03 confirms four accepted turn/start receipts (the canary plus three owner inputs); active-turn steering remains untested.",
+    "automatic_startup": {
+      "task": "Oracova-KhadangStartup",
+      "principal": "SYSTEM; deterministic lifecycle code only",
+      "triggers": "Boot, exact pou logon and one-minute single-instance reconciliation",
+      "owner_gate": "If SCM is stopped, require the physical-console owner's exact SID and non-elevated token, plus matching reviewed router/policy digests and isolation probe. SCM remains Manual so it cannot launch the model before owner readiness.",
+      "startup_script_sha256": "C5E9E9F0397654D2F4594B23E7B8BF8FA4A1099B1E50242751C866B821AB3D50",
+      "live_no_effect_check": "Task completed with result 0 while service was running; existing router worker PID 8616 and native remote PIDs 5420/9188 survived. No service or native-agent restart requested.",
+      "console_token_read_only_probe_passed": true,
+      "stopped_service_start_verified": false,
+      "boot_verified": false
+    },
+    "next_gate": "Active steering, goal recovery, media, Claude continuity, all-source admission and stopped-service/boot recovery. This owner-only adapter does not establish company or role isolation."
   },
   "owner_full_access": {
     "explicitly_requested": true,
@@ -90,6 +102,20 @@
     "auto_admin_logon_observed": false,
     "full_recovery_verified": false
   },
+  "auto_login": {
+    "enabled": false,
+    "observed_at": "2026-10-03T10:34:23Z",
+    "local_owner_credentials_and_sid_validated": true,
+    "existing_lsa_secret_present": true,
+    "plaintext_registry_password_present": false,
+    "existing_credential_matches_validated_owner_password": false,
+    "existing_credential_preserved": true,
+    "meaningful_logon_banner_present": false,
+    "helper_sha256": "0B69EB349F28AE488F460B697A69C1DF37F9CD9F5ABA5C625B2E03B6A0180899",
+    "helper_scope": "Default mode is inspection. Enable validates the exact local owner through LogonUser and accepts private stdin only. Existing mismatched secrets are not overwritten; only newly created secrets can be cleared on failure. Relevant registry preimages are administrator-only. No password is printed, written to a file or placed in process arguments.",
+    "actual_boundary_probe": "Interactive/Limited pou task returned 0 after verifying denial of LSA private-policy read and protected startup-script write; independent SYSTEM read-only probe verified the exact non-elevated physical-console owner token.",
+    "next_action": "Owner asked whether to replace the mismatched saved credential with an administrator-only encrypted rollback copy. No replacement or reboot performed; reboot, before-login and clean-machine recovery remain unproven."
+  },
   "tv_power_sync": {
     "tv_address": "10.0.0.224",
     "hdmi_input": 3,
@@ -106,12 +132,12 @@
     "thermal_protection_modified": false
   },
   "remaining": [
-    "Real owner input/active steering and durable goal-state acceptance",
+    "Active steering and durable goal-state acceptance (ordinary owner input now observed)",
     "Native Claude interactive adapter and tool-switch continuity",
     "Media delivery and native phone/app attachment",
     "Joined quota/admission/progress enforcement including the 10 percent owner reserve",
     "Role/company/employee authorization and publication gates",
-    "Startup without console sign-in, secure auto-login, reboot and clean-machine recovery drills",
+    "Approved saved-credential replacement, secure auto-login, stopped-service/boot acceptance, before-login access and clean-machine recovery drills",
     "TV SIMPLINK disable/readback and TV-off/PC-online acceptance; native daemon/orphan and resume recovery"
   ]
 }

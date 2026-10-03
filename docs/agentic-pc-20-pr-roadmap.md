@@ -14,7 +14,7 @@ An inert native checkpoint persists the thread before binding; the real
 whoami/PC-RELAY-OK canary and tool output reach one edited bubble. Restart resumes
 the exact thread/bubble without another topic, model turn or message. 38 checks
 pass both locally and on Windows. This does not complete WSL/company gates,
-native Claude, media, all-source admission, goal recovery or automatic startup.
+native Claude, media, all-source admission, goal recovery or boot acceptance.
 Pouya also explicitly
 enabled full-access native user defaults for Codex and Claude on the PC; these
 do not grant SYSTEM identity, company privileges or satisfy publication gates.
@@ -53,6 +53,24 @@ diagnosis. Owner confirms fan/vents clear and reports no CPU load at the event;
 later ACPI/CPU readings do not reconstruct event-time temperature. Secure
 auto-login, before-login/reboot, orphan/resume and clean-machine recovery remain
 gates, not claims of an always-recoverable system.
+
+Owner-ready router startup is now configured separately from SCM Auto: the
+protected SYSTEM `Oracova-KhadangStartup` task reconciles on boot, exact owner
+logon and each minute, but starts a stopped service only with the exact medium
+console token and matching reviewed router/policy/isolation evidence. It does
+nothing to an already-running service. Its live no-effect check, SYSTEM token
+probe and ordinary-owner LSA-policy/startup-code denial probe returned 0;
+all three native PIDs, thread/bubble and four confirmed turn/start receipts
+are preserved. Four accepted turns establish ordinary owner input, not active
+steering. Eight PowerShell sources parse, two API definitions compile and five
+status-parser cases pass; router checks remain 38 locally and on Windows.
+Windows auto-login is still disabled. The current owner password validated
+against the exact SID, but differs from the existing saved LSA credential;
+the guarded helper preserved that secret and registry state. Replacement with
+an administrator-only encrypted rollback copy awaits owner approval. No
+password went into argv, a file or plaintext registry. No reboot or
+stopped-service startup test was performed; these configuration changes do not
+complete PR 19/20, recovery, native app attachment or company isolation.
 
 Pouya requested sequential implementation for PC readiness and authorized committing and pushing verified changes. Repository publication is separate from deployment. The separately authorized legacy Mac Khadang test release has now been retired; the protected Windows migration evidence above is distinct from target WSL/company acceptance. No GitHub PRs or production/HamalBot migration have been performed by this implementation run. Unrelated uncommitted edits and runtime/media files are excluded from this series.
 

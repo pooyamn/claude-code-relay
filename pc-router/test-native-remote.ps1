@@ -3,7 +3,7 @@ $ErrorActionPreference='Stop'
 # Only parse reviewed source and extract its pure status parser. Never launch an
 # agent, install a task, hold a power request, read credentials or use a network.
 $runner=$null
-foreach($name in @('remote-host.ps1','install-native-remote.ps1','availability-guard.ps1','install-availability-guard.ps1')) {
+foreach($name in @('remote-host.ps1','install-native-remote.ps1','availability-guard.ps1','install-availability-guard.ps1','configure-autologon.ps1','router-startup.ps1','install-router-startup.ps1','test-recovery.ps1')) {
  $tokens=$null;$errors=$null
  $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $SourceRoot $name),[ref]$tokens,[ref]$errors)
  if($errors.Count){throw ('PowerShell parse failure: '+$name)}
@@ -21,4 +21,4 @@ $cases=@(
  @{text="$([char]27)[8A$([char]27)[J$dot Connected $dot pc-control";expected='connected'}
 )
 foreach($case in $cases){if((Read-ClaudeRemoteStatus $case.text) -ne $case.expected){throw 'Native status parser regression'}}
-[Console]::WriteLine('All four scripts parse; five native status-parser checks passed (no credentials/network/models/power changes)')
+[Console]::WriteLine('All eight scripts parse; five native status-parser checks passed (no credentials/network/models/power changes)')

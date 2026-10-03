@@ -15,7 +15,7 @@ checkpoint precedes topic binding, actual tool output and PC-RELAY-OK reach one
 rolling bubble, and a service restart resumes the exact thread/message without
 another topic or model turn. The explicit native profile readback is full access
 with approvals never. This is not company/role acceptance: native Claude, media,
-all-source admission, goal recovery and automatic startup remain pending.
+all-source admission, goal recovery and boot/startup acceptance remain pending.
 [Current PC cutover evidence](../pc-router/deployment-status.json).
 
 2026-10-03 native remote milestone: both PC Codex and Claude Remote Control
@@ -34,6 +34,26 @@ owner setting and TV-off/PC-online test remain pending. The Windows thermal
 event label is not proof of overheating; preserve raw events, owner evidence
 and measured temperatures separately rather than classifying every sleep as
 thermal.
+
+2026-10-03 startup configuration: `Oracova-KhadangStartup` is a protected
+deterministic SYSTEM task with boot, owner-logon and minute triggers. SCM stays
+Manual: a stopped router may start only after the exact non-elevated physical
+console owner token is available and reviewed router/policy hashes match the
+isolation probe. Running/transitioning services are left untouched. The running
+service no-effect check and independent read-only owner-token and LSA/code
+denial probes pass; native remote processes, thread, bubble and turn count stay
+unchanged. A stopped-service start and reboot have **not** been accepted.
+Auto-login remains disabled: Windows already has an LSA secret that differs
+from the validated current owner password. The guarded helper preserved it and
+the existing registry state; owner approval to replace it with an encrypted
+rollback copy is pending. Prefer documented
+[LSA Winlogon secret storage](https://learn.microsoft.com/en-us/windows/win32/secauthn/protecting-the-automatic-logon-password),
+not plaintext registry values or password command arguments. LSA does not hide
+the password from administrators, and auto-login exposes the unlocked owner
+desktop to physical access. Official OpenAI guidance requires an awake,
+signed-in host and an unlocked Windows desktop for Computer Use; configured
+tasks alone do not establish native phone pairing or reboot recovery.
+[Remote host requirements](https://learn.chatgpt.com/docs/remote-connections).
 
 ## 1. Goals and constraints
 
