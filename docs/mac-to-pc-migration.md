@@ -41,7 +41,8 @@ actual configuration rather than replacing its backend without a decision.
 The source workspace is approximately 49 GB, with another 1.6 GB of OpenClaw
 media, 2.3 GB of Codex sessions and 1.2 GB of Claude project history. The PC has
 ample disk space. All source workspace files now have a checksum-verified PC
-archive, but project extraction and operational checks are not complete. The separate
+archive and an extracted workspace; project validation and operational checks
+are not complete. The separate
 physical bench MacBook also holds bench projects and tools; it is not the Mac
 VM holding the relay workspace.
 
@@ -166,7 +167,7 @@ launched there. The full Claude and Codex archives were extracted successfully
 as UID 1000 into private preserved-state directories, separate from active
 settings and logins. Workspace extraction also completed with exit 0 as that
 same user, restoring `/Users/pouya/.openclaw/workspace`. These extracted seeds
-still require project and exact-session checks plus a final source delta.
+still require project validation, native exact-ID resume and a final source delta.
 Read-only Git probes on the PC resolved the captured relay, ai-hil and supervisor
 worktree HEADs. The relay seed predates the new migration commits, so it must
 receive the final source delta rather than being treated as an up-to-date checkout.
@@ -204,6 +205,42 @@ journal-mode preservation, private output permissions, and symlink rejection.
 The Mac's read-only SQLite open failed for the inactive WAL case; the capture
 connection uses `query_only` to permit normal journal initialization while
 preventing SQL data writes. Only closed standalone backups use immutable reads.
+
+At 12:03 PM PDT, a one-shot Interactive/Limited task under the exact Windows
+owner SID and session 1 completed the preserved-history check as Linux UID 1000.
+All 14 bound workspaces exist. All 15 captured pins (five Codex and ten Claude)
+resolve to transcripts with matching session IDs, workspaces and message records;
+the five Codex IDs also match the captured state database. All six closed
+database snapshots match their capture digests and pass integrity checks. Eight
+validator tests pass, including mismatched metadata, missing pins, truncated JSON
+and symlink rejection. Conversation contents are not printed by the checker.
+
+The initial limited-owner probes could not attach Ubuntu's disk:
+`Wsl/Service/CreateInstance/MountDisk/HCS/E_ACCESSDENIED`. The distro directory
+and VHD inherited administrator/SYSTEM-only permissions from its original
+preparation. The personal migration distro now grants the exact Windows owner
+Modify access under `C:\ProgramData\OracovaWSL\Ubuntu2404`; other protected
+trees and existing grants remain unchanged. Original directory and disk ACLs
+are saved in a protected rollback receipt. Normal-owner entry then succeeded.
+The probe checks native exit status before attempting JSON parsing, retaining
+private failure output rather than masking an entry error as malformed JSON.
+
+Actual open/close probes, without reading credential bytes, were denied for
+Khadang's protected token from Windows, Linux UID 1000 and Linux UID 0.
+This is evidence for that Windows file boundary, not company isolation inside
+the personal distro. Owner-writable diagnostic results are not authorization
+grants. The successful task has no triggers and is terminal with exit 0;
+failed attempts and their output remain available for diagnosis. No model,
+native resume, action replay or routing change was started by these checks.
+
+Five bindings still need source-state reconciliation. Startup Ideas,
+kicad-copilot-research and mimic-fast-pcb lack a selected backend marker;
+hardware-lite and qwen-lab have a Claude marker but no exact session pin.
+Mimic's existing Claude transcript is preserved, not silently selected. Qwen's
+actual provider configuration must also be preserved and checked. These are
+not missing-history permissions to invent replacement conversations. Native
+application reads/resumes, final checkpoint capture and topic cutover remain
+separate pending checks.
 
 ARM GCC 13.2.1, newlib, OpenOCD 0.12.0, CMake 3.28.3, Ninja 1.11.1,
 GDB, Python venv and build dependencies are installed. Tool versions were read
