@@ -49,8 +49,9 @@ now also have a protected, checksum-verified PC archive. That archive is not an
 activated bench environment or a final checkpoint.
 
 The protected Windows Khadang service currently routes one test forum and uses
-Codex. A candidate now supports full chat/topic addresses and an explicit
-whole-group route; it is not yet deployed. A working native Linux transport for
+Codex. A candidate now supports full chat/topic addresses, an explicit
+whole-group route and distinct Windows Codex, Linux Codex and Claude paths
+inside the same router; it is not yet deployed. A working native Linux transport for
 Codex now passes isolated Windows-to-Linux native acceptance, including shared
 events and actual tool identity. A standalone Claude client now also passes
 authenticated native input and reply acceptance on the PC. A persistent shared
@@ -666,12 +667,66 @@ answer. A reset invalidates the old session pin and its pending requests; the
 controller must persist the new binding before further input. These are component
 checks, not acceptance against a real unfinished project or human approval.
 
-All 563 PC-router self-checks and five diagnostic input-guard tests pass in the
+At the standalone-client milestone, all 563 PC-router self-checks and five diagnostic input-guard tests passed in the
 verified OS sandbox with host credentials and network excluded. Both C# builds
 have zero warnings and errors. The live router and original Claude remote task
 remain running. Operational session launch/routing, active-turn steering,
 questions/permissions, phone/Telegram round trips and original-topic cutovers
 remain pending. No deferred role or broker service was activated.
+
+### Mixed native topic routing candidate
+
+The existing router now accepts explicit backend and runtime fields while
+retaining the old five-field Windows Codex bindings. It selects each topic's
+native transport and checks the entire registry before any resume. Windows and
+Linux Codex events cannot enter each other's bubbles even if a payload names
+the other thread. A missing adapter, foreign workspace, duplicate pin or
+conflicting saved bubble stops startup rather than selecting another backend.
+Linux path checks here are logical checks, not proof of filesystem ownership;
+the operational launcher still must establish that boundary.
+
+Claude has a separate path using its native message and control envelopes.
+Owner messages carry human provenance and native `priority: now`; a replay
+receipt proves consumption, not completed work or exact active-turn steering.
+Only native idle finishes work. Pending questions survive initialization races,
+and startup failure closes every acquired stream. App-origin inputs, assistant
+text and tool names amend the same bounded bubble; thinking, subagent text and
+raw tool arguments are not mirrored as progress.
+
+Question answers are bound to the exact topic, session, active work and native
+request. They preserve the original tool input and key answers by the full
+question text, following the [Claude user-input contract](https://code.claude.com/docs/en/agent-sdk/user-input).
+Cancelled or cross-topic nonces do not send a reply. Structured credential fields
+and overlong requests cannot be published or approved from an incomplete
+Telegram review; the owner can still deny the exact tool request. Unknown
+dialogs are neither answered nor cancelled automatically. A native answer write
+still remains uncertain because that protocol has no response acknowledgement;
+real consumption/reconciliation evidence is required before further model input.
+
+Claude model selection uses its initialization catalog, effort uses session-only
+settings, and usage reads skip transcript scanning without blocking interrupt
+or owner input. These acknowledgements are not independent model/settings
+readbacks. The 10% owner reserve remains unenforced. Claude-only chats omit
+Codex goals from the menu. Mixed chats use their supported command union because
+[Telegram command scopes](https://core.telegram.org/bots/api#botcommandscope)
+do not have a topic scope; `/help` and dispatch still use the exact topic.
+
+All 609 PC-router checks and six diagnostic input-guard tests pass in the
+verified OS sandbox, with host credentials and network excluded. Both C# builds
+have zero warnings and errors. These are controller/component fixtures, not
+Windows credential-boundary, phone or live-topic acceptance. The 3:19 PM PDT
+read-only PC check found the original router and Claude remote task running
+with the unchanged production configuration. No live binding, bot token,
+protected release or Hamal wiring was changed.
+
+Operational ordinary-owner launch wiring, persistent Linux daemon supervision,
+native answer-consumption reconciliation, exact reset rebinding, real
+active-work/phone/Telegram and attachment-readability acceptance still need to
+pass before original-topic cutover. `/clear` currently sends no reset; observed
+native resets durably retain the new ID and hold old-pin input for explicit
+reconciliation. This is pending implementation, not removal of reset support.
+The Mac, physical bench transfer and independent disaster recovery remain in
+scope; no new role or broker service was activated.
 
 ### Physical bench preservation and PC builds
 

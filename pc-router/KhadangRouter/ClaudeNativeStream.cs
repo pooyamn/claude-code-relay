@@ -9,7 +9,7 @@ namespace KhadangRouter;
 // The caller must attest the ordinary owner/native image and use --resume with
 // the selected pin plus --replay-user-messages. A replay confirms consumption,
 // not turn completion. No invented Codex turn ID or reconnect/replay fallback.
-public sealed class ClaudeNativeStream : IAsyncDisposable
+public sealed class ClaudeNativeStream : IClaudeNative
 {
     public const int MaximumFrameBytes = 2_097_152;
     private readonly INativeChannel channel;
@@ -93,7 +93,7 @@ public sealed class ClaudeNativeStream : IAsyncDisposable
         if (expectedSessionId != SessionId) throw new InvalidDataException("Claude message belongs to another pinned conversation");
         if (content.ValueKind is not (JsonValueKind.String or JsonValueKind.Array)) throw new InvalidDataException("Native Claude content must be text or blocks");
         var uuid = Guid.NewGuid().ToString("D");
-        var message = Encode(new { type = "user", message = new { role = "user", content },
+        var message = Encode(new { type = "user", message = new { role = "user", content }, origin = new { kind = "human" },
             parent_tool_use_id = (string?)null, session_id = SessionId, uuid, priority = "now" });
         var completion = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (sends.Count >= 64 || !sends.TryAdd(uuid, completion)) throw new InvalidOperationException("Claude send capacity exceeded");

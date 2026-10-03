@@ -4,13 +4,24 @@ using System.Text.Json;
 
 namespace KhadangRouter;
 
-// Owner-only Windows migration adapter. It does not claim company/role gates or
+// Owner-only PC migration adapter. It does not claim company/role gates or
 // replace the prepared WSL authorization/admission/deployment components.
-public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, INative rpc, IAttachments? attachments = null, NativeRemote? nativeRemote = null)
+public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot telegram, INative rpc, IAttachments? attachments = null,
+    NativeRemote? nativeRemote = null, IClaudeTopics? claudeTopics = null, INative? linuxRpc = null)
 {
-    private sealed class Session(Binding binding)
+    private sealed class Session(Binding binding, INative native)
     {
         public Binding Binding { get; } = binding;
+        public INative Native { get; } = native;
+        public IClaudeNative? Claude;
+        public JsonElement? ClaudeInfo;
+        public Action<JsonElement>? ClaudeHandler;
+        public long ClaudeWorkRevision;
+        public long ClaudeStateRevision;
+        public string ClaudeState = "unverified";
+        public string? ClaudeRemoteState;
+        public bool ClaudeHasDelta;
+        public string? ClaudeResultStatus;
         public readonly object Gate = new();
         public readonly SemaphoreSlim Dispatch = new(1, 1);
         public RollingBubble Bubble = new();
@@ -37,15 +48,26 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
     private readonly SemaphoreSlim starts = new(1, 1);
     private readonly NativeQuota quota = new();
     private readonly NativeRemote remote = nativeRemote ?? new();
+    private readonly NativeQuota linuxQuota = new();
+    private readonly NativeRemote linuxRemote = new();
     private readonly IAttachments attachmentStore = attachments ?? new Attachments(policy, ledger, telegram);
     private DateTimeOffset lastStart = DateTimeOffset.MinValue;
 
     public async Task Run(CancellationToken stop, bool canary = false)
     {
+        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(stop);
+        stop = lifetime.Token;
+        var ownedClaude = new List<IClaudeNative>();
+        Task edits = Task.CompletedTask;
         var bindings = ledger.Bindings();
         // Validate the WHOLE registry and bubble destinations before the first
         // native resume. A bad later row must not leave earlier tasks resumed.
         policy.ValidateBindings(bindings);
+        if (linuxRpc != null && ReferenceEquals(linuxRpc, rpc))
+            throw new InvalidDataException("Windows and Linux native sources must be distinct attested transports");
+        if (bindings.Any(b => b.Backend == "claude") && claudeTopics == null ||
+            bindings.Any(b => b.Backend == "codex" && b.Runtime == "linux") && linuxRpc == null)
+            throw new InvalidDataException("Selected native runtime adapter is unavailable; no backend or session fallback");
         foreach (var binding in bindings)
             if (ledger.Get("bubble/" + binding.ThreadId) is { } receipt)
             {
@@ -55,16 +77,32 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
                     !savedChat.TryGetInt64(out var chat) || chat != binding.Chat || savedTopic.ValueKind != JsonValueKind.Number ||
                     !savedTopic.TryGetInt32(out var topic) || topic != binding.Topic) || !hasChat && binding.Chat != policy.ChatId)
                     throw new InvalidDataException("Bubble receipt belongs to another chat/topic");
+                if (receipt.TryGetProperty("backend", out var backend) && backend.GetString() != binding.Backend ||
+                    receipt.TryGetProperty("runtime", out var runtime) && runtime.GetString() != binding.Runtime)
+                    throw new InvalidDataException("Bubble receipt belongs to another native backend/runtime");
             }
+        try
+        {
         foreach (var binding in bindings)
         {
+            var native = binding.Runtime == "linux" && binding.Backend == "codex" ? linuxRpc! : rpc;
+            var session = new Session(binding, native);
+            if (binding.Backend == "claude")
+            {
+                session.Claude = await claudeTopics!.Open(binding, stop);
+                ownedClaude.Add(session.Claude);
+                if (!session.Claude.Connected || session.Claude.SessionId != binding.ThreadId)
+                    throw new InvalidDataException("Claude adapter does not own the exact selected session");
+            }
+            else
+            {
             // Native context still loads in full; only the historical turn
             // payload is excluded from the transport response. Migrated threads
             // can have hundreds of MB of history, beyond the frame bound.
-            var resumed = await rpc.Call("thread/resume", new { threadId = binding.ThreadId, cwd = binding.Workspace, excludeTurns = true,
+            var resumed = await native.Call("thread/resume", new { threadId = binding.ThreadId, cwd = binding.Workspace, excludeTurns = true,
                 approvalPolicy = policy.NativeApprovalPolicy, approvalsReviewer = "user", permissions = policy.NativePermissionProfile }, stop);
-            VerifyThread(resumed, binding.Workspace, binding.ThreadId);
-            var session = new Session(binding);
+            VerifyThread(resumed, binding.Workspace, binding.ThreadId, binding.Runtime);
+            }
             if (ledger.Get("bubble/" + binding.ThreadId) is { } saved)
             {
                 session.Bubble.Append(saved.GetProperty("tail").GetString()!);
@@ -76,13 +114,22 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
                 session.Dirty = true;
             }
             sessions[binding.Address] = session;
+            if (session.Claude is { } claude)
+            {
+                session.ClaudeHandler = message => OnClaude(session, message);
+                claude.Notification += session.ClaudeHandler;
+                var revision = session.ClaudeStateRevision;
+                session.ClaudeInfo = await claude.Initialize(stop);
+                lock (session.Gate)
+                    if (revision == session.ClaudeStateRevision)
+                        ApplyClaudeState(session, session.ClaudeInfo.Value.GetProperty("session_state").GetString()!);
+            }
         }
         rpc.Notification += OnNative;
+        if (linuxRpc != null) linuxRpc.Notification += OnLinuxNative;
         if (sessions.Count == 0) await CreateLg(stop);
-        foreach (var session in sessions.Values) await ReadGoal(session, stop);
-        var edits = Task.Run(() => EditLoop(stop), stop);
-        try
-        {
+        foreach (var session in sessions.Values.Where(s => s.Claude == null)) await ReadGoal(session, stop);
+        edits = Task.Run(() => EditLoop(stop), stop);
             await Menus(stop);
             if (canary && ledger.Get("native-canary") == null)
             {
@@ -120,7 +167,15 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
         }
         finally
         {
+            lifetime.Cancel();
             rpc.Notification -= OnNative;
+            if (linuxRpc != null) linuxRpc.Notification -= OnLinuxNative;
+            foreach (var session in sessions.Values)
+                if (session.Claude is { } claude)
+                {
+                    claude.Notification -= session.ClaudeHandler;
+                }
+            await Task.WhenAll(ownedClaude.Distinct<IClaudeNative>(ReferenceEqualityComparer.Instance).Select(c => c.DisposeAsync().AsTask()));
             try { await Task.WhenAll(handlers.Values.Append(edits)); } catch (OperationCanceledException) { }
         }
     }
@@ -179,7 +234,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
             ledger.Put("lg-provision", new { phase = "topic-created", threadId = id, topicId });
         }
         var binding = new Binding(policy.ChatId, topicId, "LG Magic Remote · PC", workspace, id);
-        ledger.Bind(binding); sessions[binding.Address] = new Session(binding);
+        ledger.Bind(binding); sessions[binding.Address] = new Session(binding, rpc);
         ledger.Put("lg-provision", new { phase = "bound", threadId = id, topicId });
         await telegram.Send(policy.ChatId, topicId, "LG Magic Remote now has its own PC session. Source and handoff are in " + workspace +
             ". Receiver 0.2.18 is running; TV uses PC 10.0.0.35 / HDMI 3. Messages steer the active native Codex turn. " +
@@ -200,6 +255,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
                 ledger.Finish(updateId, "unbound"); return;
             }
             target = session;
+            if (session.Claude != null) { await HandleClaude(updateId, message, session, stop); return; }
             IReadOnlyList<AttachmentReference> references;
             try { references = Attachments.References(message); }
             catch (Exception error) when (error is InvalidOperationException or KeyNotFoundException) { throw new AttachmentFailure("Malformed attachment metadata; original update retained"); }
@@ -254,10 +310,10 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
                     if (mediaTurn != null && active != mediaTurn) throw new AttachmentFailure("Active turn ended or changed during attachment download; staged files held, no fresh-turn fallback");
                     if (session.Busy && active == null) throw new InvalidOperationException("Native turn identity not yet confirmed; no queue fallback");
                 }
-                var input = Attachments.Input(policy.OwnerId, message.GetProperty("message_id").GetInt64(), text, files);
+                var input = Attachments.Input(policy.OwnerId, message.GetProperty("message_id").GetInt64(), text, files, session.Binding.Runtime);
                 if (active != null)
                 {
-                    var receipt = await rpc.Call("turn/steer", new { threadId = session.Binding.ThreadId, expectedTurnId = active, input }, stop);
+                    var receipt = await session.Native.Call("turn/steer", new { threadId = session.Binding.ThreadId, expectedTurnId = active, input }, stop);
                     NativeEventView.VerifySteer(receipt, active);
                     lock (session.Gate) { session.Bubble.Append("\n↪ New owner message steered into this turn.\n"); Touch(session); }
                 }
@@ -274,7 +330,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
                             session.Bubble = new RollingBubble(); session.Elapsed.Restart(); session.Carried = TimeSpan.Zero;
                             session.Status = "Working"; session.Busy = true; session.Turn = null; session.Items.Clear(); session.DeltaItems.Clear(); session.CompletedItems.Clear(); session.CompletedOrder.Clear(); Touch(session);
                         }
-                        var result = await rpc.Call("turn/start", new { threadId = session.Binding.ThreadId, input }, stop);
+                        var result = await session.Native.Call("turn/start", new { threadId = session.Binding.ThreadId, input }, stop);
                         var turn = result.GetProperty("turn").GetProperty("id").GetString();
                         lock (session.Gate) { if (session.Status == "Working") { session.Turn = turn; session.Busy = true; } }
                         lastStart = DateTimeOffset.UtcNow;
@@ -311,6 +367,9 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
 
     private async Task Control(Session session, string text, CancellationToken stop)
     {
+        var rpc = session.Native;
+        var quota = session.Binding.Runtime == "linux" ? linuxQuota : this.quota;
+        var remote = session.Binding.Runtime == "linux" ? linuxRemote : this.remote;
         var parts = text.Trim().Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries);
         var command = parts[0].Split('@');
         if (command.Length > 1 && !command[1].Equals(policy.BotUsername, StringComparison.OrdinalIgnoreCase)) return;
@@ -330,11 +389,11 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
                 answer = await GoalControl(session, argument, stop); break;
             case "/limits":
                 await quota.Read(rpc, stop);
-                ledger.Put("native/quota", quota.Snapshot);
+                ledger.Put(NativeStateKey("native/quota", session.Binding.Runtime), quota.Snapshot);
                 answer = quota.Render(); break;
             case "/remote":
                 await remote.Read(rpc, stop);
-                ledger.Put("native/remote", remote.Snapshot);
+                ledger.Put(NativeStateKey("native/remote", session.Binding.Runtime), remote.Snapshot);
                 answer = remote.Render(); break;
             case "/model":
                 if (argument.Length == 0)
@@ -397,7 +456,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
         var revision = session.Goal.Revision;
         try
         {
-            var reply = await rpc.Call("thread/goal/get", new { threadId = session.Binding.ThreadId }, stop, effect: false);
+            var reply = await session.Native.Call("thread/goal/get", new { threadId = session.Binding.ThreadId }, stop, effect: false);
             session.Goal.Apply(reply.GetProperty("goal"), revision);
             lock (session.Gate) Touch(session);
             return session.Goal.Known;
@@ -427,7 +486,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
             "set" => new { threadId = session.Binding.ThreadId, objective = command.Objective, status = "active" },
             _ => new { threadId = session.Binding.ThreadId, status = command.Action == "pause" ? "paused" : "active" }
         };
-        var reply = await rpc.Call(method, parameters, stop);
+        var reply = await session.Native.Call(method, parameters, stop);
         try
         {
             if (command.Action == "clear")
@@ -452,9 +511,13 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
         }
     }
 
-    private void OnNative(JsonElement message)
+    private void OnNative(JsonElement message) => ObserveCodex(rpc, message);
+    private void OnLinuxNative(JsonElement message) => ObserveCodex(linuxRpc!, message);
+    private void ObserveCodex(INative source, JsonElement message)
     {
-        remote.Observe(message, rpc.Pid);
+        var remote = ReferenceEquals(source, rpc) ? this.remote : linuxRemote;
+        var quota = ReferenceEquals(source, rpc) ? this.quota : linuxQuota;
+        remote.Observe(message, source.Pid);
         if (!message.TryGetProperty("method", out var methodElement) || !message.TryGetProperty("params", out var parameters)) return;
         var method = methodElement.GetString()!;
         // Global remote state has no thread. Malformed optional diagnostics
@@ -465,10 +528,10 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
             // Account-wide notifications have no threadId. They invalidate the
             // catalog before thread routing; a sparse update cannot bless an
             // old bucket, recover spend permission or win a delayed-read race.
-            quota.Invalidate(); ledger.Put("native/quota", quota.Snapshot); return;
+            quota.Invalidate(); ledger.Put(NativeStateKey("native/quota", ReferenceEquals(source, rpc) ? "windows" : "linux"), quota.Snapshot); return;
         }
         if (!parameters.TryGetProperty("threadId", out var id)) return;
-        var session = sessions.Values.FirstOrDefault(s => s.Binding.ThreadId == id.GetString());
+        var session = sessions.Values.FirstOrDefault(s => s.Claude == null && ReferenceEquals(s.Native, source) && s.Binding.ThreadId == id.GetString());
         if (session == null) return;
         lock (session.Gate)
         {
@@ -568,8 +631,13 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
                 string text; int? message; long revision;
                 lock (session.Gate)
                 {
+                    if (session.Claude is { Connected: false } && !session.Held)
+                    {
+                        session.Held = true; session.Status = "Held — Claude stream disconnected";
+                        session.Bubble.Append("\nNative connection ended. Input is not replayed or sent to another session.\n"); Touch(session);
+                    }
                     if (session.SendUnknown || !session.Dirty && !session.Busy) continue;
-                    text = session.Bubble.Render(session.Carried + session.Elapsed.Elapsed, session.Goal.Footer, session.Status); message = session.Message; revision = session.Revision;
+                    text = session.Bubble.Render(session.Carried + session.Elapsed.Elapsed, session.Claude == null ? session.Goal.Footer : null, session.Status); message = session.Message; revision = session.Revision;
                     if (text == session.LastRendered) continue;
                 }
                 try
@@ -599,14 +667,18 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
     }
     private async Task Menus(CancellationToken stop)
     {
-        var commands = new[] { ("help", "PC session controls"), ("status", "Exact PC session status"), ("cancel", "Interrupt the active native turn"),
+        var common = new[] { ("help", "PC session controls"), ("status", "Exact PC session status"), ("cancel", "Interrupt the active native turn"),
             ("limits", "Read native subscription usage (no paid reset)"),
             ("remote", "Read THIS native process's Remote Control state"),
-            ("goal", "Get, set, pause, resume or clear the native goal"), ("model", "List or set native model"), ("effort", "Set native reasoning effort"),
+            ("model", "List or set native model"), ("effort", "Set native reasoning effort"),
             ("approve", "Approve an exact pending native request"), ("deny", "Deny an exact pending native request"), ("answer", "Answer an exact native question") };
         // Configure only activated bindings, not inaccessible migration chats.
         foreach (var chat in sessions.Keys.Select(address => address.Chat).Distinct().Order())
         {
+            // Telegram has no per-topic command scope. Use the backend union
+            // for this chat; /help and dispatch remain exact-topic specific.
+            var commands = sessions.Values.Any(s => s.Binding.Chat == chat && s.Claude == null) ?
+                common.Append(("goal", "Get, set, pause, resume or clear the Codex goal")).ToArray() : common;
             var scope = new { type = "chat_member", chat_id = chat, user_id = policy.OwnerId };
             await telegram.Call("setMyCommands", new { scope, commands = commands.Select(c => new { command = c.Item1, description = c.Item2 }) }, stop, effect: true);
             var readback = await telegram.Call("getMyCommands", new { scope }, stop);
@@ -615,18 +687,21 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
         }
     }
     private void Touch(Session session) { session.Revision++; session.Dirty = true; Persist(session); }
+    private static string NativeStateKey(string key, string runtime) => runtime == "windows" ? key : key + "/" + runtime;
     private void Persist(Session session)
     {
         var goal = session.Goal.Snapshot;
         ledger.Put("bubble/" + session.Binding.ThreadId, new {
             chat = session.Binding.Chat, topic = session.Binding.Topic,
+            backend = session.Binding.Backend, runtime = session.Binding.Runtime,
+            claudeState = session.Claude == null ? null : session.ClaudeState,
             tail = session.Bubble.Tail, message = session.Message, sendUnknown = session.SendUnknown, held = session.Held,
             busy = session.Busy, status = session.Status, elapsedMs = (session.Carried + session.Elapsed.Elapsed).TotalMilliseconds,
             goal = goal.Goal, goalKnown = goal.Known, goalObservedAt = goal.ObservedAt });
     }
-    private void VerifyThread(JsonElement result, string cwd, string? id = null)
+    private void VerifyThread(JsonElement result, string cwd, string? id = null, string runtime = "windows")
     {
-        if (result.GetProperty("cwd").GetString() is not { } actual || !actual.Equals(cwd, StringComparison.OrdinalIgnoreCase) ||
+        if (result.GetProperty("cwd").GetString() is not { } actual || !actual.Equals(cwd, runtime == "linux" ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase) ||
             result.GetProperty("approvalPolicy").GetString() != policy.NativeApprovalPolicy || result.GetProperty("approvalsReviewer").GetString() != "user" ||
             result.GetProperty("sandbox").GetProperty("type").GetString() != policy.NativeSandboxType ||
             (id != null && result.GetProperty("thread").GetProperty("id").GetString() != id)) throw new InvalidOperationException("Native identity/workspace/security readback mismatch");
@@ -634,5 +709,8 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
     private void StatusFile() => File.WriteAllText(Path.Combine(policy.StateDirectory, "status.json"), JsonSerializer.Serialize(new {
         host = Environment.MachineName, pcOnly = true, bot = policy.BotUsername, nativePid = rpc.Pid, offset = ledger.Offset,
         unknown = ledger.Unknown, bindings = sessions.Values.Select(s => s.Binding), nativeQuota = quota.Snapshot,
-        nativeRemote = remote.Snapshot, at = DateTimeOffset.UtcNow }));
+        nativeRemote = remote.Snapshot, nativeLinuxPid = linuxRpc?.Pid, nativeLinuxQuota = linuxQuota.Snapshot,
+        nativeLinuxRemote = linuxRemote.Snapshot,
+        nativeSessions = sessions.Values.Select(s => new { binding = s.Binding, pid = s.Claude?.Pid ?? s.Native.Pid,
+            claudeConnected = s.Claude?.Connected }), at = DateTimeOffset.UtcNow }));
 }

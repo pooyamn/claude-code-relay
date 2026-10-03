@@ -44,6 +44,7 @@ public static class ClaudeNativeStreamTests
             }
             var sent = channel.Writes[1];
             Check(sent.GetProperty("priority").GetString() == "now" && sent.GetProperty("session_id").GetString() == Session &&
+                sent.GetProperty("origin").GetProperty("kind").GetString() == "human" &&
                 Guid.TryParseExact(sent.GetProperty("uuid").GetString(), "D", out _) && !sent.TryGetProperty("method", out _),
                 "Every Claude user input is native send-now with exact local pin and one client UUID");
             Check(channel.Writes.Count == 2, "Claude delivery never retries or queues after a failed receipt");

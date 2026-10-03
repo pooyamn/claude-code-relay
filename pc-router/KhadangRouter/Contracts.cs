@@ -18,3 +18,22 @@ public interface IBot
         throw new NotSupportedException("This transport has no attachment download implementation");
 }
 public sealed class NativeRejected(string method) : Exception("Native explicitly rejected " + method);
+
+// Claude keeps its own protocol. No invented Codex thread/turn RPCs or IDs.
+public interface IClaudeNative : IAsyncDisposable
+{
+    uint Pid { get; }
+    string SessionId { get; }
+    bool Connected { get; }
+    event Action<JsonElement>? Notification;
+    Task<JsonElement> Initialize(CancellationToken stop);
+    Task<JsonElement> Control(string subtype, object parameters, CancellationToken stop, bool effect = true);
+    Task<JsonElement> SendNow(string expectedSessionId, JsonElement content, CancellationToken stop);
+    Task Answer(string requestId, object answer, CancellationToken stop);
+}
+public interface IClaudeTopics
+{
+    // Must return an already-attested ordinary-owner stream for this exact
+    // saved pin/runtime/workspace. The router never discovers a substitute.
+    Task<IClaudeNative> Open(Binding binding, CancellationToken stop);
+}

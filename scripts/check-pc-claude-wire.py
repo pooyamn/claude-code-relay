@@ -51,8 +51,9 @@ def validate_input(frame, session, initialized, sent):
             raise ValueError('Only one native initialization is allowed')
         return 'initialize'
     if frame.get('type') == 'user' and initialized and not sent:
-        if set(frame) != {'type', 'message', 'parent_tool_use_id', 'session_id', 'uuid', 'priority'} or \
+        if set(frame) != {'type', 'message', 'parent_tool_use_id', 'session_id', 'uuid', 'priority', 'origin'} or \
                 frame['message'] != {'role': 'user', 'content': PROMPT} or frame['parent_tool_use_id'] is not None or \
+                frame['origin'] != {'kind': 'human'} or \
                 frame['session_id'] != session or frame['priority'] != 'now' or \
                 not isinstance(frame['uuid'], str) or str(uuid.UUID(frame['uuid'])) != frame['uuid']:
             raise ValueError('Only one exact fresh diagnostic input is allowed')

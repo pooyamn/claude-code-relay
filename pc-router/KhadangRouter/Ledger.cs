@@ -67,7 +67,8 @@ public sealed class Ledger : IDisposable
         {
             var prior = Rows("SELECT payload FROM bindings WHERE chat=? AND topic=?", binding.Chat, binding.Topic);
             var payload = JsonSerializer.Serialize(binding);
-            if (prior.Count > 0 && prior[0][0] != payload) throw new InvalidDataException("Topic already has a different native binding");
+            if (prior.Count > 0 && JsonSerializer.Deserialize<Binding>(prior[0][0]!) != binding)
+                throw new InvalidDataException("Topic already has a different native binding");
             Exec("INSERT OR IGNORE INTO bindings VALUES (?,?,?)", binding.Chat, binding.Topic, payload);
         }
     }

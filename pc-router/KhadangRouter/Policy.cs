@@ -6,7 +6,7 @@ namespace KhadangRouter;
 public sealed record RouterPolicy(string BotUsername, long BotId, long OwnerId, long ChatId,
     string OwnerSid, string CodexExecutable, string CodexSha256, string CredentialFile,
     string StateDirectory, string WorkspaceRoot, int MaximumSessions = 3, int StartSpacingSeconds = 5,
-    bool OwnerFullAccess = false, ChatRoute[]? AdditionalChats = null)
+    bool OwnerFullAccess = false, ChatRoute[]? AdditionalChats = null, string? LinuxWorkspaceRoot = null)
 {
     [JsonIgnore] public string NativeApprovalPolicy => OwnerFullAccess ? "never" : "on-request";
     [JsonIgnore] public string NativePermissionProfile => OwnerFullAccess ? ":danger-full-access" : ":workspace";
@@ -25,6 +25,7 @@ public sealed record RouterPolicy(string BotUsername, long BotId, long OwnerId, 
             MaximumSessions is < 1 or > 3 || StartSpacingSeconds is < 1 or > 60)
             throw new InvalidDataException("Invalid PC-only owner policy");
         foreach (var path in new[] { CodexExecutable, CredentialFile, StateDirectory, WorkspaceRoot }) WindowsPath(path);
+        if (LinuxWorkspaceRoot != null) LinuxPath(LinuxWorkspaceRoot);
         var seen = new HashSet<long> { ChatId };
         if (AdditionalChats is { Length: > 32 }) throw new InvalidDataException("Too many migration chats");
         foreach (var route in AdditionalChats ?? [])
@@ -55,6 +56,22 @@ public sealed record RouterPolicy(string BotUsername, long BotId, long OwnerId, 
                 current = current.Parent;
             }
         }
+    }
+    public static string LinuxPath(string path)
+    {
+        if (!path.StartsWith("/Users/pouya/", StringComparison.Ordinal) || path.Contains('\\') || path.Contains("//") ||
+            path.Any(char.IsControl) || path.Split('/').Any(part => part is "." or ".."))
+            throw new InvalidDataException("Explicit ordinary-owner Linux path required");
+        return path.TrimEnd('/');
+    }
+    public void Workspace(Binding binding, bool verifyFilesystem = true)
+    {
+        if (binding.Runtime == "windows") { Workspace(binding.Workspace, verifyFilesystem); return; }
+        // Logical registry validation only. The attested Linux launcher must
+        // independently verify actual paths/owner/OS credential denial.
+        if (binding.Runtime != "linux" || LinuxWorkspaceRoot == null ||
+            !LinuxPath(binding.Workspace).StartsWith(LinuxPath(LinuxWorkspaceRoot) + "/", StringComparison.Ordinal))
+            throw new InvalidDataException("Linux workspace is outside the explicitly admitted PC root");
     }
     public bool OwnerMessage(JsonElement message)
     {
@@ -103,14 +120,18 @@ public sealed record RouterPolicy(string BotUsername, long BotId, long OwnerId, 
             if (!TryChat(binding.Chat, out var isForum) || (isForum ? binding.Topic <= 0 : binding.Topic != 0) ||
                 string.IsNullOrWhiteSpace(binding.ThreadId) || !addresses.Add(binding.Address) || !threads.Add(binding.ThreadId))
                 throw new InvalidDataException("Foreign, duplicate or ambiguous native binding in PC registry");
-            Workspace(binding.Workspace);
+            if (binding.Backend is not ("codex" or "claude") || binding.Runtime is not ("windows" or "linux") ||
+                binding.Backend == "claude" && !Guid.TryParseExact(binding.ThreadId, "D", out _))
+                throw new InvalidDataException("Exact selected native backend/runtime/session required");
+            Workspace(binding);
         }
     }
 }
 
 public sealed record ChatRoute(long Chat, bool IsForum = true);
 public readonly record struct TopicAddress(long Chat, int Topic);
-public sealed record Binding(long Chat, int Topic, string Name, string Workspace, string ThreadId)
+public sealed record Binding(long Chat, int Topic, string Name, string Workspace, string ThreadId,
+    string Backend = "codex", string Runtime = "windows")
 {
     [JsonIgnore] public TopicAddress Address => new(Chat, Topic);
 }

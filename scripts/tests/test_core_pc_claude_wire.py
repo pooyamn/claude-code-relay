@@ -17,7 +17,7 @@ class WireGuards(unittest.TestCase):
                      'request': {'subtype': 'initialize', 'hooks': None}}
         self.user = {'type': 'user', 'message': {'role': 'user', 'content': wire.PROMPT},
                      'parent_tool_use_id': None, 'session_id': self.session,
-                     'uuid': str(uuid.uuid4()), 'priority': 'now'}
+                     'uuid': str(uuid.uuid4()), 'priority': 'now', 'origin': {'kind': 'human'}}
 
     def test_one_initialization(self):
         self.assertEqual(wire.validate_input(self.init, self.session, False, False), 'initialize')
@@ -43,6 +43,15 @@ class WireGuards(unittest.TestCase):
                       {**self.init, 'extra': True}, None, []):
             with self.subTest(frame=frame), self.assertRaises(ValueError):
                 wire.validate_input(frame, self.session, False, False)
+
+    def test_exact_human_origin_required(self):
+        for origin in (None, {'kind': 'peer'}, {'kind': 'human', 'extra': True}):
+            with self.subTest(origin=origin), self.assertRaises(ValueError):
+                wire.validate_input({**self.user, 'origin': origin}, self.session, True, False)
+        missing = dict(self.user)
+        del missing['origin']
+        with self.assertRaises(ValueError):
+            wire.validate_input(missing, self.session, True, False)
 
     def test_duplicate_json_rejected(self):
         with self.assertRaises(ValueError):
