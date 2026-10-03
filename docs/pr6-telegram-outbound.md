@@ -517,8 +517,9 @@ exited; the live router and older native remotes were not restarted.
 **Still required:** a reviewed production wire/native facade, protected launch
 registry/exclusive journal lease and always-on service integration. The fixture
 proves client replacement, not broker/native crash or reboot recovery. Production
-integration must handle non-thread native server requests, drain/fence in-flight
-approval replies on shutdown, and reconcile unknown effects without replay.
+integration must wire connection-scoped handlers, validate native shutdown and
+reconcile unknown effects without replay. The following component hardening does
+not complete those production integrations.
 Exact-version owner/security review precedes live credential or listener wiring;
 then supported private native phone pairing and real phone/input/tool/goal-to-
 existing-bubble acceptance, including all-source 10% owner-reserve admission.
@@ -527,6 +528,81 @@ backup cohort before activation; metadata inventory alone is not a backup.
 Company roles, native Claude switching, full-system daily off-machine recovery,
 secure auto-login/boot/TV-off and the rest of the 20-PR scope remain open. This
 does not complete PR 6 or the full PC goal.
+
+### Native request custody and shutdown regression fixes
+
+Two regressions were reproduced before fixing their mechanisms. A deliberately
+blocked reply demonstrated that shutdown completed and closed SQLite before the
+write settled. A valid `account/chatgptAuthTokens/refresh` frame demonstrated
+that requiring `threadId` destroyed event custody. Both original failing
+assertions are retained in `NativeBrokerTests`, not replaced by retry/longer
+deadlines or removal of either capability.
+
+Replies now register under the custody lock before native submission, and all
+shutdown callers join the same drain. Calls, replies and initialization must
+settle before the private journal closes. Native resolution events arriving
+during that drain still persist atomically. A failed entered write remains
+unknown; a refusal before entering native submission is recorded not-submitted.
+Neither is replayed. Successful writes remain submitted or resolved-unattributed,
+never presumed accepted approvals. Outstanding replies have a separate bounded
+ceiling, not an authorization or subscription activity allowance.
+
+Connection-scoped requests retain their exact frame/ID/epoch with thread=null in
+the typed interface (an explicit empty-string connection sentinel in the
+existing NOT NULL SQL schema). The thread approval inbox excludes them, and its
+reply path cannot answer them. Only the protected same-process controller has
+connection-request/reply entry points. Those entry points do not install an
+OAuth issuer, read credentials, switch auth modes or automatically handle
+requests. Ordinary native-managed sign-in is unchanged. OpenAI Docs informed
+the externally managed refresh request's lack of thread scope and native
+request-resolution semantics.
+[Official connection authentication and approval contracts](https://learn.chatgpt.com/docs/app-server).
+
+Changed reviewed frames are checked against their stored digest before write;
+mixed/missing required scopes roll back event/request enrollment together.
+Valid opaque notifications without params stay retained. Replacing the native
+epoch invalidates pending connection requests and preserves unconfirmed reply
+evidence. The future wire facade must preserve the exact native frame bytes and
+route connection data privately, not send credential/account frames to a forum
+bubble. The raw event reader is a protected component interface, not a topic-
+scoped UI grant.
+
+415 local and 418 actual Windows router checks pass, plus twelve fixed probe
+guards. They include blocked/failed reply settlement,
+multiple shutdown waiters/one owner closure, a still-open private journal,
+resolution during shutdown, connection-versus-thread inbox/reply fencing,
+changed frame refusal before write, single consumption, prior-epoch refusal and
+invalid scope rollback. These synthetic tests use inert values only; they do
+not prove a real OAuth refresh, external action cancellation, native crash,
+broker restart, reboot, phone pairing or company authorization.
+
+Fresh actual Windows run `32774fa2410a4e8f9cd0629ecceaded5` completed at
+`2026-10-03T16:02:19.2271855Z`. The same client-replacement acceptance passes
+with this exact hardened candidate: native PID 13588/session 1/non-elevated,
+creation FILETIME `134355169386323853`, epoch
+`ecd525a84bfd448cbb0431728d0413b5`; one initialization, four journal events,
+matching paused-goal/clear delivery/readback and zero unknown diagnostic intents.
+This uses a new credential-free diagnostic home/thread, not a retry of any
+previous intent or access to production native state. Independent readback at
+`2026-10-03T16:03:09.4626161Z` confirms task Ready/result 0, zero triggers/restarts,
+closed administrator-owned SYSTEM/Administrators-only task/state DACLs, and both
+owned native/broker PIDs 13588/19020 gone. Evidence/claim/journal remain retained.
+Archive SHA256
+`85C86B0532E5C09F337B1D5B95F2C845699C85CEF2DD9440F77E111ADEA75066`;
+candidate router DLL
+`B1D6D06C64CF780F3877A226120ADFA7FE613384656505647ED633D8C628BAC6`;
+probe DLL
+`2FADEA737BF2CF451D3E7F1A8C427DD96755EFF9732BC5DDAD717EBB8273D3E5`.
+The unchanged sealed installer digest remains
+`E91D47B20DAC5F467280C6C31BB51534DD7B06E43FD16741F0AD54BA9AED090C`.
+
+Live invariant readback at `2026-10-03T16:03:10.9180017Z` confirms unchanged
+installed code/configuration, original native main/remote generations, exact LG
+binding/bubble 161 and receipt counts, zero unknown live operations and all nine
+services Running. No production activation, credential issuer, native remote
+restart or phone-pairing acceptance occurred. The remaining protected production
+facade/lease/service, private pairing, all-source admission, company isolation,
+Claude switching and full recovery gates above still apply.
 
 ## Prepared mechanism
 

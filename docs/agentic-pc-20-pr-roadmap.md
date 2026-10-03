@@ -133,6 +133,15 @@ pairing, actual phone/bubble recovery, all-source reserve admission and consiste
 backup capture remain gates. No PR/full-PC completion or company trust is implied.
 [Bounded proof and remaining work](pr6-telegram-outbound.md#native-broker-custody-and-client-replacement-acceptance-2026-10-03).
 
+2026-10-03 request-custody hardening: the inactive broker now drains registered
+replies before journal closure, retains resolution during shutdown, and fences
+connection requests away from thread approvals with exact-frame/epoch checks.
+415 local/418 Windows checks, twelve guards and fresh native client-replacement
+acceptance pass without production changes. Connection handlers and protected
+production facade/lease/service remain integration gates, not silently deployed
+by these fixes; native/company/phone/all-source/recovery requirements remain.
+[Mechanisms, reproduced failures and Windows proof](pr6-telegram-outbound.md#native-request-custody-and-shutdown-regression-fixes).
+
 2026-10-03 PC-only Khadang direction supersedes the legacy Mac activation below:
 the Mac test poller/watchers are stopped and its known plaintext token file is
 removed. The protected PC credential and non-elevated native owner launcher are

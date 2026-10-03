@@ -84,6 +84,17 @@ request shutdown/reconciliation, exact-version security review, private native
 pairing, all-source reserve admission and backup-cohort integration remain gates.
 [Mechanism and actual client-replacement proof](pr6-telegram-outbound.md#native-broker-custody-and-client-replacement-acceptance-2026-10-03).
 
+2026-10-03 native request hardening: reproduced premature journal closure and
+missing-thread failures are fixed in the inactive broker core. Shutdown joins
+in-flight reply settlement and retains native cleanup; connection-scoped requests
+are separate from thread approvals, with exact-frame validation and no automatic
+credential handler. 415 local/418 Windows checks and a fresh credential-free
+native client-replacement test pass. Live code, remotes, bubble and nine services
+stay unchanged. Production request-handler/lease/service integration and review,
+phone/all-source admission, company identity and full-system recovery are still
+pending; synthetic request tests are not real OAuth or crash/reboot acceptance.
+[Regression evidence and exact Windows candidate](pr6-telegram-outbound.md#native-request-custody-and-shutdown-regression-fixes).
+
 2026-10-03 startup configuration: `Oracova-KhadangStartup` is a protected
 deterministic SYSTEM task with boot, owner-logon and minute triggers. SCM stays
 Manual: a stopped router may start only after the exact non-elevated physical

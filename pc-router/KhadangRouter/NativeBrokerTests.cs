@@ -86,15 +86,112 @@ public static class NativeBrokerTests
             await broker.Ready;
             Check(broker.Unknown == 1 && broker.Position == 0, "New native epoch preserves old unknown intents, without replaying old events into live UI");
         }
+        // Reproduce shutdown with a reply whose underlying write has not yet
+        // settled. Closing the private journal early loses outcome custody.
+        var draining = new Fake { BlockReplies = true, FailReplyAfterRelease = true };
+        var drainPath = Path.Combine(root, "broker-reply-drain.db");
+        var drainLedger = new Ledger(drainPath);
+        var drainBroker = NativeBroker.Fixture(draining, draining, drainLedger, draining.Initialize);
+        await drainBroker.Ready;
+        using (var client = drainBroker.AttachFixture(() => { }))
+        {
+            draining.Request("drain", "thread", "turn");
+            var reply = client.Reply(client.Requests().Single(), new { decision = "decline" });
+            await draining.ReplyStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            var shutdown = drainBroker.DisposeAsync().AsTask();
+            await draining.DisposedSignal.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            var closedBeforeReplySettled = shutdown.IsCompleted;
+            var sameDrain = ReferenceEquals(shutdown, drainBroker.DisposeAsync().AsTask());
+            var journalStillOpen = drainLedger.Query("SELECT status FROM broker_replies").Single()[0] == "attempting";
+            draining.ReplyRelease.TrySetResult();
+            try { await reply; throw new Exception("Failed native write accepted"); } catch (IOException) { checks++; }
+            await shutdown;
+            Check(!closedBeforeReplySettled, "Broker shutdown must retain journal until every in-flight reply settles");
+            Check(sameDrain && draining.Disposals == 1, "Concurrent shutdown waiters join one owner closure/drain");
+            Check(journalStillOpen, "Private journal remains usable until actual reply settlement");
+        }
+        using (var reopened = new Ledger(drainPath))
+            Check(reopened.Query("SELECT status FROM broker_replies").Single()[0] == "unknown",
+                "Shutdown retains ambiguous reply evidence, not an abandoned attempting row");
+        var cleanup = new Fake { BlockReplies = true, ResolveDuringReply = true };
+        var cleanupPath = Path.Combine(root, "broker-reply-shutdown-cleanup.db");
+        var cleanupBroker = NativeBroker.Fixture(cleanup, cleanup, new Ledger(cleanupPath), cleanup.Initialize);
+        await cleanupBroker.Ready;
+        using (var client = cleanupBroker.AttachFixture(() => { }))
+        {
+            cleanup.Request("cleanup", "thread", "turn");
+            var reply = client.Reply(client.Requests().Single(), new { decision = "decline" });
+            await cleanup.ReplyStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            var shutdown = cleanupBroker.DisposeAsync().AsTask();
+            await cleanup.DisposedSignal.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            cleanup.ReplyRelease.TrySetResult(); await reply; await shutdown;
+        }
+        using (var reopened = new Ledger(cleanupPath))
+        {
+            Check(reopened.Query("SELECT status FROM broker_replies").Single()[0] == "resolved-unattributed" &&
+                reopened.Query("SELECT status FROM broker_requests").Single()[0] == "resolved", "Resolution arriving during shutdown remains cleanup, never accepted approval");
+            Check(reopened.Query("SELECT frame FROM broker_events ORDER BY position").Count == 2, "Shutdown retains the final native resolution event before closing journal");
+        }
+        var global = new Fake(); var globalPath = Path.Combine(root, "broker-connection-request.db");
+        var globalLedger = new Ledger(globalPath); BrokerRequest? pendingConnection = null;
+        await using (var broker = NativeBroker.Fixture(global, global, globalLedger, global.Initialize))
+        {
+            await broker.Ready;
+            using var client = broker.AttachFixture(() => { });
+            var rejectedNonThreadRequest = false;
+            try { global.ConnectionRequest("refresh"); }
+            catch (Exception error) when (error is KeyNotFoundException or InvalidDataException) { rejectedNonThreadRequest = true; }
+            Check(!rejectedNonThreadRequest, "Connection-scoped native request must not destroy event custody for missing threadId");
+            var request = broker.Requests(connection: true).Single();
+            Check(request.Thread == null && request.Turn == null && request.Epoch == broker.Epoch &&
+                request.Frame.GetProperty("method").GetString() == "account/chatgptAuthTokens/refresh", "Global request keeps explicit connection scope and complete native frame");
+            Check(client.Requests().Count == 0 && client.Events(0).Count == 1, "Thread approval inbox excludes connection requests while protected event custody retains them");
+            try { await client.Reply(request, new { decision = "accept" }); throw new Exception("Forum path answered connection request"); }
+            catch (InvalidDataException) { checks++; }
+            var changedFrame = JsonSerializer.SerializeToElement(new { id = "refresh", method = "item/commandExecution/requestApproval", @params = new { threadId = "thread", turnId = "turn" } });
+            try { await broker.Reply(request with { Frame = changedFrame }, new { }, connection: true); throw new Exception("Changed reviewed frame accepted"); }
+            catch (InvalidDataException) { checks++; }
+            Check(global.Replies == 0, "Scope/complete-frame forgery fails before native write");
+            // Fake result only: no credential access/refresh/enrollment occurs.
+            await broker.Reply(request, new { accessToken = "[inert-fixture-not-a-token]", chatgptAccountId = "inert-fixture" }, connection: true);
+            Check(global.Replies == 1 && broker.Requests(connection: true).Count == 0 && broker.Unknown == 0,
+                "Protected connection reply is consumed once without becoming a thread approval");
+            try { await broker.Reply(request, new { }, connection: true); throw new Exception("Connection reply replayed"); }
+            catch (InvalidDataException) { checks++; }
+            global.Raw(new { method = "test/notificationWithoutParams" });
+            Check(client.Events(0).Last().Frame.GetProperty("method").GetString() == "test/notificationWithoutParams", "Opaque valid notification without params remains retained");
+            global.ConnectionRequest("pending"); pendingConnection = broker.Requests(connection: true).Single();
+        }
+        var globalNext = new Fake();
+        await using (var broker = NativeBroker.Fixture(globalNext, globalNext, new Ledger(globalPath), globalNext.Initialize))
+        {
+            await broker.Ready;
+            Check(broker.Requests(connection: true).Count == 0 && broker.Unknown == 1, "New connection invalidates old global requests and preserves unconfirmed submitted reply");
+            try { await broker.Reply(pendingConnection!, new { }, connection: true); throw new Exception("Old connection request answered"); }
+            catch (InvalidDataException) { Check(globalNext.Replies == 0, "Prior-epoch connection request cannot obtain a replacement reply"); }
+        }
+        foreach (var shape in new[] { "threadless-approval", "mixed-auth", "turn-without-thread" })
+        {
+            var invalid = new Fake(); var invalidLedger = new Ledger(Path.Combine(root, "broker-scope-" + shape + ".db"));
+            await using var broker = NativeBroker.Fixture(invalid, invalid, invalidLedger, invalid.Initialize); await broker.Ready;
+            var method = shape == "threadless-approval" ? "item/commandExecution/requestApproval" : "account/chatgptAuthTokens/refresh";
+            object parameters = shape == "mixed-auth" ? new { threadId = "thread" } : shape == "turn-without-thread" ? new { turnId = "turn" } : new { };
+            try { invalid.Raw(new { id = "invalid", method, @params = parameters }); throw new Exception("Mixed/missing native request scope accepted"); }
+            catch (InvalidDataException) { Check(broker.Position == 0 && invalidLedger.Query("SELECT id FROM broker_requests").Count == 0,
+                "Invalid scope rolls back event/request together: " + shape); }
+        }
         return checks;
     }
     private sealed class Fake : INative, IAsyncDisposable
     {
         public uint Pid => 123;
-        public int Calls, Initializations, Replies;
-        public bool Disposed, ResolveDuringReply;
+        public int Calls, Initializations, Replies, Disposals;
+        public bool Disposed, ResolveDuringReply, BlockReplies, FailReplyAfterRelease;
         public TaskCompletionSource Started = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource<JsonElement> Release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ReplyStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ReplyRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource DisposedSignal = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public event Action<JsonElement>? Notification;
         public Task Initialize() { Initializations++; return Task.CompletedTask; }
         public async Task<JsonElement> Call(string method, object parameters, CancellationToken stop, bool effect = true)
@@ -104,15 +201,25 @@ public static class NativeBrokerTests
             if (method == "test/disconnect") throw new IOException("Diagnostic native disconnect");
             return method == "test/slow" ? await Release.Task.WaitAsync(stop) : JsonSerializer.SerializeToElement(new { ok = true });
         }
-        public Task Reply(JsonElement id, object result, CancellationToken stop)
+        public async Task Reply(JsonElement id, object result, CancellationToken stop)
         {
             Replies++;
+            if (BlockReplies)
+            {
+                ReplyStarted.TrySetResult();
+                // Deliberately ignore cancellation: disposal must drain actual
+                // settlement, not infer it from a stop request or elapsed time.
+                await ReplyRelease.Task;
+                if (FailReplyAfterRelease) throw new IOException("Diagnostic unresolved write");
+            }
             if (ResolveDuringReply) Emit("serverRequest/resolved", new { threadId = "thread", requestId = id });
-            return Task.CompletedTask;
         }
         public void Emit(string method, object parameters) => Notification?.Invoke(JsonSerializer.SerializeToElement(new { method, @params = parameters }));
         public void Request(object id, string thread, string turn) => Notification?.Invoke(JsonSerializer.SerializeToElement(new { id,
             method = "item/commandExecution/requestApproval", @params = new { threadId = thread, turnId = turn, itemId = "item" } }));
-        public ValueTask DisposeAsync() { Disposed = true; return ValueTask.CompletedTask; }
+        public void ConnectionRequest(object id) => Notification?.Invoke(JsonSerializer.SerializeToElement(new { id,
+            method = "account/chatgptAuthTokens/refresh", @params = new { reason = "unauthorized", previousAccountId = "inert-fixture" } }));
+        public void Raw(object message) => Notification?.Invoke(JsonSerializer.SerializeToElement(message));
+        public ValueTask DisposeAsync() { Disposals++; Disposed = true; DisposedSignal.TrySetResult(); return ValueTask.CompletedTask; }
     }
 }

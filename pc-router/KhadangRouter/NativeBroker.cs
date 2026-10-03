@@ -17,7 +17,9 @@ public sealed class NativeBroker : IAsyncDisposable
     private readonly object gate = new();
     private readonly CancellationTokenSource stop = new();
     private readonly Dictionary<string, Task<JsonElement>> running = [];
+    private readonly Dictionary<string, Task> replying = [];
     private readonly Task initialized;
+    private Task? shutdown;
     private long position;
     private bool closed, captureFailed;
     public string Epoch { get; } = Guid.NewGuid().ToString("N");
@@ -59,6 +61,13 @@ public sealed class NativeBroker : IAsyncDisposable
     }
     public IReadOnlyList<BrokerEvent> ControllerEvents(long cursor, int maximum = 100)
     { WindowsPipePeer.RequireSystem(); return Events(cursor, maximum); }
+    // Account/attestation/time requests belong to the protected connection
+    // controller, never the forum's thread approval UI. No credential issuer or
+    // automatic handler is wired here; native-managed sign-in stays unchanged.
+    public IReadOnlyList<BrokerRequest> ControllerConnectionRequests()
+    { WindowsPipePeer.RequireSystem(); return Requests(connection: true); }
+    public Task ControllerConnectionReply(BrokerRequest reviewed, object result)
+    { WindowsPipePeer.RequireSystem(); return Reply(reviewed, result, connection: true); }
     internal NativeBrokerSession AttachFixture(Action current) => new(this, current);
     internal void Current()
     {
@@ -128,22 +137,36 @@ public sealed class NativeBroker : IAsyncDisposable
         {
             try
             {
-                Current(); var frame = message.GetRawText();
+                // Keep collecting native cleanup while shutdown drains writes.
+                // The owner stops the reader before this journal is disposed.
+                if (captureFailed) throw new IOException("Native event custody unavailable");
+                var frame = message.GetRawText();
                 if (Encoding.UTF8.GetByteCount(frame) > WebSocketNativeChannel.MaximumFrameBytes) throw new InvalidDataException("Broker event frame exceeds bound");
                 var next = position + 1;
                 ledger.Transaction(() => {
                     ledger.Exec("INSERT INTO broker_events VALUES (?,?,?)", Epoch, next, frame);
                     if (!message.TryGetProperty("method", out var method)) return; // late unmatched native response: evidence, not silent reconciliation
-                    var parameters = message.GetProperty("params");
                     if (message.TryGetProperty("id", out var id))
                     {
-                        var key = RequestKey(id); var thread = parameters.GetProperty("threadId").GetString();
-                        if (string.IsNullOrWhiteSpace(thread)) throw new InvalidDataException("Native request thread required");
-                        var turn = parameters.TryGetProperty("turnId", out var turnId) ? turnId.GetString() : null;
+                        var parameters = message.TryGetProperty("params", out var p) ? p : JsonSerializer.SerializeToElement(new { });
+                        if (parameters.ValueKind != JsonValueKind.Object) throw new InvalidDataException("Native request parameters must be an object");
+                        var name = method.GetString() ?? throw new InvalidDataException("Native request method required");
+                        var key = RequestKey(id);
+                        var thread = parameters.TryGetProperty("threadId", out var threadId) && threadId.ValueKind != JsonValueKind.Null ? threadId.GetString() : null;
+                        var turn = parameters.TryGetProperty("turnId", out var turnId) && turnId.ValueKind != JsonValueKind.Null ? turnId.GetString() : null;
+                        if (thread != null && !BoundedScope(thread) || turn != null && (!BoundedScope(turn) || thread == null) ||
+                            thread == null && name is ("item/commandExecution/requestApproval" or "item/fileChange/requestApproval" or
+                                "item/tool/requestUserInput" or "item/permissions/requestApproval" or "item/tool/call" or "mcpServer/elicitation/request") ||
+                            thread != null && name is ("account/chatgptAuthTokens/refresh" or "attestation/generate" or "currentTime/read"))
+                            throw new InvalidDataException("Native request has missing or mixed thread/connection scope");
+                        // Empty SQL thread is an explicit connection scope in
+                        // the existing NOT NULL schema, never an empty thread ID.
+                        thread ??= "";
                         ledger.Exec("INSERT INTO broker_requests VALUES (?,?,?,?,?,?,'pending')", Epoch, key, thread, turn, frame, Hash(frame));
                     }
                     else if (method.GetString() == "serverRequest/resolved")
                     {
+                        var parameters = message.GetProperty("params");
                         var key = RequestKey(parameters.GetProperty("requestId")); var thread = parameters.GetProperty("threadId").GetString();
                         if (string.IsNullOrWhiteSpace(thread)) throw new InvalidDataException("Resolved native request thread required");
                         var prior = ledger.Query("SELECT thread FROM broker_requests WHERE epoch=? AND id=?", Epoch, key);
@@ -175,16 +198,17 @@ public sealed class NativeBroker : IAsyncDisposable
             return events;
         }
     }
-    internal IReadOnlyList<BrokerRequest> Requests()
+    private static bool BoundedScope(string value) => !string.IsNullOrWhiteSpace(value) && value.Length <= 200 && !value.Any(char.IsControl);
+    internal IReadOnlyList<BrokerRequest> Requests(bool connection = false)
     {
         lock (gate)
         {
             Current();
-            return ledger.Query("SELECT id,thread,turn,frame,fingerprint FROM broker_requests WHERE epoch=? AND status='pending'", Epoch)
-                .Select(r => new BrokerRequest(Epoch, JsonDocument.Parse(r[0]!).RootElement.Clone(), r[1]!, r[2], r[4]!, JsonDocument.Parse(r[3]!).RootElement.Clone())).ToList();
+            return ledger.Query("SELECT id,thread,turn,frame,fingerprint FROM broker_requests WHERE epoch=? AND status='pending' AND thread" + (connection ? "=''" : "<>''"), Epoch)
+                .Select(r => new BrokerRequest(Epoch, JsonDocument.Parse(r[0]!).RootElement.Clone(), r[1] == "" ? null : r[1], r[2], r[4]!, JsonDocument.Parse(r[3]!).RootElement.Clone())).ToList();
         }
     }
-    internal async Task Reply(BrokerRequest reviewed, object result)
+    internal Task Reply(BrokerRequest reviewed, object result, bool connection = false)
     {
         var key = RequestKey(reviewed.Id);
         var payload = JsonSerializer.Serialize(new { id = reviewed.Id, result });
@@ -192,40 +216,71 @@ public sealed class NativeBroker : IAsyncDisposable
         lock (gate)
         {
             Current(); var row = ledger.Query("SELECT thread,turn,fingerprint,status FROM broker_requests WHERE epoch=? AND id=?", Epoch, key);
-            if (reviewed.Epoch != Epoch || row.Count != 1 || row[0][0] != reviewed.Thread || row[0][1] != reviewed.Turn || row[0][2] != reviewed.Fingerprint || row[0][3] != "pending")
+            if (connection != (reviewed.Thread == null) || reviewed.Epoch != Epoch || row.Count != 1 || row[0][0] != (reviewed.Thread ?? "") ||
+                row[0][1] != reviewed.Turn || row[0][2] != reviewed.Fingerprint || row[0][3] != "pending" ||
+                Hash(reviewed.Frame.GetRawText()) != reviewed.Fingerprint || RequestKey(reviewed.Frame.GetProperty("id")) != key)
                 throw new InvalidDataException("Native request is resolved, stale, changed or already consumed");
+            if (replying.Count >= 16) throw new InvalidOperationException("Broker outstanding-reply ceiling reached");
             ledger.Transaction(() => {
                 ledger.Exec("INSERT INTO broker_replies VALUES (?,?,?,'attempting')", Epoch, key, payload);
                 ledger.Exec("UPDATE broker_requests SET status='replying' WHERE epoch=? AND id=? AND status='pending'", Epoch, key);
             });
-        }
-        try
-        {
-            await native.Reply(reviewed.Id, JsonDocument.Parse(payload).RootElement.GetProperty("result").Clone(), stop.Token);
-            // A successful write isn't native acceptance. resolved may already
-            // have arrived, and must never be overwritten by this delayed write.
-            ledger.Exec("UPDATE broker_requests SET status='reply-submitted' WHERE epoch=? AND id=? AND status='replying'", Epoch, key);
-            ledger.Exec("UPDATE broker_replies SET status=CASE WHEN EXISTS (SELECT 1 FROM broker_requests WHERE epoch=? AND id=? AND status='resolved') THEN 'resolved-unattributed' ELSE 'submitted' END WHERE epoch=? AND id=? AND status='attempting'", Epoch, key, Epoch, key);
-        }
-        catch
-        {
-            ledger.Exec("UPDATE broker_requests SET status='reply-unknown' WHERE epoch=? AND id=? AND status='replying'", Epoch, key);
-            ledger.Exec("UPDATE broker_replies SET status='unknown' WHERE epoch=? AND id=? AND status='attempting'", Epoch, key); throw;
+            // Register before releasing gate: shutdown cannot miss a reply
+            // between its durable attempt and its native write/settlement.
+            var work = Task.Run(async () => {
+                var enteredNativeWrite = false;
+                try
+                {
+                    lock (gate)
+                    {
+                        Current();
+                        if (ledger.Query("SELECT status FROM broker_requests WHERE epoch=? AND id=?", Epoch, key).Single()[0] != "replying")
+                            throw new InvalidDataException("Native request ended before reply submission");
+                        enteredNativeWrite = true;
+                    }
+                    using var document = JsonDocument.Parse(payload);
+                    await native.Reply(reviewed.Id, document.RootElement.GetProperty("result").Clone(), stop.Token);
+                    // A successful write isn't acceptance. Native cleanup may
+                    // arrive during shutdown or before this delayed settlement.
+                    lock (gate) ledger.Transaction(() => {
+                        ledger.Exec("UPDATE broker_requests SET status='reply-submitted' WHERE epoch=? AND id=? AND status='replying'", Epoch, key);
+                        ledger.Exec("UPDATE broker_replies SET status=CASE WHEN EXISTS (SELECT 1 FROM broker_requests WHERE epoch=? AND id=? AND status='resolved') THEN 'resolved-unattributed' ELSE 'submitted' END WHERE epoch=? AND id=? AND status='attempting'", Epoch, key, Epoch, key);
+                    });
+                }
+                catch
+                {
+                    lock (gate) ledger.Transaction(() => {
+                        ledger.Exec("UPDATE broker_requests SET status=? WHERE epoch=? AND id=? AND status='replying'", enteredNativeWrite ? "reply-unknown" : "reply-not-submitted", Epoch, key);
+                        ledger.Exec("UPDATE broker_replies SET status=? WHERE epoch=? AND id=? AND status='attempting'", enteredNativeWrite ? "unknown" : "not-submitted", Epoch, key);
+                    });
+                    throw;
+                }
+                finally { lock (gate) replying.Remove(key); }
+            });
+            replying.Add(key, work); return work;
         }
     }
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        Task[] pending;
-        lock (gate) { if (closed) return; closed = true; pending = running.Values.Cast<Task>().Append(initialized).ToArray(); }
-        stop.Cancel();
-        async Task Settle() { try { await Task.WhenAll(pending); } catch (Exception) { /* persisted unknown/rejected evidence remains */ } }
-        try { await Task.WhenAll(owner.DisposeAsync().AsTask(), Settle()); }
-        finally { native.Notification -= Capture; ledger.Dispose(); stop.Dispose(); }
+        lock (gate)
+        {
+            if (shutdown != null) return new(shutdown);
+            closed = true;
+            var pending = running.Values.Cast<Task>().Concat(replying.Values).Append(initialized).ToArray();
+            shutdown = Task.Run(async () => {
+                stop.Cancel();
+                async Task Settle() { try { await Task.WhenAll(pending); } catch (Exception) { /* persisted unknown/rejected evidence remains */ } }
+                async Task StopOwner() { await owner.DisposeAsync(); }
+                try { await Task.WhenAll(StopOwner(), Settle()); }
+                finally { native.Notification -= Capture; ledger.Dispose(); stop.Dispose(); }
+            });
+            return new(shutdown); // Every disposal waiter joins the same drain.
+        }
     }
 }
 
 public sealed record BrokerEvent(string Epoch, long Position, JsonElement Frame);
-public sealed record BrokerRequest(string Epoch, JsonElement Id, string Thread, string? Turn, string Fingerprint, JsonElement Frame);
+public sealed record BrokerRequest(string Epoch, JsonElement Id, string? Thread, string? Turn, string Fingerprint, JsonElement Frame);
 public sealed class NativeBrokerSession : IDisposable
 {
     private readonly NativeBroker broker;
