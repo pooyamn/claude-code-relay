@@ -6,7 +6,8 @@ namespace KhadangRouter;
 public sealed record RouterPolicy(string BotUsername, long BotId, long OwnerId, long ChatId,
     string OwnerSid, string CodexExecutable, string CodexSha256, string CredentialFile,
     string StateDirectory, string WorkspaceRoot, int MaximumSessions = 3, int StartSpacingSeconds = 5,
-    bool OwnerFullAccess = false, ChatRoute[]? AdditionalChats = null, string? LinuxWorkspaceRoot = null)
+    bool OwnerFullAccess = false, ChatRoute[]? AdditionalChats = null, string? LinuxWorkspaceRoot = null,
+    LinuxCodexRuntime? LinuxCodex = null)
 {
     [JsonIgnore] public string NativeApprovalPolicy => OwnerFullAccess ? "never" : "on-request";
     [JsonIgnore] public string NativePermissionProfile => OwnerFullAccess ? ":danger-full-access" : ":workspace";
@@ -26,6 +27,12 @@ public sealed record RouterPolicy(string BotUsername, long BotId, long OwnerId, 
             throw new InvalidDataException("Invalid PC-only owner policy");
         foreach (var path in new[] { CodexExecutable, CredentialFile, StateDirectory, WorkspaceRoot }) WindowsPath(path);
         if (LinuxWorkspaceRoot != null) LinuxPath(LinuxWorkspaceRoot);
+        if (LinuxCodex != null)
+        {
+            LinuxCodex.Validate();
+            if (LinuxWorkspaceRoot != LinuxCodexRuntime.WorkspaceRoot)
+                throw new InvalidDataException("Linux Codex requires the preserved ordinary-owner workspace root");
+        }
         var seen = new HashSet<long> { ChatId };
         if (AdditionalChats is { Length: > 32 }) throw new InvalidDataException("Too many migration chats");
         foreach (var route in AdditionalChats ?? [])

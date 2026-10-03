@@ -3,10 +3,10 @@ using System.Text;
 
 namespace KhadangRouter;
 
-// Framing only, NOT peer/role authentication or a deployment grant. Production
-// still constructs the existing owned stdio channel. A shared connection needs
-// a separately reviewed launcher/server-authentication/lease boundary; a PID,
-// connected socket, loopback address or client bearer is not that boundary.
+// Framing only, NOT peer/role authentication or a deployment grant. The native
+// launcher owns stdio. LinuxCodexChannel additionally verifies the limited owner
+// and the pinned connector's actual Unix-peer observations. A reported PID or
+// connected socket alone is never that boundary.
 public interface INativeChannel : IAsyncDisposable
 {
     uint Pid { get; }
@@ -19,21 +19,72 @@ internal sealed class StdioNativeChannel : INativeChannel
     private readonly WindowsOwnerProcess process;
     private readonly CancellationTokenSource stop = new();
     private readonly Task drain;
+    private readonly NativeJsonlReader frames;
     public uint Pid => process.Pid;
     public StdioNativeChannel(WindowsOwnerProcess process)
     {
         this.process = process;
+        frames = new NativeJsonlReader(process.Output);
         drain = Task.Run(async () => {
             while (await process.Error.ReadLineAsync(stop.Token) != null) { /* Never mirror private diagnostics. */ }
         });
     }
-    public async Task<string?> Read(CancellationToken token) => await process.Output.ReadLineAsync(token);
-    public async Task Write(string message, CancellationToken token) => await process.Input.WriteLineAsync(message.AsMemory(), token);
+    public Task<string?> Read(CancellationToken token) => frames.Read(token);
+    public async Task Write(string message, CancellationToken token)
+    {
+        NativeJsonlReader.ValidateWrite(message);
+        await process.Input.WriteLineAsync(message.AsMemory(), token);
+    }
     public async ValueTask DisposeAsync()
     {
         stop.Cancel(); process.Dispose();
-        try { await drain; } catch (OperationCanceledException) { }
+        try { await drain; } catch (Exception error) when (error is OperationCanceledException or IOException or ObjectDisposedException) { }
         stop.Dispose();
+    }
+}
+
+// Read complete bounded JSONL frames before RPC sees them. ReadLineAsync alone
+// can allocate an unbounded line, and it accepts a partial line at EOF. Neither
+// is safe for the connector's uncertain-delivery boundary.
+internal sealed class NativeJsonlReader(TextReader source, int maximumBytes = WebSocketNativeChannel.MaximumFrameBytes)
+{
+    private static readonly UTF8Encoding Utf8 = new(false, true);
+    private readonly char[] buffer = new char[8192];
+    private int cursor, filled;
+    public async Task<string?> Read(CancellationToken stop)
+    {
+        var line = new StringBuilder();
+        while (true)
+        {
+            stop.ThrowIfCancellationRequested();
+            if (cursor == filled)
+            {
+                filled = await source.ReadAsync(buffer.AsMemory(), stop); cursor = 0;
+                if (filled == 0)
+                {
+                    if (line.Length != 0) throw new InvalidDataException("Incomplete native frame at EOF; no replay");
+                    return null;
+                }
+            }
+            var end = Array.IndexOf(buffer, '\n', cursor, filled - cursor);
+            var count = (end < 0 ? filled : end) - cursor;
+            if (line.Length + count > maximumBytes + 1L) throw new InvalidDataException("Native JSONL frame exceeds bound");
+            line.Append(buffer, cursor, count); cursor += count;
+            if (end < 0) continue;
+            cursor++;
+            if (line.Length > 0 && line[^1] == '\r') line.Length--;
+            var message = line.ToString();
+            ValidateWrite(message, maximumBytes); return message;
+        }
+    }
+    internal static void ValidateWrite(string message, int maximumBytes = WebSocketNativeChannel.MaximumFrameBytes)
+    {
+        try
+        {
+            if (message.IndexOfAny(['\r', '\n']) >= 0 || Utf8.GetByteCount(message) > maximumBytes)
+                throw new InvalidDataException("Invalid or oversized single native JSONL frame");
+        }
+        catch (EncoderFallbackException) { throw new InvalidDataException("Invalid native frame Unicode"); }
     }
 }
 

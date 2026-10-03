@@ -14,6 +14,113 @@ from relay_core.identity import Denied
 
 class PcNativeStdioTests(unittest.TestCase):
     @contextmanager
+    def workspace_fixture(self):
+        path = adapter.WORKSPACE_ROOT / 'fixture-repo'
+        def metadata(candidate):
+            uid = 1000 if candidate == adapter.OWNER or adapter.OWNER in candidate.parents else 0
+            return SimpleNamespace(st_mode=stat.S_IFDIR | (0o700 if candidate == adapter.OWNER else 0o755),
+                                   st_uid=uid, st_gid=uid, st_dev=1, st_ino=len(str(candidate)))
+        entries = {candidate: metadata(candidate) for candidate in [path, *path.parents]}
+        with mock.patch.object(adapter.Path, 'lstat', lambda candidate: entries[candidate]), \
+                mock.patch.object(adapter.os, 'open', side_effect=PermissionError) as opened:
+            yield path, entries, opened
+
+    def test_operational_workspace_and_actual_denial_without_native_connection(self):
+        with self.workspace_fixture() as (path, entries, opened):
+            verify = adapter.attest_workspaces([str(path)])
+            verify()
+            opened.assert_called_once_with(adapter.CREDENTIAL, adapter.os.O_RDONLY | adapter.os.O_CLOEXEC)
+            entries[path].st_ino += 1
+            with self.assertRaisesRegex(Denied, 'directory identity changed'):
+                verify()
+
+    def test_failed_denial_closes_without_reading_credential_bytes(self):
+        with self.workspace_fixture() as (path, entries, opened), \
+                mock.patch.object(adapter.os, 'close') as closed, mock.patch.object(adapter.os, 'read') as read:
+            opened.side_effect = None
+            opened.return_value = 456
+            with self.assertRaisesRegex(Denied, 'can open'):
+                adapter.attest_workspaces([str(path)])
+            closed.assert_called_once_with(456)
+            read.assert_not_called()
+
+    def test_missing_credential_is_not_a_denial_proof(self):
+        with self.workspace_fixture() as (path, entries, opened):
+            opened.side_effect = FileNotFoundError
+            with self.assertRaises(FileNotFoundError):
+                adapter.attest_workspaces([str(path)])
+
+    def test_all_workspace_ancestors_are_literal_and_have_expected_ownership(self):
+        for bad_kind in ('symlink', 'writable', 'wrong-owner', 'public-home'):
+            with self.workspace_fixture() as (path, entries, opened):
+                candidate = adapter.OWNER if bad_kind == 'public-home' else path
+                if bad_kind == 'symlink': entries[candidate].st_mode = stat.S_IFLNK | 0o777
+                elif bad_kind == 'writable': entries[candidate].st_mode |= 0o020
+                elif bad_kind == 'wrong-owner': entries[candidate].st_uid = 0
+                else: entries[candidate].st_mode |= 0o005
+                with self.subTest(kind=bad_kind), self.assertRaises(Denied):
+                    adapter.attest_workspaces([str(path)])
+                opened.assert_not_called()
+
+    def test_operational_workspaces_are_exact_unique_bounded_original_paths(self):
+        value = str(adapter.WORKSPACE_ROOT / 'repo')
+        for values in ([], [value, value], ['/tmp/repo'], [value + '/..'], [value + '/'],
+                       [value.replace('/workspace/', '/workspace//')], [value + '\n'],
+                       [value + str(n) for n in range(257)]):
+            with self.subTest(values=values[:2]), mock.patch.object(adapter.Path, 'lstat') as observe, self.assertRaises(Denied):
+                adapter.attest_workspaces(values)
+            observe.assert_not_called()
+
+    def test_operational_bridge_never_accepts_an_isolated_diagnostic_socket(self):
+        value = '/Users/pouya/.migration/native-transport-' + 'a' * 32 + '/native.sock'
+        with mock.patch.object(adapter, 'require_owner'), mock.patch.object(adapter, 'connect') as connected, self.assertRaises(Denied):
+            adapter.bridge(value, [str(adapter.WORKSPACE_ROOT / 'repo')])
+        connected.assert_not_called()
+
+    def test_workspace_attestation_fails_before_connecting_or_sending_native_requests(self):
+        with mock.patch.object(adapter, 'require_owner'), mock.patch.object(adapter, 'attest_workspaces', side_effect=Denied), \
+                mock.patch.object(adapter, 'connect') as connected, self.assertRaises(Denied):
+            adapter.bridge(str(adapter.SOCKET), [str(adapter.WORKSPACE_ROOT / 'repo')])
+        connected.assert_not_called()
+
+    def bridge_readiness(self, operational):
+        metadata = {'uid': 1000, 'peerUid': 1000, 'peerPid': 789, 'peerGeneration': '12345',
+                    'socket': str(adapter.SOCKET), 'socketEndpoint': str(adapter.SOCKET)}
+        native = mock.Mock(fds=(123, 124), buffer=bytearray())
+        stdio = mock.Mock(buffer=bytearray())
+        selector = mock.MagicMock()
+        selector.__enter__.return_value = selector
+        selector.select.return_value = [(SimpleNamespace(data='input'), None)]
+        peer_check, workspace_check = mock.Mock(), mock.Mock()
+        workspaces = [str(adapter.WORKSPACE_ROOT / 'repo')]
+        with mock.patch.object(adapter, 'require_owner'), mock.patch.object(adapter, 'connect', return_value=(native, peer_check, metadata)), \
+                mock.patch.object(adapter, 'attest_workspaces', return_value=workspace_check) as attest, \
+                mock.patch.object(adapter.os, 'dup', side_effect=[100, 101]), mock.patch.object(adapter.os, 'set_blocking'), \
+                mock.patch.object(adapter.os, 'read', return_value=b''), mock.patch.object(adapter, 'JSONLChannel', return_value=stdio), \
+                mock.patch.object(adapter.selectors, 'DefaultSelector', return_value=selector):
+            observed = adapter.bridge(str(adapter.SOCKET), workspaces if operational else None)
+        native.send.assert_not_called()  # EOF does not initialize or send work.
+        native.close.assert_called_once()
+        stdio.close.assert_called_once()
+        self.assertEqual(stdio.send.call_args.args[0], {'method': 'ccrelay/transport/ready', 'params': observed})
+        return observed, attest, peer_check, workspace_check, workspaces
+
+    def test_operational_readiness_brackets_workspace_and_peer_before_any_native_request(self):
+        observed, attest, peer_check, workspace_check, workspaces = self.bridge_readiness(True)
+        attest.assert_called_once_with(workspaces)
+        self.assertGreaterEqual(workspace_check.call_count, 2)
+        self.assertGreaterEqual(peer_check.call_count, 2)
+        self.assertEqual(observed['workspaces'], workspaces)
+        self.assertEqual(observed['binarySha256'], adapter.BINARY_SHA256)
+        self.assertIs(observed['credentialDenied'], True)
+
+    def test_legacy_diagnostic_readiness_does_not_fabricate_production_attestation(self):
+        observed, attest, peer_check, workspace_check, workspaces = self.bridge_readiness(False)
+        attest.assert_not_called()
+        workspace_check.assert_not_called()
+        self.assertEqual(set(observed), {'uid', 'peerUid', 'peerPid', 'peerGeneration', 'socket', 'socketEndpoint'})
+
+    @contextmanager
     def alias_fixture(self):
         path = adapter.socket_path('/Users/pouya/.migration/native-transport-' + 'b' * 32 + '/native.sock')
         endpoint = adapter.DAEMON_DIRECTORY / hashlib.sha256(str(path).encode()).hexdigest()

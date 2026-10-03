@@ -54,9 +54,10 @@ whole-group route and distinct Windows Codex, Linux Codex and Claude paths
 inside the same router; it is not yet deployed. A working native Linux transport for
 Codex now passes isolated Windows-to-Linux native acceptance, including shared
 events and actual tool identity. A standalone Claude client now also passes
-authenticated native input and reply acceptance on the PC. A persistent shared
-daemon and operational routing for both runtimes are still required for the
-preserved sessions.
+authenticated native input and reply acceptance on the PC. Linux Codex's launch
+path is now wired into the router candidate, but has not passed that version's
+Windows/WSL acceptance or been deployed. A persistent shared daemon and live
+routing for both tools are still required for the preserved sessions.
 Claude's pinned streaming control interface now also connects and disconnects
 authenticated native Remote Control on the PC through an explicit control
 request. A phone-message round trip and live Telegram steering remain unverified.
@@ -719,7 +720,7 @@ read-only PC check found the original router and Claude remote task running
 with the unchanged production configuration. No live binding, bot token,
 protected release or Hamal wiring was changed.
 
-Operational ordinary-owner launch wiring, persistent Linux daemon supervision,
+Actual ordinary-owner launch acceptance, persistent Linux daemon supervision,
 native answer-consumption reconciliation, exact reset rebinding, real
 active-work/phone/Telegram and attachment-readability acceptance still need to
 pass before original-topic cutover. `/clear` currently sends no reset; observed
@@ -727,6 +728,46 @@ native resets durably retain the new ID and hold old-pin input for explicit
 reconciliation. This is pending implementation, not removal of reset support.
 The Mac, physical bench transfer and independent disaster recovery remain in
 scope; no new role or broker service was activated.
+
+### Linux Codex router launch wiring
+
+The router candidate now contains a Linux Codex connection path through the
+existing Windows owner launcher and Unix WebSocket adapter. It launches only fixed `wsl.exe`
+arguments for Ubuntu 24.04 user `pou` and isolated Python; it does not run a
+shell, start a daemon, select a different socket or replay a failed connection.
+The optional runtime policy pins the Windows launcher and all six connector
+files in an administrator-owned package. Legacy Windows-only configuration
+does not activate this path.
+
+Before native initialization, the launch path checks the actual limited Windows
+token and attempts to open the protected bot credential under that token. The
+Linux connector checks literal workspace ownership, attempts the same credential
+open, and verifies the existing daemon's kernel peer credentials, pinned executable
+and process generation. Unexpected credential access closes the handle without
+reading bytes and refuses launch. The controller brackets connection setup and
+each frame with its Windows process observation; the connector continues checking
+the Linux peer and workspace directories. These checks establish personal-owner
+execution, not separate agent or company identities.
+
+The native connection initializes once, reads the owner's ChatGPT account without
+refreshing authentication, and executes only fixed `id -u` verification before
+routing. Account metadata is not proof of successful inference. The service still
+requires matching policy/code and Windows OS proof, and Linux bindings additionally
+require that candidate's Linux launch/tool-owner proof before Telegram polling.
+Native JSONL is bounded before RPC parsing; incomplete EOF frames, invalid Unicode,
+duplicate readiness fields and changed process generations fail without fallback.
+
+All 690 PC-router checks and 19 connector tests pass in the verified OS sandbox,
+with host credentials and network excluded. The router and standalone Claude
+probe both build with zero warnings and errors. These are component/controller
+fixtures, not acceptance of the privileged Windows launcher. A read-only PC
+check at 3:41 PM PDT found the original router and Claude remote task still
+Running, with the production configuration unchanged.
+
+Windows/WSL acceptance of this launcher, package deployment, persistent native
+daemon supervision and Claude launch wiring remain pending. The prior isolated
+shared-socket acceptance does not prove this new privileged launch path. No live
+configuration, binding, token, protected release or Hamal routing was changed.
 
 ### Physical bench preservation and PC builds
 

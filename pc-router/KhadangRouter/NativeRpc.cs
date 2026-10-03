@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using System.Text;
 
 namespace KhadangRouter;
 
@@ -80,7 +81,7 @@ public sealed class NativeRpc : INative, IAsyncDisposable
                 else Notification?.Invoke(message);
             }
         }
-        catch (Exception error) when (error is IOException or OperationCanceledException or JsonException or InvalidDataException or InvalidOperationException or KeyNotFoundException) { }
+        catch (Exception error) when (error is IOException or OperationCanceledException or JsonException or InvalidDataException or InvalidOperationException or KeyNotFoundException or DecoderFallbackException) { }
         finally { disconnected = true; foreach (var request in pending.Values) request.TrySetException(new IOException("Native stream disconnected; no replay")); }
     }
     public async ValueTask DisposeAsync()

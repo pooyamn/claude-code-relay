@@ -17,6 +17,11 @@ try
             // attempts uncertain or begin a competing Telegram poller.
             using var exclusive = new FileStream(Path.Combine(policy.StateDirectory, "exclusive.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
             using var ledger = new Ledger(Path.Combine(policy.StateDirectory, "router.db"));
+            var bindings = ledger.Bindings();
+            policy.ValidateBindings(bindings);
+            var needsLinuxCodex = bindings.Any(b => b.Backend == "codex" && b.Runtime == "linux");
+            if (needsLinuxCodex && policy.LinuxCodex == null)
+                throw new InvalidDataException("Linux native bindings require the protected ordinary-owner connector");
             using var telegram = new Telegram(WindowsService.Credential(policy.CredentialFile), ledger);
             var me = await telegram.Call("getMe", new { }, stop);
             if (me.GetProperty("username").GetString() != policy.BotUsername || me.GetProperty("id").GetInt64() != policy.BotId)
@@ -34,7 +39,7 @@ try
                     cwd = policy.WorkspaceRoot + "\\lg-magic", sandboxPolicy = new { type = "dangerFullAccess" }, timeoutMs = 10000 }, stop);
                 if (result.GetProperty("exitCode").GetInt32() != 0 || !result.GetProperty("stdout").GetString()!.Contains(policy.OwnerSid))
                     throw new InvalidOperationException("Native tool owner identity mismatch");
-                var aclCheck = "try { [IO.File]::ReadAllBytes('" + policy.CredentialFile + "') | Out-Null; exit 12 } " +
+                var aclCheck = "try { $f=[IO.File]::Open('" + policy.CredentialFile + "',[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite); $f.Dispose(); exit 12 } " +
                     "catch [UnauthorizedAccessException] { }; " +
                     "try { $p = '" + Path.GetDirectoryName(policy.CredentialFile) + "\\bin\\acl-denial-canary.tmp'; " +
                     "$f = [IO.File]::Open($p,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write); $f.Dispose(); exit 13 } " +
@@ -72,6 +77,7 @@ try
                 var visibility = new List<object>();
                 foreach (var binding in ledger.Bindings())
                 {
+                    if (binding.Backend != "codex" || binding.Runtime != "windows") continue;
                     // Read stored state only: do not resume, start a turn or
                     // mutate the owner's goal as a deployment fixture.
                     var read = await rpc.Call("thread/goal/get", new { threadId = binding.ThreadId }, stop, effect: false);
@@ -79,6 +85,8 @@ try
                     goalReads.Add(new { threadId = binding.ThreadId, known = view.Known, goal = view.Value });
                     visibility.Add(await NativeVisibility.Read(rpc, binding, stop));
                 }
+                var linux = needsLinuxCodex ? await LinuxCodexChannel.ConnectVerified(policy, bindings, ledger, stop) : null;
+                await using var linuxRpc = linux?.Rpc;
                 File.WriteAllText(Path.Combine(policy.StateDirectory, "probe.json"), JsonSerializer.Serialize(new {
                     verified = true, pcOnly = true, bot = policy.BotUsername, nativeOwnerSid = policy.OwnerSid,
                     nativePid = rpc.Pid, nativeAccountAuthenticated = loggedIn, commandOwnerVerified = true, credentialAndCodeDenied = true,
@@ -88,6 +96,10 @@ try
                     nativeQuota = quota.Snapshot,
                     nativeRemote = remote.Snapshot, nativeThreadVisibility = visibility,
                     nativeAttachmentReadOnlyAclVerified = true, nativeAttachmentFixture = asset,
+                    nativeLinuxCodexVerified = linux != null,
+                    nativeLinuxCodexObservation = linux?.Observation,
+                    nativeLinuxAccountPresent = linux != null,
+                    nativeLinuxCommandOwnerVerified = linux != null,
                     policySha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(args[2]))),
                     routerSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(typeof(Router).Assembly.Location))),
                     modelInference = false, telegramPolling = false, testedAt = DateTimeOffset.UtcNow }));
@@ -102,11 +114,16 @@ try
                     proof.GetProperty("policySha256").GetString() != Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(args[2]))) ||
                     proof.GetProperty("routerSha256").GetString() != Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(typeof(Router).Assembly.Location))) ||
                     proof.GetProperty("nativeOwnerSid").GetString() != policy.OwnerSid) throw new InvalidOperationException("Matching native identity/OS-ACL/code proof required before polling");
+                if (needsLinuxCodex && (!proof.TryGetProperty("nativeLinuxCodexVerified", out var linuxProof) || linuxProof.ValueKind != JsonValueKind.True ||
+                    !proof.TryGetProperty("nativeLinuxCommandOwnerVerified", out var commandProof) || commandProof.ValueKind != JsonValueKind.True))
+                    throw new InvalidOperationException("Matching Linux native launch/credential/tool-owner proof required before polling");
                 await using var rpc = new NativeRpc(WindowsOwnerProcess.Start(policy, policy.WorkspaceRoot + "\\lg-magic"), ledger);
                 await rpc.Initialize(stop);
                 var remote = new NativeRemote();
                 await remote.Read(rpc, stop);
-                await new Router(policy, ledger, telegram, rpc, nativeRemote: remote).Run(stop, canary: args[0] == "--canary-service");
+                var linux = needsLinuxCodex ? await LinuxCodexChannel.ConnectVerified(policy, bindings, ledger, stop) : null;
+                await using var linuxRpc = linux?.Rpc;
+                await new Router(policy, ledger, telegram, rpc, nativeRemote: remote, linuxRpc: linuxRpc).Run(stop, canary: args[0] == "--canary-service");
             }
         }
         catch (Exception error) when (error is not OperationCanceledException)

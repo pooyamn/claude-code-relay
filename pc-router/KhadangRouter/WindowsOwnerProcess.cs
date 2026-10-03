@@ -39,6 +39,15 @@ public sealed class WindowsOwnerProcess : IDisposable
     }
 
     public static WindowsOwnerProcess Start(RouterPolicy policy, string workspace) => StartCore(policy, workspace, null);
+    public static WindowsOwnerProcess StartLinuxCodex(RouterPolicy policy, string windowsWorkspace, IReadOnlyList<string> workspaces)
+    {
+        policy.Validate();
+        var runtime = policy.LinuxCodex ?? throw new InvalidDataException("Protected Linux Codex runtime required");
+        // A fixed WSL/Python connector, never caller-selected commands, shells,
+        // executables, distro identities or native daemon startup.
+        var arguments = runtime.Arguments(workspaces);
+        return StartCore(policy, windowsWorkspace, null, runtime, arguments);
+    }
     // One-shot acceptance only: an empty child-only credential home. Never copy
     // production credentials, change global defaults or launch a model as SYSTEM.
     public static WindowsOwnerProcess StartDiagnostic(RouterPolicy policy, string workspace, string emptyHome)
@@ -47,17 +56,29 @@ public sealed class WindowsOwnerProcess : IDisposable
         if (Directory.EnumerateFileSystemEntries(emptyHome).Any()) throw new InvalidDataException("Empty diagnostic native home required");
         return StartCore(policy, workspace, emptyHome);
     }
-    private static WindowsOwnerProcess StartCore(RouterPolicy policy, string workspace, string? diagnosticHome)
+    private static WindowsOwnerProcess StartCore(RouterPolicy policy, string workspace, string? diagnosticHome,
+        LinuxCodexRuntime? linux = null, string? linuxArguments = null)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
         using var current = WindowsIdentity.GetCurrent();
         if (!current.IsSystem || Process.GetCurrentProcess().SessionId != 0)
             throw new InvalidOperationException("Owner launcher requires the SYSTEM service, not an agent or SSH session");
         policy.Workspace(workspace);
-        using var executable = new FileStream(policy.CodexExecutable, FileMode.Open, FileAccess.Read, FileShare.Read);
-        if (!Convert.ToHexString(SHA256.HashData(executable)).Equals(policy.CodexSha256, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException("Pinned native Codex executable changed");
-        if ((File.GetAttributes(policy.CodexExecutable) & FileAttributes.ReparsePoint) != 0)
+        using var package = linux?.OpenPinnedPackage();
+        var image = linux == null ? policy.CodexExecutable : LinuxCodexRuntime.WslExecutable;
+        var digest = linux == null ? policy.CodexSha256 : linux.WslSha256;
+        if (linux != null)
+        {
+            if (!Environment.SystemDirectory.Equals(@"C:\Windows\System32", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("Exact PC Windows system image root required");
+            for (FileSystemInfo? item = new FileInfo(image); item != null; item = item is FileInfo f ? f.Directory : ((DirectoryInfo)item).Parent)
+                if (!item.Exists || (item.Attributes & FileAttributes.ReparsePoint) != 0)
+                    throw new InvalidDataException("Literal pinned WSL system image required");
+        }
+        using var executable = new FileStream(image, FileMode.Open, FileAccess.Read, FileShare.Read);
+        if (!Convert.ToHexString(SHA256.HashData(executable)).Equals(digest, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("Pinned native launch executable changed");
+        if ((File.GetAttributes(image) & FileAttributes.ReparsePoint) != 0)
             throw new InvalidDataException("Native executable cannot be a reparse point");
         EnablePrivileges();
         var result = new WindowsOwnerProcess();
@@ -73,9 +94,10 @@ public sealed class WindowsOwnerProcess : IDisposable
                 throw new InvalidOperationException("Physical console belongs to a different account");
             if (!GetTokenInformation(token, 20, out var elevated, 4, out _) || elevated != 0)
                 throw new InvalidOperationException("Native agents require a non-elevated owner token");
+            if (linux != null) VerifyCredentialDenied(token, policy.CredentialFile);
             result.ownerSid = policy.OwnerSid; result.ownerSession = session;
             if (!CreateEnvironmentBlock(out environment, token, false)) throw Native();
-            if (diagnosticHome != null) diagnosticEnvironment = EmptyHomeEnvironment(environment, diagnosticHome);
+            if (diagnosticHome != null || linux != null) diagnosticEnvironment = CleanOwnerEnvironment(environment, diagnosticHome);
             var stdin = Pipe(handles, parentWrites: true);
             var stdout = Pipe(handles, parentWrites: false);
             var stderr = Pipe(handles, parentWrites: false);
@@ -85,18 +107,19 @@ public sealed class WindowsOwnerProcess : IDisposable
             if (!SetInformationJobObject(result.job, 9, ref limits, (uint)Marshal.SizeOf<JobLimits>())) throw Native();
             var startup = new StartupInfo { Size = Marshal.SizeOf<StartupInfo>(), Desktop = "winsta0\\default",
                 Flags = 0x100, Input = stdin.Child, Output = stdout.Child, Error = stderr.Child };
-            var command = new StringBuilder(Quote(policy.CodexExecutable) + " -c windows.sandbox=elevated" +
+            var command = new StringBuilder(linux != null ? Quote(image) + " " + linuxArguments :
+                Quote(image) + " -c windows.sandbox=elevated" +
                 (diagnosticHome == null ? "" : " -c cli_auth_credentials_store=\"file\"") + " app-server --listen stdio://");
             // Only our three explicitly inheritable pipe ends are inherited.
             // Router file/socket/token handles are non-inheritable.
-            if (!CreateProcessAsUser(token, policy.CodexExecutable, command, IntPtr.Zero, IntPtr.Zero, true,
+            if (!CreateProcessAsUser(token, image, command, IntPtr.Zero, IntPtr.Zero, true,
                 0x08000404, diagnosticEnvironment == IntPtr.Zero ? environment : diagnosticEnvironment, workspace, ref startup, out var info)) throw Native();
             result.process = info.Process; thread = info.Thread; result.Pid = info.Pid;
             if (!AssignProcessToJobObject(result.job, result.process)) throw Native();
             if (ResumeThread(thread) == uint.MaxValue) throw Native();
             result.Input = new StreamWriter(new FileStream(new SafeFileHandle(stdin.Parent, true), FileAccess.Write), new UTF8Encoding(false)) { AutoFlush = true };
             handles.Remove(stdin.Parent);
-            result.Output = new StreamReader(new FileStream(new SafeFileHandle(stdout.Parent, true), FileAccess.Read), Encoding.UTF8);
+            result.Output = new StreamReader(new FileStream(new SafeFileHandle(stdout.Parent, true), FileAccess.Read), new UTF8Encoding(false, true));
             handles.Remove(stdout.Parent);
             result.Error = new StreamReader(new FileStream(new SafeFileHandle(stderr.Parent, true), FileAccess.Read), Encoding.UTF8);
             handles.Remove(stderr.Parent);
@@ -112,10 +135,27 @@ public sealed class WindowsOwnerProcess : IDisposable
             if (token != IntPtr.Zero) CloseHandle(token);
         }
     }
-    private static IntPtr EmptyHomeEnvironment(IntPtr block, string home)
+    private static void VerifyCredentialDenied(IntPtr token, string credential)
+    {
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
+        // Actual open/close as the same limited Windows token, NOT SYSTEM and
+        // NOT a provider sandbox. Unexpected success never reads any bytes.
+        if (!File.Exists(credential)) throw new InvalidDataException("Protected router credential is missing");
+        if (!DuplicateTokenEx(token, 0x02000000, IntPtr.Zero, 2, 2, out var probeToken)) throw Native();
+        using (probeToken)
+        {
+            var denied = WindowsIdentity.RunImpersonated(probeToken, () => {
+                try { using var opened = File.Open(credential, FileMode.Open, FileAccess.Read, FileShare.ReadWrite); return false; }
+                catch (UnauthorizedAccessException) { return true; }
+            });
+            if (!denied) throw new InvalidDataException("Limited Windows owner can open the protected router credential");
+        }
+    }
+    private static IntPtr CleanOwnerEnvironment(IntPtr block, string? home)
     {
         // Never log or copy the owner's provider/CLI credential environment.
-        // This replacement belongs solely to the diagnostic child process.
+        // This replacement belongs solely to the child. In particular WSLENV,
+        // provider keys and router credentials never cross into the connector.
         var values = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         for (var offset = 0; ;)
         {
@@ -128,7 +168,7 @@ public sealed class WindowsOwnerProcess : IDisposable
             if (!AllowedDiagnosticVariable(key)) continue;
             values[key] = line[(separator + 1)..];
         }
-        values["CODEX_HOME"] = home;
+        if (home != null) values["CODEX_HOME"] = home;
         return Marshal.StringToHGlobalUni(string.Join('\0', values.Select(pair => pair.Key + "=" + pair.Value)) + "\0\0");
     }
     internal static bool AllowedDiagnosticVariable(string key) => new[] {
@@ -205,6 +245,8 @@ public sealed class WindowsOwnerProcess : IDisposable
     [DllImport("kernel32.dll")] private static extern bool CloseHandle(IntPtr handle);
     [DllImport("kernel32.dll")] private static extern IntPtr GetCurrentProcess();
     [DllImport("advapi32.dll", SetLastError = true)] private static extern bool OpenProcessToken(IntPtr process, uint access, out IntPtr token);
+    [DllImport("advapi32.dll", SetLastError = true)] private static extern bool DuplicateTokenEx(IntPtr existing, uint access,
+        IntPtr attributes, int impersonationLevel, int tokenType, out SafeAccessTokenHandle token);
     [DllImport("advapi32.dll", EntryPoint = "LookupPrivilegeValueW", CharSet = CharSet.Unicode, SetLastError = true)] private static extern bool LookupPrivilegeValue(string? system, string name, out Luid luid);
     [DllImport("advapi32.dll", SetLastError = true)] private static extern bool AdjustTokenPrivileges(IntPtr token, bool disableAll, ref TokenPrivileges privileges, uint length, IntPtr previous, IntPtr required);
 }

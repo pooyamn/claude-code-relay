@@ -27,6 +27,43 @@ BINARY_SHA256 = '12eb3e81114588aca3b7998f4f19e8997b056aca08e57a7ca7c8a3ec8c652aa
 SOCKET = OWNER / '.codex/app-server-control/app-server-control.sock'
 MAX_FRAME = 2_097_152
 DAEMON_DIRECTORY = Path('/tmp/codex-daemon-1000')
+WORKSPACE_ROOT = OWNER / '.openclaw/workspace'
+CREDENTIAL = Path('/mnt/c/ProgramData/KhadangRouter/khadang-token.dpapi')
+
+
+def attest_workspaces(values):
+    """Actual literal directory/UID and OS denial checks, no native/tool action."""
+    if not 1 <= len(values) <= 256 or len(set(values)) != len(values):
+        raise Denied('Exact unique ordinary-owner workspaces required')
+    observed = {}
+    for value in values:
+        if type(value) is not str or not value.startswith(str(WORKSPACE_ROOT) + '/') or \
+                '\\' in value or '//' in value or any(ord(c) < 32 or ord(c) == 127 for c in value) or \
+                any(part in ('', '.', '..') for part in value.split('/')[1:]) or value.endswith('/'):
+            raise Denied('Exact preserved workspace path required')
+        path = Path(value)
+        for candidate in reversed([path, *path.parents]):
+            metadata = candidate.lstat()
+            expected_uid = 1000 if candidate == OWNER or OWNER in candidate.parents else 0
+            if not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != expected_uid or metadata.st_mode & 0o022 or \
+                    candidate == OWNER and metadata.st_mode & 0o077:
+                raise Denied('Literal ordinary-owner workspace and trusted ancestors required')
+            observed[candidate] = _identity(metadata)
+    try:
+        descriptor = os.open(CREDENTIAL, os.O_RDONLY | os.O_CLOEXEC)
+    except PermissionError:
+        pass
+    else:
+        os.close(descriptor)  # Never read even one credential byte on failure.
+        raise Denied('Ordinary Linux owner can open the protected router credential')
+
+    def verify():
+        for candidate, expected in observed.items():
+            if _identity(candidate.lstat()) != expected:
+                raise Denied('Attested workspace directory identity changed')
+
+    verify()
+    return verify
 
 
 def socket_path(value):
@@ -159,11 +196,25 @@ def connect(value):
         raise
 
 
-def bridge(value):
-    native, verify, observed = connect(value)
+def bridge(value, workspaces=None):
+    verify_workspaces = None
+    if workspaces is not None:
+        require_owner()
+        if value != str(SOCKET):
+            raise Denied('Operational connector requires the exact native control socket')
+        verify_workspaces = attest_workspaces(workspaces)
+    native, verify_peer, observed = connect(value)
+    def verify():
+        if verify_workspaces is not None:
+            verify_workspaces()
+        verify_peer()
+
+    if verify_workspaces is not None:
+        observed.update(binarySha256=BINARY_SHA256, credentialDenied=True, workspaces=list(workspaces))
     stdio = None
     read_fd, write_fd = None, None
     try:
+        verify()  # Bracket workspace and peer observations before readiness.
         read_fd, write_fd = os.dup(0), os.dup(1)
         os.set_blocking(read_fd, False)
         os.set_blocking(write_fd, False)
@@ -212,9 +263,13 @@ def bridge(value):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--socket', default=str(SOCKET))
+    parser.add_argument('--attest', action='store_true', help='Require operational workspace/credential OS checks')
+    parser.add_argument('--workspace', action='append', default=[])
     arguments = parser.parse_args()
     try:
-        bridge(arguments.socket)
+        if arguments.workspace and not arguments.attest:
+            raise Denied('Operational workspace checks must not be silently skipped')
+        bridge(arguments.socket, arguments.workspace if arguments.attest else None)
     except BaseException as error:
         # Private stderr contains no native payload, credentials or argv.
         print('PC native transport stopped: ' + type(error).__name__, file=sys.stderr)
