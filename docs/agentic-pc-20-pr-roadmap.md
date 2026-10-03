@@ -1,5 +1,9 @@
 # Agentic PC 20 PR implementation roadmap
 
+Execution deferred, 2026-10-03: Pouya prioritized migrating the existing topics,
+projects and bench to the PC without waiting for this infrastructure series.
+The [Mac to PC migration plan](mac-to-pc-migration.md) now governs active work.
+
 Draft proposal dated 2026-10-01, based on [design v7](agentic-pc-design.md). These 20 PRs move the existing relay toward the design without replacing working native sessions or creating an always-running management hierarchy. This document plans work; it does not authorize live deployments, migrations, external actions or creation of GitHub PRs.
 
 Build testable security and delivery foundations first. Introduce the builder with the session launcher, then prove publication and recovery before its first trusted end-to-end delivery. Keep the approved three-active-session cap, three-handoff watchdog and 10% owner reserve. Integrate evaluated memory/search/workflow components behind those controls, and finish with target-PC acceptance and staged migration.
