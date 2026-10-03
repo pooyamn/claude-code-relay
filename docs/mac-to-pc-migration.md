@@ -260,8 +260,9 @@ completed with exit 0; private results are retained under migration probe
 
 This proves Codex can read the restored full histories, not native continuation
 or phone connectivity. DUT remains selected to Claude, not its older Codex pin.
-Claude's subsequent context checks are recorded below; authenticated work,
-settings/logins, source-final checkpoints and topic cutovers remain pending.
+Claude's subsequent context checks and login activation are recorded below;
+unfinished-work continuation, source-final checkpoints and topic cutovers
+remain pending.
 
 At 12:32 PM PDT, native Claude 2.1.288 idle-resume checks had covered all ten
 preserved pins. Nine passed: ai-hil, supervisor-fw, marginal-requests,
@@ -294,10 +295,75 @@ disabled only for these diagnostic children, not removed from the migration
 requirements. Their clean environments contained no credentials and explicitly
 disabled [automatic interrupted-turn continuation](https://code.claude.com/docs/en/env-vars).
 The background notification demonstrates why that option alone is not a complete
-unfinished-work recovery protocol. Linux logins, actual tool-enabled work,
-phone visibility and the Claude production transport still need acceptance.
+unfinished-work recovery protocol. At that checkpoint, Linux logins, actual
+tool-enabled work, phone visibility and the Claude production transport had
+not passed acceptance. Login activation is recorded below.
 Seven focused regressions pass, alongside the thirteen history/restore tests.
 Original preserved seeds and the source Mac sessions remain untouched.
+
+At 12:45 PM PDT, the current PC Windows subscription caches were activated in
+the ordinary Linux owner's native homes. The preserved Claude cache was expired;
+it was not used in place of the current owner login. Codex's Windows account ID
+matched the preserved source account. Linux Codex now selects ChatGPT auth,
+and Claude selects `claude.ai` with matching Windows owner account metadata.
+This uses Codex's documented
+[file-cache transfer](https://learn.chatgpt.com/docs/auth) and Claude's documented
+[Linux credential storage](https://code.claude.com/docs/en/authentication).
+No API-key substitution was made and no tokens were printed or committed.
+
+Native Codex account and quota RPCs succeeded with no loaded conversations.
+Its effective configuration reports GPT-6 Astra, high reasoning,
+`danger-full-access`, approvals `never`, reviewer `user`, file-based auth and
+startup update checks disabled. Claude retains Opus `opus[1m]`, its source
+hook/environment/model settings and 3,650-day retention, while applying the
+owner's requested `bypassPermissions` and disabling automatic updates. The
+existing Linux machine identity is preserved; only current owner account
+metadata and the update preference were merged into its global JSON. Both
+pinned CLI launchers are installed under the owner's `.local/bin`.
+
+All five active Linux profile files are ordinary UID-1000 files with mode 0600.
+The one-shot activation ran under the exact Interactive/Limited Windows owner
+in session 1, then explicitly entered Linux as UID 1000. Windows login/settings
+digests remained unchanged; its two native remote tasks and Khadang service
+remain running. Windows, Linux `pou` and Linux root all failed actual open/close
+checks on the protected Khadang token. The activation task is terminal with
+exit 0. Private original inputs and receipts are retained under native profile
+`9c45aa2aee1b2f6fe65295082856bc8f`, not in Git. Six focused merge/private-write
+tests pass alongside the twenty history/context checks.
+
+This activation sent no model prompt, did not resume any imported conversation
+and changed no Telegram routing. In particular the held legacy relay Claude
+conversation was not reopened with credentials. It does not yet establish
+authenticated unfinished-work continuation, token-refresh/reboot recovery,
+complete global instructions/skills/plugin/MCP migration, remote phone
+visibility or the production Linux Claude/Codex transport.
+
+By 12:51 PM PDT, both native Linux CLIs also completed authenticated model
+calls in new private migration directories outside the bound workspaces.
+Codex returned the requested constant, completed its turn, and reported no
+tool operations. Claude likewise returned its requested constant using the
+subscription login, with no tools enabled. Both ran from the limited
+interactive Windows owner as Linux UID 1000, with session persistence disabled;
+their owned processes exited and were reaped. Codex's current quota was checked
+before inference against the owner's 10% reserve. No original session was resumed.
+
+The first Claude check exited before inference: Windows PowerShell stripped
+quotes from inline MCP JSON, which the CLI then interpreted as a nonexistent
+file named `{mcpServers:{}}`. The corrected check generated JSON within Linux
+and passed; the successful Codex call was not repeated. Both the failed attempt
+and corrected evidence remain private on the PC. Model-call evidence is under
+`native-inference-9cededc44b4983a3956722e7eccc2386` for Codex and
+`native-inference-c84110028ef4dfe3daae5a527c79c4be` for Claude. This proves
+working subscription inference, not unfinished-work recovery, phone continuity
+or Telegram cutover.
+
+At 12:54 PM PDT, the final check again ran under the limited interactive Windows
+owner. Windows and both Linux identities were denied access to Khadang's token,
+and no native Linux CLI remained running. Khadang and the Windows remote tasks
+were still running. An administrator SSH context can open the Windows file even
+when WSL selects Linux `pou`; Linux UID alone is not the boundary. Model launch
+must retain the verified limited Windows parent. No credential bytes were read
+by either open/close probe and no ACL was weakened.
 
 Five bindings still need source-state reconciliation. Startup Ideas,
 kicad-copilot-research and mimic-fast-pcb lack a selected backend marker;
