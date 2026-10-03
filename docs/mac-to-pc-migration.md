@@ -40,7 +40,8 @@ actual configuration rather than replacing its backend without a decision.
 
 The source workspace is approximately 49 GB, with another 1.6 GB of OpenClaw
 media, 2.3 GB of Codex sessions and 1.2 GB of Claude project history. The PC has
-ample disk space. Most source projects have not been copied there. The separate
+ample disk space. All source workspace files now have a checksum-verified PC
+archive, but project extraction and operational checks are not complete. The separate
 physical bench MacBook also holds bench projects and tools; it is not the Mac
 VM holding the relay workspace.
 
@@ -137,7 +138,8 @@ digests and administrator-owned, SYSTEM/Administrators-only permissions:
 | Relay configuration | 658147 bytes | Copied and checksum checked |
 | Owner Git, SSH, Claude and launch configuration | 40504 bytes | Copied and checksum checked |
 | Remaining owner configuration and shell profiles | 14341221 bytes | Copied, checksum checked and Linux reader accepted |
-| Full workspace including dirty and untracked work | 22649280767 bytes | Capture complete, upload still running |
+| Full workspace including dirty and untracked work | 22649280767 bytes | Copied, checksum checked and Linux reader accepted; extraction running |
+| Fresh Codex SQLite snapshots | 168085642 bytes | Copied, checksum checked and Linux reader accepted |
 
 The protected destination is
 `C:\ProgramData\OracovaMigration\35d21d73d97ad5411f82033a86562528`.
@@ -160,13 +162,50 @@ source files or dropping metadata to satisfy the Windows reader.
 Ubuntu now has an ordinary `pou` user, UID 1000, with private home `/Users/pouya`.
 Keeping the Unix source path is a compatibility measure for existing topic keys
 and histories, not a company or role boundary. Native models have not been
-launched there. ARM GCC 13.2.1, newlib, OpenOCD 0.12.0, CMake 3.28.3, Ninja 1.11.1,
+launched there. The full Claude and Codex archives were extracted successfully
+as UID 1000 into private preserved-state directories, separate from active
+settings and logins. Workspace extraction is running as that same user and
+will restore the source Unix path only after the extraction succeeds.
+
+Matching native Linux Codex 0.160.0 and Claude 2.1.288 are installed in private
+owner preparation directories and both version checks pass. The Codex package
+matches the published release digest. Claude's manifest signature, pinned
+Anthropic key fingerprint and binary checksum all pass. No session, login or
+router transport has been started or changed. Background and manual Claude
+updates were disabled for the preparation invocation; permanent launch settings
+still require inspection and merging. A real model must launch from the limited
+interactive Windows owner token, not inherit the SSH administrator context.
+The personal owner-registered WSL distro is not an accepted company boundary.
+
+All six Codex SQLite databases now also have fresh backup-API snapshots, with
+successful integrity checks and a verified protected PC archive. These preserve
+committed WAL records rather than relying on the non-quiesced raw file copies.
+Each database is consistent independently, not an atomic cross-database or
+final per-topic cutover snapshot. The capture helper's tests cover a committed
+live WAL record, a closed WAL database without companions, source data and
+journal-mode preservation, private output permissions, and symlink rejection.
+The Mac's read-only SQLite open failed for the inactive WAL case; the capture
+connection uses `query_only` to permit normal journal initialization while
+preventing SQL data writes. Only closed standalone backups use immutable reads.
+
+ARM GCC 13.2.1, newlib, OpenOCD 0.12.0, CMake 3.28.3, Ninja 1.11.1,
 GDB, Python venv and build dependencies are installed. Tool versions were read
 as the ordinary Linux user. That user compiled and linked the fixture into an
 ARM EABI ELF with exit 0; the linker support file is present. This is not an
 actual project build, flashing or USB acceptance. A systemd binary-format trigger failed while
 the WSL status path was read-only; the existing mount was left intact and this
 compatibility issue remains to be reconciled before declaring runtime readiness.
+
+MTProto is currently down. At 10:59 AM PDT, Defender quarantined the Windows
+`mtg.exe` as `Trojan:Win32/Kepavll!rfn` with Severe severity, terminating both
+proxy processes. The original download archive matches the official release's
+SHA-256; that does not establish a false positive. WinSW 2.12.0 then failed to
+report the child exits because its LocalService account could not open the
+service-control manager, leaving both wrappers falsely marked Running. This
+matches [the upstream restricted-user bug](https://github.com/winsw/winsw/issues/1136).
+No executable was restored and no Defender exception was added. Security review
+is pending; MTProto and its misleading service-health signal both require repair
+before Mac-independent VPN acceptance can pass.
 
 Khadang membership remains unchanged: Ai Dispatch member only; Oracova and Startup
 Ideas inaccessible. The existing bot-add request is still pending. Target native

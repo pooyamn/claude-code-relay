@@ -80,7 +80,7 @@ def copy_archive(options)
   verify = <<~PS
     $ErrorActionPreference="Stop";$ProgressPreference="SilentlyContinue";
     $p="#{remote}";$a=Get-Acl -LiteralPath $p;
-    $pi=[Diagnostics.ProcessStartInfo]::new();$pi.FileName="C:\\Windows\\System32\\wsl.exe";$pi.Arguments="-d Ubuntu-24.04 -u root -- tar -tzf /mnt/c/ProgramData/OracovaMigration/#{options[:run]}/#{options[:label]}-sftp.tar.gz";$pi.UseShellExecute=$false;$pi.RedirectStandardOutput=$true;$pi.RedirectStandardError=$true;
+    $pi=[Diagnostics.ProcessStartInfo]::new();$pi.FileName="C:\\Windows\\System32\\wsl.exe";$pi.Arguments="-d Ubuntu-24.04 -u pou -- tar -tzf /mnt/c/ProgramData/OracovaMigration/#{options[:run]}/#{options[:label]}-sftp.tar.gz";$pi.UseShellExecute=$false;$pi.RedirectStandardOutput=$true;$pi.RedirectStandardError=$true;
     $child=[Diagnostics.Process]::Start($pi);$drain=$child.StandardOutput.BaseStream.CopyToAsync([IO.Stream]::Null);$err=$child.StandardError.ReadToEndAsync();$child.WaitForExit();$drain.GetAwaiter().GetResult();$tarError=$err.GetAwaiter().GetResult();
     $report=[ordered]@{run="#{options[:run]}";label="#{options[:label]}";path=$p;bytes=(Get-Item -LiteralPath $p).Length;sha256=(Get-FileHash -LiteralPath $p).Hash.ToLowerInvariant();owner=$a.GetOwner([Security.Principal.SecurityIdentifier]).Value;protected=$a.AreAccessRulesProtected;
     grants=@($a.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])|ForEach-Object {$_.IdentityReference.Value});archiveReader="WSL GNU tar";tarExit=$child.ExitCode;tarWarning=($tarError.Length -gt 0);sourceProducerExit=#{status.exitstatus};consistentFinalSnapshot=$false;extracted=$false};
