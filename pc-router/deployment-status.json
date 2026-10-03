@@ -1,0 +1,59 @@
+{
+  "recorded_at": "2026-10-03",
+  "host": "DESKTOP-8SO9HDK",
+  "pc_address": "10.0.0.35",
+  "owner_user": "pou",
+  "bot": "TheKhadangBot",
+  "mac_retirement": {
+    "known_plaintext_token_file_removed": "/Users/pouya/.config/ccrelay/env-test",
+    "stopped": ["ccrelayd-test", "crw-cf42f7e432", "crw-5429404fde"],
+    "hamal_changed": false,
+    "mac_native_daemon_changed": false,
+    "historical_backups_secure_erased": false
+  },
+  "pc_credentials": {
+    "active_store": "C:\\ProgramData\\KhadangRouter\\khadang-token.dpapi",
+    "protection": "LocalMachine DPAPI; SYSTEM/Administrators-only DACL and administrator owner",
+    "historical_sealed_copy": "C:\\ProgramData\\KhadangRouter\\retired-staged-khadang-env.dpapi",
+    "historical_copy_protection": "SYSTEM/Administrators-only DACL; ordinary worker access removed",
+    "bot_identity_verified": true,
+    "native_non_elevated_owner_denied_token_read_and_router_write": true,
+    "negative_acl_probe_provider_sandbox_disabled": true
+  },
+  "pc_service": {
+    "name": "KhadangRouter",
+    "state": "Stopped",
+    "startup": "Manual",
+    "telegram_polling_active": false,
+    "lg_topic_created": false,
+    "model_inference_started": false,
+    "source_status": "Owner-only Windows migration adapter in progress; not the accepted WSL/company router",
+    "offline_checks_passed": 35,
+    "installed_windows_checks_passed": 33,
+    "native_windows_offline_sandbox_command_verified": true,
+    "empty_unpersisted_bootstrap_thread": "01a10101-fa82-7112-acfa-00dc36618bd8",
+    "empty_thread_reconciliation": "Native resume returned no rollout found; confirmed creation receipt retained. No input/inference/topic existed; only obsolete provisioning cursor removed.",
+    "next_gate": "Deploy and verify inert thread/inject_items checkpoint, exact native restart/resume, owner-authorized full-access profile, LG topic binding and live rolling-bubble canary. No Mac fallback."
+  },
+  "owner_full_access": {
+    "explicitly_requested": true,
+    "codex_config": "C:\\Users\\pou\\.codex\\config.toml",
+    "sandbox_mode": "danger-full-access",
+    "approval_policy": "never",
+    "codex_native_config_read_verified": true,
+    "claude_config": "C:\\Users\\pou\\.claude\\settings.json",
+    "claude_permissions_defaultMode": "bypassPermissions",
+    "claude_file_readback_verified": true,
+    "updates_preserved": true,
+    "backup_directory": "C:\\ProgramData\\KhadangRouter\\owner-settings-before-full-access-23f898b8cba0457f9b0b2cc8e1659c2f",
+    "scope": "Native user defaults. Explicit session/launcher settings can override; the adapter must be reconciled before activation. No SYSTEM agents or Windows administrator bypass."
+  },
+  "remaining": [
+    "Live PC routing and LG topic acceptance",
+    "Native Claude interactive adapter and tool-switch continuity",
+    "Media delivery and native phone/app attachment",
+    "Joined quota/admission/progress enforcement including the 10 percent owner reserve",
+    "Role/company/employee authorization and publication gates",
+    "Startup without console sign-in, reboot and clean-machine recovery drills"
+  ]
+}
