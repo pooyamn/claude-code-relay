@@ -5,6 +5,13 @@ keep the same Telegram topics, use Khadang instead of Hamal, and make the PC
 the bench host. The new role and broker infrastructure is deferred. This plan
 does not require completing the 20 PR roadmap before migration.
 
+Pouya's revised continuity decision, 2026-10-03: keep Claude and Codex session
+histories as checksum-verified backups. Start fresh PC sessions from project
+handoff documents and preserved worktrees; restoring or resuming the Mac's
+native session IDs is optional and must not delay cutover. Record the new PC
+session IDs for subsequent operation and recovery. This is an explicit initial
+migration choice, not permission to silently replace a failed PC session.
+
 The Mac remains the rollback source until the PC passes the checks below.
 Retiring its services is distinct from erasing a Mac or VM; no filesystem wipe
 is authorized until the exact target is resolved and verified copies exist.
@@ -32,11 +39,12 @@ chat and topic IDs unchanged. The existing PC LG topic remains intact.
 | schematic-pipeline-lab | -1004395661179 | 2697 |
 | mimic-fast-pcb | -1004395661179 | 3315 |
 
-Selected backends and exact native session pins must be read from source runtime
-state, not inferred from the `claude-` agent names. Preserve both tools' histories.
-Missing pins require reconciliation, not choosing a transcript by modification
-time or silently creating a replacement conversation. Preserve the Qwen topic's
-actual configuration rather than replacing its backend without a decision.
+Selected tools and provider configuration must be read from source runtime
+state, not inferred from the `claude-` agent names. Preserve both tools' histories
+and known source session IDs as backup metadata. Missing old pins do not block
+a fresh PC session with a checked handoff; record any inventory gaps rather than
+guessing a transcript by modification time. Preserve the Qwen topic's actual
+configuration rather than replacing its backend without a decision.
 
 The source workspace is approximately 49 GB, with another 1.6 GB of OpenClaw
 media, 2.3 GB of Codex sessions and 1.2 GB of Claude project history. The PC has
@@ -57,7 +65,7 @@ events and actual tool identity. A standalone Claude client now also passes
 authenticated native input and reply acceptance on the PC. Linux Codex's launch
 path is now wired into the router candidate, but has not passed that version's
 Windows/WSL acceptance or been deployed. A persistent shared daemon and live
-routing for both tools are still required for the preserved sessions.
+routing for both tools are still required for the new PC sessions.
 Claude's pinned streaming control interface now also connects and disconnects
 authenticated native Remote Control on the PC through an explicit control
 request. A phone-message round trip and live Telegram steering remain unverified.
@@ -65,6 +73,29 @@ Native remote connectivity alone does not supply those capabilities.
 The last membership check found Khadang unable to access Oracova and Startup
 Ideas, and only a member in Ai Dispatch. An owner request to add the bot is
 pending. Recheck actual membership before routing changes.
+
+## Project handoffs
+
+Prepare a handoff for every operational project, including unbound projects,
+before its source writer is retired. Keep private project context in the
+restricted migration copy, not a public repository. Each handoff records:
+
+- The objective, current progress, important decisions and next concrete steps.
+- The repository path, branch and commit, plus dirty and untracked work. The
+  document references the preserved files; it does not replace them.
+- Commands, test results, build artifacts and remaining failures, with evidence
+  locations rather than unsupported claims that work is complete.
+- Required tool/provider settings, instructions and skills, without secrets.
+- Pending questions, approvals, running operations and external actions,
+  separating confirmed results from unknown outcomes. Mark actions that must
+  not be repeated and retain their ledger/receipt references. A prior approval
+  is not new authority for a changed action or artifact.
+- The history backup location and known source session ID for optional lookup.
+
+Check the handoff against the final preserved worktree and action records after
+quiescing the source writer. Verify that the fresh PC session loads it and can
+continue the next step. Do not require the session to ingest all old transcripts
+or reproduce the Mac session ID.
 
 ## Execution sequence
 
@@ -76,24 +107,28 @@ pending. Recheck actual membership before routing changes.
    not consistent final backups. Do not overwrite existing PC projects or native
    logins, publish private data to Git, or copy live locks as valid ownership.
 2. Establish working PC execution. Reuse the existing relay mechanisms, with
-   only the portability and routing changes migration needs. Verify exact-ID
-   resume and interactive input for both Claude and Codex on the target before
-   selecting their operational paths. Preserve task context, unfinished work,
-   tool configuration and permissions. A Windows or personal Linux runtime is
-   acceptable if it delivers the same capabilities; secure multi-company role
+   only the portability and routing changes migration needs. Verify explicit
+   fresh-session creation, handoff loading and interactive input for both Claude
+   and Codex on the target, then persist their new native IDs. Preserve task
+   context, unfinished work, tool configuration and permissions. A Windows or
+   personal Linux runtime is acceptable if it delivers the same capabilities;
+   secure multi-company role
    infrastructure remains a separate deferred project. Keep the protected
    Windows bot credential and deployment boundary intact.
 3. Import bindings without creating topics. Address sessions by `(chat, topic)`,
-   including an explicit whole-group route. Import selected backends and verified
-   pins. Keep the existing LG binding and unrelated bot configuration. Hold
-   uncertain incoming deliveries and external actions for reconciliation rather
+   including an explicit whole-group route. Import selected backends and bind
+   the verified new PC session IDs. Keep the existing LG binding and unrelated
+   bot configuration. Hold uncertain incoming deliveries and external actions
+   for reconciliation rather
    than replaying them to make migration appear complete.
 4. Cut over one topic at a time. Checkpoint and quiesce that source writer,
-   capture the final delta, validate the PC copy, then connect Khadang to the
-   same topic. Verify owner input, active-turn steering, tools, one rolling
-   bubble, controls, attachments, app-origin updates where supported, and exact
-   resume after restart. Disable Hamal routing for that topic only after
-   Khadang receipts prove it works. Keep relay topic 816 until last so the
+   capture the final delta and checked handoff, validate the PC copy, then
+   connect Khadang's new PC session to the same topic. Verify owner input,
+   active-turn steering, tools, one rolling bubble, controls, attachments,
+   app-origin updates where supported, and recovery of the new PC session after
+   restart. Do not require recovery of its old Mac session. Disable Hamal routing
+   for that topic only after Khadang receipts prove it works. Keep relay topic
+   816 until last so the
    migration controller is not stranded. Do not restart the shared Mac native
    daemon or abandon an unfinished handoff.
 5. Move the bench. Inventory and copy the physical bench projects, firmware,
@@ -111,8 +146,9 @@ pending. Recheck actual membership before routing changes.
    verify key/bootstrap recovery; a staging archive alone is not the approved
    daily disaster-recovery system.
 7. Retire the Mac only after acceptance. Verify all bound and unbound operational
-   projects, histories, topics, credentials and bench functions on the PC.
-   Stop the obsolete Mac services and remove their credentials using recoverable
+   projects, history backups, handoffs, topics, credentials and bench functions
+   on the PC. Stop the obsolete Mac services and remove their credentials using
+   recoverable
    operations where possible. Resolve the exact requested deletion target before
    erasing anything. Keep the verified archive independently of the source Mac.
 
@@ -123,10 +159,13 @@ These are required acceptance checks, not claims about the current deployment.
 - All 14 existing bindings work through Khadang on the PC with the same IDs and
   intended tools; the LG topic also remains working.
 - Repositories, local branches, dirty and untracked work, instructions, memory,
-  media and exact native histories are preserved and checked, including projects
-  that were not bound to Telegram.
-- Claude and Codex continue real unfinished work, with owner controls and a
-  bounded rolling bubble; uncertain actions are not repeated.
+  media and native history backups are preserved and checked, including projects
+  that were not bound to Telegram. Old native histories need not be restored
+  into the active PC profiles or resumable to pass migration acceptance.
+- Fresh Claude and Codex sessions load checked project handoffs and continue
+  real unfinished work, with owner controls and a bounded rolling bubble. Their
+  new IDs are recorded and their PC restart recovery is verified; uncertain
+  actions are not repeated.
 - The PC builds, flashes, debugs and controls the transferred bench hardware,
   including the required hub power operations.
 - Remote access and reboot recovery work with the Mac absent. Off-machine
@@ -135,6 +174,10 @@ These are required acceptance checks, not claims about the current deployment.
   resolved and authorized. Until then migration remains incomplete.
 
 ## Execution record
+
+The record below retains earlier restore experiments and their limitations.
+The revised fresh-session policy above supersedes old-session restoration gates;
+those experiments are historical evidence, not additional cutover requirements.
 
 2026-10-03: source binding inventory rechecked: 14 bindings. The design and roadmap
 now explicitly defer new infrastructure in favor of this migration. The existing
@@ -182,7 +225,7 @@ launched there. The full Claude and Codex archives were extracted successfully
 as UID 1000 into private preserved-state directories, separate from active
 settings and logins. Workspace extraction also completed with exit 0 as that
 same user, restoring `/Users/pouya/.openclaw/workspace`. These extracted seeds
-still require project validation, native exact-ID resume and a final source delta.
+still require project validation, a checked handoff and a final source delta.
 Read-only Git probes on the PC resolved the captured relay, ai-hil and supervisor
 worktree HEADs. The relay seed predates the new migration commits, so it must
 receive the final source delta rather than being treated as an up-to-date checkout.
@@ -774,7 +817,12 @@ daemon supervision and native Claude launch acceptance remain pending. The prior
 shared-socket acceptance does not prove this new privileged launch path. No live
 configuration, binding, token, protected release or Hamal routing was changed.
 
-### Claude exact handoff stream connector
+### Optional Claude source session resume connector
+
+This connector implements the earlier original-session resume path. It is
+optional under the revised migration policy. Explicit fresh-session creation
+from a checked project handoff still needs wiring and target acceptance; the
+following source-resume checks must not become gates for that new path.
 
 The candidate now includes a Linux Claude stdio connector for the preserved
 native profile, not the isolated diagnostic profile. Its launch arguments resume

@@ -2,7 +2,10 @@
 
 Execution deferred, 2026-10-03: Pouya prioritized migrating the existing topics,
 projects and bench to the PC without waiting for this infrastructure series.
-The [Mac to PC migration plan](mac-to-pc-migration.md) now governs active work.
+The [Mac to PC migration plan](mac-to-pc-migration.md) governs that migration.
+Session histories are verified backups; fresh PC sessions start from checked
+project handoffs and preserved files. Resuming old Mac IDs is optional, not a
+prerequisite for cutover or this deferred infrastructure series.
 
 Draft proposal dated 2026-10-01, based on [design v7](agentic-pc-design.md). These 20 PRs move the existing relay toward the design without replacing working native sessions or creating an always-running management hierarchy. This document plans work; it does not authorize live deployments, migrations, external actions or creation of GitHub PRs.
 
