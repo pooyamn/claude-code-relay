@@ -516,14 +516,10 @@ def _inspect_components(folder, manifest, policy, uid):
         raise Denied("capture contains unknown component paths")
 
 
-def inspect_snapshot(directory, policy, *, owner_uid):
-    """Read-only integrity against protected expected policy; no restore permission."""
-    integer(owner_uid, 0)
-    if type(policy) is not SnapshotPolicy or os.geteuid() != owner_uid or fingerprint(policy.body) != policy.digest:
-        raise Denied("capture owner and unchanged protected policy required")
-    folder = _private(directory, owner_uid, directory=True)
-    with _sealed_read(folder / "manifest.json", owner_uid) as handle:
-        raw = handle.read(MANIFEST_LIMIT + 1)
+def _manifest(raw, policy, owner_uid):
+    """Validate a pending manifest before publishing its complete marker."""
+    if len(raw) > MANIFEST_LIMIT:
+        raise Denied("cohort manifest exceeds bound")
     manifest = strict_json(raw)
     exact(manifest, {"schema", "cohort_id", "owner_uid", "policy_digest", "captured_at_ms", "finished_at_ms",
                      "scope", "restore_mode", "full_system_backup", "encrypted", "components"})
@@ -534,6 +530,18 @@ def inspect_snapshot(directory, policy, *, owner_uid):
             manifest["policy_digest"] != policy.digest or manifest["scope"] != "configured-cohort" or \
             manifest["restore_mode"] != "paused" or manifest["full_system_backup"] is not False or manifest["encrypted"] is not False:
         raise Denied("unsupported capture schema/owner/scope; preserve original bytes")
+    return manifest
+
+
+def inspect_snapshot(directory, policy, *, owner_uid):
+    """Read-only integrity against protected expected policy; no restore permission."""
+    integer(owner_uid, 0)
+    if type(policy) is not SnapshotPolicy or os.geteuid() != owner_uid or fingerprint(policy.body) != policy.digest:
+        raise Denied("capture owner and unchanged protected policy required")
+    folder = _private(directory, owner_uid, directory=True)
+    with _sealed_read(folder / "manifest.json", owner_uid) as handle:
+        raw = handle.read(MANIFEST_LIMIT + 1)
+    manifest = _manifest(raw, policy, owner_uid)
     _inspect_components(folder, manifest, policy, owner_uid)
     with _sealed_read(folder / "manifest.json", owner_uid) as handle:
         if handle.read(MANIFEST_LIMIT + 1) != raw:

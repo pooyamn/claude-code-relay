@@ -9,6 +9,7 @@ not fixtures. The child environment is constructed from scratch, without HOME.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -17,6 +18,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import platform
+import stat
 
 
 LEGACY_SOURCES = (
@@ -38,6 +41,42 @@ DEPLOY_SOURCES = (
     "identities/intake-policy.json.example", "identities/intake-config.json.example", "systemd/ccrelay-intake.service",
     "identities/outbound-policy.json.example", "identities/outbound-config.json.example",
 )
+
+# Official v1.3.2 darwin-arm64 release, independently verified archive digest:
+# e2020b073c44f692685a24d6abc378817eb81ffaaf49fd0531ef8565f767f2f5.
+# Never execute a host runtime or copy plugins/private keys into the sandbox.
+AGE_RUNTIME_PINS = {
+    ("darwin", "arm64"): {
+        "age": "sha256:4012dfc2725883beafb710894af4f599b7a94f8c8e0f51f02cc96ab8df33915e",
+        "age-keygen": "sha256:c16e229245123d0ad27442317461d63915416cad0294395cd19ca93feb3211ea",
+    },
+}
+
+
+def copy_age_runtime(source, destination):
+    pins = AGE_RUNTIME_PINS.get((sys.platform, platform.machine()))
+    if pins is None:
+        raise RuntimeError("no reviewed age test artifact for this platform; target pin required")
+    source = Path(source)
+    destination.mkdir(mode=0o700)
+    for name, expected in pins.items():
+        path = source / name
+        before = path.lstat()
+        def identity(value):
+            return (value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns,
+                    value.st_ctime_ns, value.st_mode, value.st_uid, value.st_nlink)
+        if path.is_symlink() or not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+            raise RuntimeError("age test runtime must be regular unlinked binaries")
+        hasher = hashlib.sha256()
+        with path.open("rb") as handle, (destination / name).open("xb") as output:
+            if identity(os.fstat(handle.fileno())) != identity(before):
+                raise RuntimeError("age test runtime changed before copy")
+            for chunk in iter(lambda: handle.read(65536), b""):
+                hasher.update(chunk)
+                output.write(chunk)
+            if identity(os.fstat(handle.fileno())) != identity(before) or identity(path.lstat()) != identity(before) or "sha256:" + hasher.hexdigest() != expected:
+                raise RuntimeError("age test runtime does not match reviewed artifact")
+        (destination / name).chmod(0o500)
 
 
 def copy_sources(source: Path, target: Path) -> None:
@@ -92,10 +131,15 @@ def sandbox_command(scratch: Path, command: list, env: dict) -> list:
         clauses = "\n".join(f"(subpath {json.dumps(p)})" for p in readable)
         profile = (
             "(version 1)\n(deny default)\n(allow process*)\n(allow sysctl-read)\n"
+            "(allow signal (target same-sandbox))\n"
             "(allow mach-lookup (global-name \"com.apple.system.opendirectoryd.libinfo\"))\n"
             "(allow file-read-metadata)\n"
             f"(allow file-read* {clauses} (subpath {json.dumps(str(scratch))}) (literal \"/\")"
-            " (literal \"/dev/null\") (literal \"/dev/urandom\") (literal \"/dev/random\"))\n"
+            " (literal \"/dev/null\") (literal \"/dev/urandom\") (literal \"/dev/random\")"
+            # Only this process's descriptors, not other processes or host paths.
+            # Child spawning closes all unrelated FDs; crypto explicitly passes
+            # just its verified, no-follow ciphertext FD to the age subprocess.
+            " (regex #\"^/dev/fd/[0-9]+$\"))\n"
             f"(allow file-write* (subpath {json.dumps(str(scratch))}) (literal \"/dev/null\"))\n"
         )
         return [binary, "-p", profile, *command]
@@ -170,6 +214,8 @@ def main() -> int:
                         help="run every discovered test in this exact core module; repeatable")
     parser.add_argument("--core-test", action="append", default=[],
                         help="run this exact discovered core test ID; repeatable")
+    parser.add_argument("--age-runtime", type=Path,
+                        help="directory of reviewed age/age-keygen binaries, copied into sandbox; no keys/plugins")
     args = parser.parse_args()
     if args.timeout < 1 or args.timeout > 60:
         parser.error("suite timeout must be between 1 and 60 seconds")
@@ -185,6 +231,10 @@ def main() -> int:
         copied = scratch / "scripts"
         copy_sources(source, copied)
         env = child_environment(scratch, copied, denied)
+        if args.age_runtime is not None:
+            runtime = scratch / "age-runtime"
+            copy_age_runtime(args.age_runtime, runtime)
+            env["CCRELAY_TEST_AGE_DIR"] = str(runtime)
         commands = [[sys.executable, str(copied / "tests" / "isolation_probe.py")]]
         if args.suite in {"legacy", "all"}:
             commands += [["/bin/bash", str(copied / "tests" / "run_tests.sh")]]

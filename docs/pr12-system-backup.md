@@ -1,10 +1,11 @@
 # PR 12 Full-system backup preparation
 
-The coordinated local capture foundation is implemented. It captures an explicit
-required component cohort, not only conversations. It is **not yet an encrypted,
-off-machine full-system backup** and does not satisfy the approved 24-hour recovery
-target. No PC service, scheduler, live credentials, storage account or bot was
-changed. PR 12 remains in preparation.
+The coordinated local capture foundation and an experimental streaming encrypted
+package/verifier are implemented. They cover an explicit required component
+cohort, not only conversations. This is **not yet an off-machine full-system
+backup** and does not satisfy the approved 24-hour recovery target. No PC service,
+scheduler, live credentials, storage account or bot is changed by this code.
+PR 12 remains in preparation; the encryption format/key-custody choice is pending.
 
 ## Required coverage
 
@@ -21,7 +22,9 @@ This foundation does not discover or certify that inventory. A small fixture
 cohort cannot prove complete system coverage. Missing or incompatible required
 components fail before a complete manifest is published. The capture scope is
 always `configured-cohort`, `full_system_backup:false`, `encrypted:false` and
-`restore_mode:paused`; those fields cannot be relabeled by the inspector.
+`restore_mode:paused`; those fields cannot be relabeled by the inspector. The
+experimental outer encrypted package truthfully has `encrypted:true`; it does
+not relabel the inner capture as complete-system coverage or authorize activation.
 
 ## Protected sources and coordinated capture
 
@@ -95,6 +98,49 @@ its expected policy, not independent authenticity, current grants or off-machine
 durability. The expected policy must itself be included in the encrypted recovery
 package and separately authenticated before a clean-machine restore trusts it.
 
+## Experimental encrypted packaging and paused verification
+
+`relay_core/encrypted_backup.py` uses a reviewed, digest-pinned, sealed `age`
+executable to encrypt the capture to explicit native public recipients. The
+producer requires no private recovery key. This is an **age format candidate**,
+not the AES-256/7z format currently specified by design §10. It neither replaces
+the existing transcript packager nor approves changing the production cipher,
+key custody or storage. Owner format selection and deployment approval remain
+required before live integration. [age CLI](https://github.com/FiloSottile/age),
+[age format specification](https://age-encryption.org/v1).
+
+The framed stream includes the protected policy, exact manifest-byte digest,
+generated member names, bounded sizes/digests and payload bytes. It creates no
+plaintext tar/zip archive and never interprets original source paths or symlink
+targets as extraction instructions. Payloads stream in bounded chunks. An outer
+record is published only after successful native encryption, final source
+inspection and fsync; it retains the original capture timestamp and paused scope.
+
+Verification requires ciphertext and policy digests from an independently trusted
+catalog, not the archive's self-assertions. Public-key encryption authenticates
+encrypted bytes, not the identity of whoever produced them. Independent catalog
+authentication and freshness remain separate, unimplemented authority gates.
+The private recovery identity reaches the native decryptor only through stdin;
+home, credentials and plugin/updater settings are not inherited. Ciphertext is
+passed through its verified no-follow descriptor, not reopened by an unchecked
+path. Only newly created private destinations are permitted.
+
+Generated-path validation, duplicate/member bounds, per-member digests, explicit
+footer, final age authentication/EOF, successful native exit and full cohort
+inventory verification all precede the recovered manifest and verification
+record. The exact manifest bytes are preserved, including valid noncanonical
+whitespace. Truncated ciphertext cannot publish a complete cohort even after
+emitting plaintext. Unknown external-action state remains unknown and paused.
+Actual process deaths before/after the package record, during decryption and
+before/after the recovered manifest test those publication boundaries.
+
+Each native crypto operation has an explicit bounded deadline and can stop only
+its exact owned child. The macOS test sandbox now permits same-sandbox signals
+and this process's descriptor reads; its probe proves own-child cleanup and
+denial of even a signal-permission probe against the unsandboxed parent. No host
+filesystem/network access is added. Crypto tests fail visibly without the
+explicit reviewed runtime; there is no fake-crypto or silent-skip fallback.
+
 ## Verification and remaining work
 
 Focused tests exercise real multiple WAL databases, independent writer processes,
@@ -105,10 +151,12 @@ Five actual process deaths cover freeze, database copy, entry capture and the
 before/after manifest boundary. Unknown external-action state is copied unchanged,
 not reset to an executable action.
 
-All 49 final clean-staged focused cases passed in 13 serial sandbox children:
-22 system-capture cases, 16 Telegram snapshot regressions and 11 isolation/runner
-checks. All four legacy suites and the strict staged secret scan passed. The
-complete 934-case catalog was discovered and validated, but not fully executed.
+The encryption revision passed 67 clean-staged focused cases in 17 serial sandbox
+children: 16 real-crypto, 22 system-capture, 16 Telegram snapshot, 6 isolation and
+7 batching cases. All four legacy suites and the strict staged secret scan passed.
+The complete 952-case catalog was discovered and validated, not fully executed.
+The secret scan uses default rules without repository ignores/allow comments;
+artifact hashes use the same explicit `sha256:` digest format as runtime contracts.
 Neither these results nor the older full-core result establish Linux/WSL or
 native-PC acceptance. User-owned protocol edits were excluded from staged tests
 and remain unchanged.
@@ -119,6 +167,19 @@ is retained for Linux and has not passed target acceptance. Host ancestor
 protection and the whole-cohort native writer guard are synthetic in these
 conformance fixtures. Actual SQLite locks, files and process deaths are real.
 
+Reproduce the focused checks with reviewed age/age-keygen binaries; the runner
+copies only their pinned bytes into its private OS sandbox:
+
+```sh
+/usr/bin/python3 scripts/tests/run_isolated.py --suite all \
+  --core-module test_core_encrypted_backup \
+  --core-module test_core_system_snapshot \
+  --core-module test_core_telegram_snapshot \
+  --core-module test_core_isolation \
+  --core-module test_core_test_batches \
+  --age-runtime /absolute/path/to/reviewed-age-runtime
+```
+
 Still required before scheduling or declaring PR 12 accepted:
 
 - Complete authoritative component inventory and protected schema/epoch readers,
@@ -126,9 +187,11 @@ Still required before scheduling or declaring PR 12 accepted:
 - Native filesystem recovery metadata and representations where needed, including
   group ownership, ACLs/xattrs, hardlink relationships and special-file state.
   Current file bytes/modes/link targets are not proof of those additional semantics.
-- Streaming encrypted packaging, separately held owner recovery key and restricted
-  credential recovery or explicit owner re-login. Never put the private decryption
-  key in this package, public source or worker-readable memory.
+- Owner-approved encryption format and separately held recovery key, authenticated
+  package catalog, reviewed Linux runtime pins, and restricted credential recovery
+  or explicit owner re-login. The experimental age packager does not settle those
+  production choices. Never put a private decryption key in this package, public
+  source or worker-readable memory.
 - Verified off-machine upload, durable attempt/receipt/success state, interrupted
   upload reconciliation and capture-age alerts at 24 hours.
 - Retention that preserves incremental dependencies, pinned sessions and unfinished

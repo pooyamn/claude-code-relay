@@ -3,6 +3,8 @@ import errno
 import os
 from pathlib import Path
 import socket
+import subprocess
+import sys
 
 
 def main():
@@ -20,6 +22,28 @@ def main():
             pass
         else:
             raise RuntimeError("filesystem boundary not enforced")
+    # Deadline/error cleanup must be able to stop its own children, without
+    # permission to signal the host runner or unrelated user applications.
+    child = subprocess.Popen([sys.executable, "-c",
+        "import signal; print('ready', flush=True); signal.pause()"], stdout=subprocess.PIPE)
+    try:
+        if child.stdout.readline() != b"ready\n":
+            raise RuntimeError("child signal probe did not start")
+        child.kill()
+        if child.wait(timeout=3) != -9:
+            raise RuntimeError("same-sandbox child cleanup not enforced")
+    finally:
+        child.stdout.close()
+        if child.poll() is None:
+            child.kill()
+        child.wait(timeout=3)
+    if os.uname().sysname == "Darwin":
+        try:
+            os.kill(os.getppid(), 0)  # Permission probe only; sends no signal.
+        except PermissionError:
+            pass
+        else:
+            raise RuntimeError("sandbox can signal its unsandboxed host runner")
     for family in (socket.AF_INET, socket.AF_UNIX):
         try:
             with socket.socket(family) as connection:

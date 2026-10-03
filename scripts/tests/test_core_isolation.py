@@ -59,6 +59,24 @@ class RunnerTests(unittest.TestCase):
             self.assertTrue((target / "tests" / "test_fixture.py").exists())
             self.assertIn("fixture/model", (target / "relay-claude-settings-ox.json").read_text())
 
+    def test_age_runtime_copy_rejects_unreviewed_binary_before_executing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source"
+            source.mkdir()
+            (source / "age").write_bytes(b"unreviewed executable")
+            (source / "age-keygen").write_bytes(b"unreviewed keygen")
+            with mock.patch.object(runner.sys, "platform", "darwin"), \
+                    mock.patch.object(runner.platform, "machine", return_value="arm64"), \
+                    self.assertRaisesRegex(RuntimeError, "reviewed artifact"):
+                runner.copy_age_runtime(source, root / "runtime")
+            self.assertFalse((root / "runtime" / "age").stat().st_mode & 0o111)
+
+    def test_age_runtime_missing_platform_pin_has_no_fallback(self):
+        with mock.patch.object(runner.sys, "platform", "unsupported"), \
+                self.assertRaisesRegex(RuntimeError, "no reviewed"):
+            runner.copy_age_runtime(Path("/unused"), Path("/unused-output"))
+
 
 if __name__ == "__main__":
     unittest.main()

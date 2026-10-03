@@ -579,13 +579,21 @@ publish a complete manifest. Database file identity is bound to the SQLite fence
 after a real replacement fault escaped a path-only check. Five actual process
 deaths cover the capture/manifest boundaries. The shared SQLite copy helper is
 also used by the existing Telegram snapshot. This is a configured-cohort local
-capture, explicitly unencrypted and not a proven full-system backup. Protected
-cross-UID/current-component readers, authoritative full inventory, encryption,
-off-machine receipt/freshness/retention and clean target restore remain pending.
-No scheduler, live credentials, PC service or bot changed.
-All 49 final clean-staged capture/Telegram/isolation/runner checks passed in 13
-serial sandbox children, with all four legacy suites and the strict staged secret
-scan. This is focused conformance evidence, not full-core or target-PC acceptance.
+capture, explicitly unencrypted and not a proven full-system backup. The new
+experimental `encrypted_backup.py` streams that capture through pinned native
+age encryption, includes its protected policy and exact manifest bytes, and
+verifies into new paused storage only after final authentication/native exit and
+cohort checks. Five real crypto-process deaths cover record/decryption/manifest
+boundaries. Private recovery keys are never required for encryption or passed in
+argv/environment; production format selection remains pending because design §10
+currently specifies AES-256/7z. The existing transcript packager is unchanged.
+Protected cross-UID/current-component readers, authoritative full inventory,
+owner key custody/authenticated catalog, Linux artifact admission, off-machine
+receipt/freshness/retention and clean target restore remain pending. No scheduler,
+live credentials, PC service or bot changed by this backup preparation.
+The previous capture revision passed 49 clean-staged focused cases and four
+legacy suites. Encryption-revision verification is recorded in the linked
+evidence document; neither establishes full-core or target-PC acceptance.
 [Capture and remaining recovery gates](pr12-system-backup.md).
 
 ## PR 13 Clean machine restoration and action reconciliation
