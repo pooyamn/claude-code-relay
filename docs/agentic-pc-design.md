@@ -336,6 +336,14 @@ Real boundaries:
   owner defaults are not employee grants. [Measured gap and partial Linux
   proof](pc-wsl-identity-evidence.md). This security-sensitive topology change
   requires the protected owner/Jev review path, not automatic test clearance.
+- **WSL integration settings are not host containment.** Microsoft's explicit
+  security model says WSL is not an untrusted-code sandbox; another distro or
+  disabled interop alone cannot justify one. A private Ubuntu Hyper-V VM is
+  proposed for the protected Linux role/broker runtime, retaining all native
+  continuity, phone, publication and recovery requirements. Per-role Windows
+  security contexts are the alternative under review, not an approved shared
+  owner-account setup. The owner decision is pending; the WSL target has not
+  silently changed. [Read-only host evidence and proposed acceptance](pc-agent-host-boundary.md).
 - **Authenticated action requests.** The router checks the peer UID against a protected role registry and launcher-owned session binding. The reviewer alone can submit a review verdict; the CTO alone can request a policy-allowed merge. Sessions of one role share that role's authority; task/session attribution is enforced by the trusted launcher and broker, not caller-chosen names.
 - **No credentials in sessions.** Worktrees push only to a local mirror owned by `relay`; publishing to GitHub is a router action.
 - **One GitHub owner.** Separate local identities do not require additional human GitHub accounts. The router uses a scoped GitHub App installation for publication and records the requesting role/session. Commit author names and several personal tokens from the same account do not authenticate agent authority.

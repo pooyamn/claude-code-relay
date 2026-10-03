@@ -175,6 +175,27 @@
     "live_role_company_acceptance": false,
     "evidence": "docs/pc-wsl-identity-evidence.md"
   },
+  "protected_host_topology_review": {
+    "status": "Owner choice pending; no topology installed",
+    "recommended": "Private Ubuntu Hyper-V VM retaining distinct Linux roles/broker and all native phone, publication and recovery requirements",
+    "alternative_to_review": "Separate Windows security context per WSL role; not a shared owner or SYSTEM sandbox assumption",
+    "authoritative_constraint": "Microsoft WSL security model: integration settings and distro separation are not untrusted-code host containment",
+    "preflight_at": "2026-10-03T11:23:28.6796975Z",
+    "windows_readonly_contracts_passed": 8,
+    "host_os": "Windows 11 Pro",
+    "cpu": "AMD Ryzen 7 8745HS; 8 cores / 16 logical processors",
+    "usable_memory_gb": 12.8,
+    "available_memory_gb_observed": 6.19,
+    "hypervisor_present": true,
+    "hyper_v_management_ready": false,
+    "missing_features": ["Microsoft-Hyper-V-Hypervisor", "Microsoft-Hyper-V-Services", "Microsoft-Hyper-V-Management-PowerShell"],
+    "cpu_slat_false_interpretation": "Raw property is false under a running hypervisor, not proof of unsupported hardware; actual managed VM boot remains untested",
+    "feature_or_account_or_network_changes_applied": false,
+    "vm_or_distro_created": false,
+    "reboot_performed": false,
+    "live_role_acceptance": false,
+    "evidence": "docs/pc-agent-host-boundary.md"
+  },
   "remaining": [
     "Active steering and durable goal-state acceptance (ordinary owner input now observed)",
     "Native Claude interactive adapter and tool-switch continuity",

@@ -106,6 +106,20 @@ off alone does not prevent manual mounts.
 
 ## Remaining acceptance
 
+Follow-up host review: Microsoft's explicit [WSL security model](https://github.com/microsoft/WSL/blob/master/doc/docs/technical-documentation/security.md)
+states that WSL is not an untrusted-code sandbox. A distro is not a security
+boundary from its Windows account or that account's other distros; disabling
+interop/automount changes integration, not containment. Therefore the successful
+Linux checks cannot justify a SYSTEM-owned WSL sandbox. Separate Windows
+security contexts protect host-account separation; a separately managed VM is
+the documented approach for isolating untrusted workloads from Windows.
+
+The owner has been asked to choose a private Ubuntu Hyper-V VM or review
+per-role Windows-account WSL first. Neither topology has been accepted or
+installed. This is an explicit proposed change from the current WSL target,
+not permission to drop roles, native phone control or any other requirement.
+See [host readiness and the proposed boundary](pc-agent-host-boundary.md).
+
 The drill shares one disposable cgroup across fixtures; it does not prove the
 actual broker with separately launched role units, root-only registration,
 process-generation/revocation recovery, or restrictions on every executable and

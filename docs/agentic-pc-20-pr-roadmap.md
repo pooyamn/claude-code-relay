@@ -17,6 +17,16 @@ success does not complete PR 2, native topology or PR 20. Current native/VPN/LG
 services and original WSL configuration remain unchanged.
 [Exact evidence, fixture mechanism and limits](pc-wsl-identity-evidence.md).
 
+Follow-up host review: Microsoft's WSL security model does not support using
+interop/automount settings or another distro as untrusted-code containment.
+A private Ubuntu Hyper-V VM is proposed, preserving the whole role/native/
+phone/recovery scope; per-role Windows accounts are the alternative for review.
+Owner topology selection is pending. A read-only PC inspector and eight focused
+Windows contracts confirm Hyper-V management/features are absent/disabled;
+they do not enable anything or label masked SLAT readings a hardware failure.
+No VM/distro/account/network change or reboot was performed.
+[Host evidence and required boundary](pc-agent-host-boundary.md).
+
 2026-10-03 PC-only Khadang direction supersedes the legacy Mac activation below:
 the Mac test poller/watchers are stopped and its known plaintext token file is
 removed. The protected PC credential and non-elevated native owner launcher are

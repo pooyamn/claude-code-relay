@@ -98,6 +98,12 @@ Do not run the root fixture manager as a worker or promote passing tests into
 deployment authorization. Original interop/automount configuration is not
 changed by the test.
 
+Microsoft's explicit WSL security model does not treat distro or interop/
+automount settings as host containment. Do not use a SYSTEM-owned clone as an
+assumed sandbox. A separate protected VM is proposed and per-role Windows
+contexts are under review; owner selection is pending. All native/phone and
+recovery requirements remain intact. [Host boundary evidence](../../docs/pc-agent-host-boundary.md).
+
 1. Choose a disposable Linux/WSL environment and verify distinct-UID filesystem,
    process, socket, group, namespace and cgroup boundaries there. Unit mocks on
    the Mac do not prove this. See [PR 2 evidence and runbook](../../docs/pr2-identity-broker.md).
