@@ -41,7 +41,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
             policy.Workspace(binding.Workspace);
             if (binding.Chat != policy.ChatId) throw new InvalidDataException("Foreign chat in PC registry");
             var resumed = await rpc.Call("thread/resume", new { threadId = binding.ThreadId, cwd = binding.Workspace,
-                approvalPolicy = "on-request", approvalsReviewer = "user", permissions = ":workspace" }, stop);
+                approvalPolicy = policy.NativeApprovalPolicy, approvalsReviewer = "user", permissions = policy.NativePermissionProfile }, stop);
             VerifyThread(resumed, binding.Workspace, binding.ThreadId);
             var session = new Session(binding);
             if (ledger.Get("bubble/" + binding.ThreadId) is { } saved)
@@ -119,14 +119,14 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
         if (progress is { } existing)
         {
             id = existing.GetProperty("threadId").GetString()!;
-            var resumed = await rpc.Call("thread/resume", new { threadId = id, cwd = workspace, approvalPolicy = "on-request",
-                approvalsReviewer = "user", permissions = ":workspace" }, stop);
+            var resumed = await rpc.Call("thread/resume", new { threadId = id, cwd = workspace, approvalPolicy = policy.NativeApprovalPolicy,
+                approvalsReviewer = "user", permissions = policy.NativePermissionProfile }, stop);
             VerifyThread(resumed, workspace, id);
         }
         else
         {
         ledger.Put("lg-provision", new { phase = "starting-native" });
-        var created = await rpc.Call("thread/start", new { cwd = workspace, approvalPolicy = "on-request", approvalsReviewer = "user", permissions = ":workspace",
+        var created = await rpc.Call("thread/start", new { cwd = workspace, approvalPolicy = policy.NativeApprovalPolicy, approvalsReviewer = "user", permissions = policy.NativePermissionProfile,
             developerInstructions = "You own the LG Magic Remote subtask on this Windows PC. Read LG-SUBTASK.json and repository instructions. " +
                 "Never access router credentials, impersonate other roles, change bot wiring or elevate privileges. " +
                 "Do not reboot/log off/lock the PC or modify UAC without explicit owner approval. Keep updates short. " +
@@ -466,11 +466,11 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
     private void Persist(Session session) => ledger.Put("bubble/" + session.Binding.ThreadId, new {
         tail = session.Bubble.Tail, message = session.Message, sendUnknown = session.SendUnknown, held = session.Held,
         busy = session.Busy, status = session.Status, elapsedMs = (session.Carried + session.Elapsed.Elapsed).TotalMilliseconds });
-    private static void VerifyThread(JsonElement result, string cwd, string? id = null)
+    private void VerifyThread(JsonElement result, string cwd, string? id = null)
     {
         if (result.GetProperty("cwd").GetString() is not { } actual || !actual.Equals(cwd, StringComparison.OrdinalIgnoreCase) ||
-            result.GetProperty("approvalPolicy").GetString() != "on-request" || result.GetProperty("approvalsReviewer").GetString() != "user" ||
-            result.GetProperty("sandbox").GetProperty("type").GetString() != "workspaceWrite" ||
+            result.GetProperty("approvalPolicy").GetString() != policy.NativeApprovalPolicy || result.GetProperty("approvalsReviewer").GetString() != "user" ||
+            result.GetProperty("sandbox").GetProperty("type").GetString() != policy.NativeSandboxType ||
             (id != null && result.GetProperty("thread").GetProperty("id").GetString() != id)) throw new InvalidOperationException("Native identity/workspace/security readback mismatch");
     }
     private void StatusFile() => File.WriteAllText(Path.Combine(policy.StateDirectory, "status.json"), JsonSerializer.Serialize(new {

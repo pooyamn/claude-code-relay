@@ -9,8 +9,13 @@ Hamal and the Mac native daemon stay unchanged. A separately protected Windows
 owner-only migration adapter is being built, not accepted as the role/company
 boundary above. Pouya explicitly requested full-access Codex and Claude native
 user defaults on the PC; ordinary owner processes remain unable to read the
-protected Khadang token or modify privileged router code. Live PC routing,
-empty-thread persistence and joined security/recovery gates remain pending.
+protected Khadang token or modify privileged router code. The Windows owner-only
+adapter is now live for LG Magic Remote in topic 159: an inert native history
+checkpoint precedes topic binding, actual tool output and PC-RELAY-OK reach one
+rolling bubble, and a service restart resumes the exact thread/message without
+another topic or model turn. The explicit native profile readback is full access
+with approvals never. This is not company/role acceptance: native Claude, media,
+all-source admission, goal recovery and automatic startup remain pending.
 [Current PC cutover evidence](../pc-router/deployment-status.json).
 
 ## 1. Goals and constraints

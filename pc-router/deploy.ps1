@@ -1,7 +1,8 @@
 param(
     [Parameter(Mandatory=$true)][string]$Archive,
     [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-fA-F]{64}$')][string]$ExpectedSha256,
-    [ValidateSet('probe','canary','live')][string]$Mode = 'probe'
+    [ValidateSet('probe','canary','live')][string]$Mode = 'probe',
+    [switch]$OwnerFullAccess
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -19,6 +20,18 @@ Expand-Archive -LiteralPath $Archive -DestinationPath $release
 if (-not (Test-Path "$release\publish-live\KhadangRouter.exe")) { throw 'Unexpected reviewed archive layout' }
 Stop-Service KhadangRouter
 (Get-Service KhadangRouter).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(20))
+if ($OwnerFullAccess) {
+    # Explicit owner authorization only; never extend this to employee roles.
+    $policyPath = Join-Path $root 'config.json'
+    $original = [IO.File]::ReadAllText($policyPath)
+    $policy = $original | ConvertFrom-Json
+    if ($policy.OwnerId -ne 110123423 -or $policy.BotUsername -ne 'TheKhadangBot') { throw 'Unexpected owner/bot policy' }
+    Copy-Item -LiteralPath $policyPath -Destination (Join-Path $release 'previous-config.json')
+    $policy | Add-Member OwnerFullAccess $true -Force
+    if ([IO.File]::ReadAllText($policyPath) -ne $original) { throw 'Policy changed during inspection' }
+    [IO.File]::WriteAllText($policyPath,($policy | ConvertTo-Json -Depth 100),[Text.UTF8Encoding]::new($false))
+    if (-not ((Get-Content $policyPath -Raw | ConvertFrom-Json).OwnerFullAccess)) { throw 'Owner profile readback failed' }
+}
 $backup = Join-Path $release 'previous-bin'
 Copy-Item -LiteralPath "$root\bin" -Destination $backup -Recurse
 Copy-Item "$release\publish-live\*" "$root\bin" -Recurse -Force

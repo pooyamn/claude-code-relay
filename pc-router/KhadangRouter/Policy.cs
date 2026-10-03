@@ -5,8 +5,12 @@ namespace KhadangRouter;
 
 public sealed record RouterPolicy(string BotUsername, long BotId, long OwnerId, long ChatId,
     string OwnerSid, string CodexExecutable, string CodexSha256, string CredentialFile,
-    string StateDirectory, string WorkspaceRoot, int MaximumSessions = 3, int StartSpacingSeconds = 5)
+    string StateDirectory, string WorkspaceRoot, int MaximumSessions = 3, int StartSpacingSeconds = 5,
+    bool OwnerFullAccess = false)
 {
+    [JsonIgnore] public string NativeApprovalPolicy => OwnerFullAccess ? "never" : "on-request";
+    [JsonIgnore] public string NativePermissionProfile => OwnerFullAccess ? ":danger-full-access" : ":workspace";
+    [JsonIgnore] public string NativeSandboxType => OwnerFullAccess ? "dangerFullAccess" : "workspaceWrite";
     public static RouterPolicy Load(string path)
     {
         var policy = JsonSerializer.Deserialize<RouterPolicy>(File.ReadAllText(path), new JsonSerializerOptions {

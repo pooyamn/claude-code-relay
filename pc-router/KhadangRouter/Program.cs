@@ -56,6 +56,7 @@ try
                     nativePid = rpc.Pid, nativeAccountAuthenticated = loggedIn, commandOwnerVerified = true, credentialAndCodeDenied = true,
                     aclProbeWithoutProviderSandbox = true,
                     nativeWindowsSandboxVerified = true,
+                    policySha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(args[2]))),
                     routerSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(typeof(Router).Assembly.Location))),
                     modelInference = false, telegramPolling = false, testedAt = DateTimeOffset.UtcNow }));
                 await Task.Delay(Timeout.Infinite, stop);
@@ -66,6 +67,7 @@ try
                 if (!proof.GetProperty("verified").GetBoolean() || !proof.GetProperty("credentialAndCodeDenied").GetBoolean() ||
                     !proof.GetProperty("aclProbeWithoutProviderSandbox").GetBoolean() ||
                     !proof.GetProperty("nativeWindowsSandboxVerified").GetBoolean() ||
+                    proof.GetProperty("policySha256").GetString() != Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(args[2]))) ||
                     proof.GetProperty("routerSha256").GetString() != Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(typeof(Router).Assembly.Location))) ||
                     proof.GetProperty("nativeOwnerSid").GetString() != policy.OwnerSid) throw new InvalidOperationException("Matching native identity/OS-ACL/code proof required before polling");
                 await using var rpc = new NativeRpc(WindowsOwnerProcess.Start(policy, policy.WorkspaceRoot + "\\lg-magic"), ledger);

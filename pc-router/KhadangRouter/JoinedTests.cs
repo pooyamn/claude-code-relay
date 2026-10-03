@@ -10,7 +10,7 @@ public static class JoinedTests
         void Check(bool value, string name) { if (!value) throw new Exception(name); checks++; }
         var workspaces = OperatingSystem.IsWindows() ? Path.Combine(root, "workspaces") : "C:\\Workspaces";
         if (OperatingSystem.IsWindows()) Directory.CreateDirectory(Path.Combine(workspaces, "lg-magic"));
-        var policy = template with { StateDirectory = root, WorkspaceRoot = workspaces, StartSpacingSeconds = 1 };
+        var policy = template with { StateDirectory = root, WorkspaceRoot = workspaces, StartSpacingSeconds = 1, OwnerFullAccess = true };
         using var ledger = new Ledger(Path.Combine(root, "joined.db"));
         ledger.Bind(new Binding(policy.ChatId, 42, "LG", workspaces + "\\lg-magic", "exact-native-id"));
         var native = new FakeNative(); var bot = new FakeBot(policy, native);
@@ -19,6 +19,7 @@ public static class JoinedTests
         try { await bot.Completed.Task.WaitAsync(TimeSpan.FromSeconds(15)); }
         finally { stop.Cancel(); try { await running; } catch (OperationCanceledException) { } }
         Check(native.Started == 1 && native.Steered == 1, "Joined routing starts once and steers exact active turn");
+        Check(native.LastProfile == ":danger-full-access" && native.LastApproval == "never", "Owner full-access profile survives exact resume");
         Check(native.SteerTurn == "turn-1" && native.LastInput!.Contains("second owner message"), "Steering expectedTurnId and input preserved");
         Check(native.Called.All(m => !m.Contains("queue", StringComparison.OrdinalIgnoreCase)), "No queue fallback");
         Check(bot.Sends == 1 && bot.Edits >= 1, "One rolling text message, final edit in place");
@@ -33,11 +34,24 @@ public static class JoinedTests
         {
             var bootstrap = new FakeNative(); var creationBot = new FakeBot(policy, bootstrap, provisioningOnly: true);
             using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            var run = new Router(policy with { StateDirectory = newRoot }, creation, creationBot, bootstrap).Run(cancel.Token);
+            var run = new Router(policy with { StateDirectory = newRoot, OwnerFullAccess = false }, creation, creationBot, bootstrap).Run(cancel.Token);
             try { await creationBot.FirstSent.Task.WaitAsync(TimeSpan.FromSeconds(5)); }
             finally { cancel.Cancel(); try { await run; } catch (OperationCanceledException) { } }
             Check(bootstrap.Called.Take(3).SequenceEqual(new[] { "thread/start", "thread/inject_items", "thread/read" }), "New native ID checkpoint/readback precedes Telegram binding");
             Check(bootstrap.Started == 0 && creation.Bindings().Count == 1 && creationBot.CreatedTopics == 1, "Provisioning persists history without inference or duplicate topics");
+            Check(bootstrap.LastProfile == ":workspace" && bootstrap.LastApproval == "on-request", "Restricted default does not inherit owner full access");
+        }
+
+        var mismatchRoot = Path.Combine(root, "profile-mismatch"); Directory.CreateDirectory(mismatchRoot);
+        using (var mismatch = new Ledger(Path.Combine(mismatchRoot, "mismatch.db")))
+        {
+            mismatch.Bind(new Binding(policy.ChatId, 42, "LG", workspaces + "\\lg-magic", "exact-native-id"));
+            var wrong = new FakeNative { MisreportProfile = true }; var wrongBot = new FakeBot(policy, wrong);
+            try { await new Router(policy with { StateDirectory = mismatchRoot }, mismatch, wrongBot, wrong).Run(CancellationToken.None); throw new Exception("Security mismatch accepted"); }
+            catch (InvalidOperationException)
+            {
+                Check(wrong.Started == 0 && wrongBot.Sends == 0 && wrongBot.CreatedTopics == 0, "Observed permission mismatch stops before model or Telegram effects");
+            }
         }
 
         // A known crash boundary must never create another thread/topic.
@@ -61,6 +75,8 @@ public static class JoinedTests
         public List<string> Called { get; } = new();
         public int Started, Steered;
         public string? SteerTurn, LastInput;
+        public string? LastProfile, LastApproval;
+        public bool MisreportProfile;
         public TaskCompletionSource Ready { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private void Event(string method, object parameters) => Notification?.Invoke(Json(new { method, @params = parameters }));
         public Task<JsonElement> Call(string method, object parameters, CancellationToken stop, bool effect = true)
@@ -68,12 +84,13 @@ public static class JoinedTests
             Called.Add(method); var args = Json(parameters);
             switch (method)
             {
-                case "thread/start": return Task.FromResult(Json(new { cwd = args.GetProperty("cwd").GetString(), approvalPolicy = "on-request", approvalsReviewer = "user",
-                    sandbox = new { type = "workspaceWrite" }, thread = new { id = "exact-native-id" } }));
+                case "thread/start":
+                case "thread/resume":
+                    LastProfile = args.GetProperty("permissions").GetString(); LastApproval = args.GetProperty("approvalPolicy").GetString();
+                    return Task.FromResult(Json(new { cwd = args.GetProperty("cwd").GetString(), approvalPolicy = LastApproval, approvalsReviewer = "user",
+                        sandbox = new { type = !MisreportProfile && LastProfile == ":danger-full-access" ? "dangerFullAccess" : "workspaceWrite" }, thread = new { id = "exact-native-id" } }));
                 case "thread/inject_items": return Task.FromResult(Json(new { }));
                 case "thread/read": return Task.FromResult(Json(new { thread = new { id = "exact-native-id" } }));
-                case "thread/resume": return Task.FromResult(Json(new { cwd = args.GetProperty("cwd").GetString(), approvalPolicy = "on-request", approvalsReviewer = "user",
-                    sandbox = new { type = "workspaceWrite" }, thread = new { id = "exact-native-id" } }));
                 case "turn/start":
                     Started++; Event("turn/started", new { threadId = "exact-native-id", turn = new { id = "turn-1" } });
                     Event("item/started", new { threadId = "exact-native-id", turnId = "turn-1", item = new { id = "tool", type = "commandExecution", command = "whoami /user" } });

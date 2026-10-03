@@ -9,11 +9,17 @@ Build testable security and delivery foundations first. Introduce the builder wi
 2026-10-03 PC-only Khadang direction supersedes the legacy Mac activation below:
 the Mac test poller/watchers are stopped and its known plaintext token file is
 removed. The protected PC credential and non-elevated native owner launcher are
-verified. The Windows migration adapter is still **inactive**, with native empty
-thread persistence and live topic acceptance pending. Pouya also explicitly
+verified. The Windows owner-only migration adapter is now live in LG topic 159.
+An inert native checkpoint persists the thread before binding; the real
+whoami/PC-RELAY-OK canary and tool output reach one edited bubble. Restart resumes
+the exact thread/bubble without another topic, model turn or message. 38 checks
+pass both locally and on Windows. This does not complete WSL/company gates,
+native Claude, media, all-source admission, goal recovery or automatic startup.
+Pouya also explicitly
 enabled full-access native user defaults for Codex and Claude on the PC; these
 do not grant SYSTEM identity, company privileges or satisfy publication gates.
-Current evidence and pending activation are in
+The router's actual thread profile also confirms full access/approvals never.
+Current evidence and remaining gates are in
 [`pc-router/deployment-status.json`](../pc-router/deployment-status.json).
 Do not restart Khadang on the Mac or turn these owner-only defaults into employee
 grants. Hamal's wiring and the shared Mac native daemon remain untouched.
