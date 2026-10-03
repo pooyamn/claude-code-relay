@@ -99,6 +99,14 @@ copy and its one-shot evidence must join the next inventory/capture; the earlier
 report is not retroactively current. Clone availability is not enforced
 review/merge/deployment authority, publication acceptance or full-system recovery.
 
+The same ordinary-owner source helper now supports a reviewed bundle update,
+only from the expected commit/branch with no tracked, untracked or ignored work.
+It verifies `FETCH_HEAD` before `merge --ff-only`, never forces checkout/reset or
+changes global configuration. Existing run IDs cannot be replayed. Exact update
+receipts remain in `.native-remote/source-clone-*/result.json`; a repository's
+historical source observation is not self-authenticating proof of its latest
+HEAD. This transfer mechanism still does not repair the rejected GitHub login.
+
 `relay_core/system_snapshot.py` requires a protected `SnapshotPolicy`, explicit
 component instances, a whole-cohort filesystem/native writer guard and a clock.
 The policy pins each component's source root, original owner UID, deployed

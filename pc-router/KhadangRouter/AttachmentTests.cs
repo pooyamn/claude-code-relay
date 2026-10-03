@@ -108,7 +108,7 @@ public static class AttachmentTests
             Calls.Add((method, effect)); var args = Json(parameters);
             if (method == "thread/resume") return Task.FromResult(Json(new { cwd = args.GetProperty("cwd").GetString(), approvalPolicy = "never", approvalsReviewer = "user", sandbox = new { type = "dangerFullAccess" }, thread = new { id = "attachment-thread" } }));
             if (method == "thread/goal/get") return Task.FromResult(Json(new { goal = (object?)null }));
-            if (method == "turn/steer") { Steers++; LastExpected = args.GetProperty("expectedTurnId").GetString(); LastInput = args.GetProperty("input").Clone(); return Task.FromResult(Json(new { })); }
+            if (method == "turn/steer") { Steers++; LastExpected = args.GetProperty("expectedTurnId").GetString(); LastInput = args.GetProperty("input").Clone(); return Task.FromResult(Json(new { turnId = LastExpected })); }
             if (method == "turn/start") { Starts++; throw new Exception("No fresh-turn fallback in media fixture"); }
             if (method == "turn/interrupt") { Interrupts++; Interrupted.TrySetResult(); return Task.FromResult(Json(new { })); }
             throw new Exception("Unexpected attachment native method " + method);

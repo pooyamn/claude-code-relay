@@ -2,10 +2,13 @@ param(
  [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-f]{32}$')][string]$RunId,
  [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-f]{40}$')][string]$ExpectedCommit,
  [ValidatePattern('^C:\\ProgramData\\OracovaNativeRemote\\router-source-[0-9a-f]{32}\.bundle$')][string]$Bundle,
- [ValidatePattern('^[0-9a-fA-F]{64}$')][string]$BundleSha256
+ [ValidatePattern('^[0-9a-fA-F]{64}$')][string]$BundleSha256,
+ [switch]$Update,
+ [ValidatePattern('^[0-9a-f]{40}$')][string]$ExpectedBase
 )
 # One-shot ordinary-owner clone. Never run Git/GH or user credential helpers as
-# administrator; no models, login flow, global configuration, replay or overwrite.
+# administrator; no models, login flow, global configuration, replay or forced
+# overwrite. Updates require a clean expected base and Git fast-forward only.
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
 $principal=[Security.Principal.WindowsPrincipal]::new($identity)
@@ -30,7 +33,9 @@ foreach($root in @($parent,'C:\Users\pou\.native-remote')){
   if(-not $part.Exists -or ($part.Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'Existing literal owner directories required'}
  }
 }
-if((Test-Path -LiteralPath $state) -or (Test-Path -LiteralPath $destination)){throw 'Prior state/destination exists; inspect it, never replay or overwrite'}
+if($Update -and (-not $Bundle -or -not $ExpectedBase -or -not (Test-Path -LiteralPath "$destination\.git"))){throw 'Update requires reviewed bundle, expected base and existing repository'}
+if((Test-Path -LiteralPath $state) -or (-not $Update -and (Test-Path -LiteralPath $destination))){throw 'Prior state/destination exists; inspect it, never replay or overwrite'}
+if($Update){foreach($path in @($destination,"$destination\.git")){if((Get-Item -LiteralPath $path).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Literal existing repository required'}}}
 [IO.Directory]::CreateDirectory($state) | Out-Null
 $claim=[IO.File]::Open((Join-Path $state 'one-shot.claim'),[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
 try{$claim.Flush($true)}finally{$claim.Dispose()}
@@ -59,10 +64,19 @@ function Invoke-SourceCommand([string]$Exe,[string]$Arguments,[string]$Label){
 $report=[ordered]@{schema='ccrelay.owner_source_clone.v1';at=$null;run=$RunId;ownerSid=$identity.User.Value;
  windowsElevated=$false;sessionId=$session;repository='pooyamn/claude-code-relay';destination=$destination;
  branch='codex/agentic-pc-preparation';expectedCommit=$ExpectedCommit;actualCommit=$null;complete=$false;
- transport=$(if($Bundle){'reviewed-local-git-bundle'}else{'github-cli'});bundleSha256=$BundleSha256;
+ transport=$(if($Bundle){'reviewed-local-git-bundle'}else{'github-cli'});bundleSha256=$BundleSha256;update=[bool]$Update;expectedBase=$ExpectedBase;
  modelsStarted=$false;globalConfigChanged=$false;reviewMergeDeployAuthority=$false;error=$null}
 try{
- if($Bundle){
+ if($Update){
+  $base=Invoke-SourceCommand $git ('-C "'+$destination+'" rev-parse HEAD') 'base'
+  $dirty=Invoke-SourceCommand $git ('-C "'+$destination+'" status --porcelain --untracked-files=all --ignored=matching') 'dirty'
+  $branch=Invoke-SourceCommand $git ('-C "'+$destination+'" branch --show-current') 'base-branch'
+  if($base -ne $ExpectedBase -or $dirty.Length -ne 0 -or $branch -ne $report.branch){throw 'Clean expected source base required; preserve all owner work'}
+  $null=Invoke-SourceCommand $git ('-C "'+$destination+'" fetch --no-tags "'+$Bundle+'" refs/heads/codex/agentic-pc-preparation') 'fetch'
+  $fetched=Invoke-SourceCommand $git ('-C "'+$destination+'" rev-parse FETCH_HEAD') 'fetched'
+  if($fetched -ne $ExpectedCommit){throw 'Reviewed fetched commit mismatch; no checkout'}
+  $null=Invoke-SourceCommand $git ('-C "'+$destination+'" merge --ff-only FETCH_HEAD') 'fast-forward'
+ }elseif($Bundle){
   # Transport workaround: existing GitHub login was rejected with HTTP 401.
   # Transfer repository bytes,
   # not credentials: a digest-pinned --all bundle preserves reachable history.

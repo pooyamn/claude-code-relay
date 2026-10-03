@@ -2,9 +2,11 @@ param(
     [Parameter(Mandatory=$true)][string]$Archive,
     [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-fA-F]{64}$')][string]$ExpectedSha256,
     [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-f]{32}$')][string]$RunId,
-    [switch]$ObserveOnly
+    [switch]$ObserveOnly,
+    [switch]$Steer
 )
 $ErrorActionPreference = 'Stop'
+if ($ObserveOnly -and $Steer) { throw 'Observation and inference/steering modes are mutually exclusive' }
 $ProgressPreference = 'SilentlyContinue'
 $root = 'C:\ProgramData\KhadangRouter'
 $policy = "$root\config.json"
@@ -35,6 +37,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Actual Windows generated-fixture test failed' 
 if ($LASTEXITCODE -ne 0) { throw 'Actual Windows router dependency tests failed' }
 $arguments = '--config "'+$policy+'" --run '+$RunId
 if ($ObserveOnly) { $arguments += ' --observe-only' }
+if ($Steer) { $arguments += ' --steer' }
 $action = New-ScheduledTaskAction -Execute $exe -Argument $arguments -WorkingDirectory "$release\publish-probe"
 $owner = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
 $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 4) -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries

@@ -24,6 +24,8 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
         public long Revision;
         public readonly Dictionary<string, JsonElement> Items = new();
         public readonly HashSet<string> DeltaItems = new();
+        public readonly HashSet<string> CompletedItems = new();
+        public readonly Queue<string> CompletedOrder = new();
     }
     private readonly ConcurrentDictionary<int, Session> sessions = new();
     private readonly ConcurrentDictionary<long, Task> handlers = new();
@@ -237,7 +239,8 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
                 var input = Attachments.Input(policy.OwnerId, message.GetProperty("message_id").GetInt64(), text, files);
                 if (active != null)
                 {
-                    await rpc.Call("turn/steer", new { threadId = session.Binding.ThreadId, expectedTurnId = active, input }, stop);
+                    var receipt = await rpc.Call("turn/steer", new { threadId = session.Binding.ThreadId, expectedTurnId = active, input }, stop);
+                    NativeEventView.VerifySteer(receipt, active);
                     lock (session.Gate) { session.Bubble.Append("\n↪ New owner message steered into this turn.\n"); Touch(session); }
                 }
                 else
@@ -251,7 +254,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
                         lock (session.Gate)
                         {
                             session.Bubble = new RollingBubble(); session.Elapsed.Restart(); session.Carried = TimeSpan.Zero;
-                            session.Status = "Working"; session.Busy = true; session.Turn = null; session.Items.Clear(); session.DeltaItems.Clear(); Touch(session);
+                            session.Status = "Working"; session.Busy = true; session.Turn = null; session.Items.Clear(); session.DeltaItems.Clear(); session.CompletedItems.Clear(); session.CompletedOrder.Clear(); Touch(session);
                         }
                         var result = await rpc.Call("turn/start", new { threadId = session.Binding.ThreadId, input }, stop);
                         var turn = result.GetProperty("turn").GetProperty("id").GetString();
@@ -474,7 +477,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
             }
             else if (method == "turn/started")
             {
-                if (!session.Busy) { session.Bubble = new RollingBubble(); session.Elapsed.Restart(); session.Carried = TimeSpan.Zero; session.DeltaItems.Clear(); session.Items.Clear(); }
+                if (!session.Busy) { session.Bubble = new RollingBubble(); session.Elapsed.Restart(); session.Carried = TimeSpan.Zero; session.DeltaItems.Clear(); session.Items.Clear(); session.CompletedItems.Clear(); session.CompletedOrder.Clear(); }
                 session.Turn = parameters.GetProperty("turn").GetProperty("id").GetString(); session.Busy = true; session.Status = "Working";
             }
             else if (method == "turn/completed")
@@ -497,20 +500,29 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
             else if (method == "item/commandExecution/outputDelta") session.Bubble.Append(parameters.GetProperty("delta").GetString()!);
             else if (method == "item/started")
             {
-                var item = parameters.GetProperty("item"); var type = item.GetProperty("type").GetString();
+                var item = parameters.GetProperty("item");
                 if (item.TryGetProperty("id", out var itemId))
                 {
                     if (session.Items.Count > 30) session.Items.Clear();
                     session.Items[itemId.GetString()!] = item.Clone();
                 }
-                if (type != "agentMessage" && type != "userMessage") session.Bubble.Append("\n⚙ " + type +
-                    (item.TryGetProperty("command", out var command) ? ": " + command.ToString() : "") + "\n");
+                session.Bubble.Append(NativeEventView.Tool(item, completed: false));
             }
             else if (method == "item/completed")
             {
                 var item = parameters.GetProperty("item");
+                if (item.TryGetProperty("id", out var completedId) && completedId.ValueKind == JsonValueKind.String)
+                {
+                    var key = completedId.GetString()!;
+                    if (!session.CompletedItems.Add(key)) return;
+                    session.CompletedOrder.Enqueue(key);
+                    // Bounded display deduplication, not action-delivery authority.
+                    if (session.CompletedOrder.Count > 2048) session.CompletedItems.Remove(session.CompletedOrder.Dequeue());
+                }
                 if (item.GetProperty("type").GetString() == "agentMessage" && !session.DeltaItems.Contains(item.GetProperty("id").GetString()!))
                     session.Bubble.Append(item.GetProperty("text").GetString()!);
+                else if (item.GetProperty("type").GetString() == "userMessage") session.Bubble.Append(NativeEventView.User(item));
+                else session.Bubble.Append(NativeEventView.Tool(item, completed: true));
             }
             else if (method is "thread/goal/updated" or "thread/goal/cleared")
             {

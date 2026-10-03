@@ -17,7 +17,8 @@ string? state = null;
 try
 {
     bool observeOnly = args.Length == 5 && args[4] == "--observe-only";
-    if (!OperatingSystem.IsWindows() || (args.Length != 4 && !observeOnly) || args[0] != "--config" || args[2] != "--run" ||
+    bool steer = args.Length == 5 && args[4] == "--steer";
+    if (!OperatingSystem.IsWindows() || (args.Length != 4 && !observeOnly && !steer) || args[0] != "--config" || args[2] != "--run" ||
         !Guid.TryParseExact(args[3], "N", out var run)) throw new InvalidOperationException("Protected one-shot media probe requires --config PATH --run GUID");
     using var identity = WindowsIdentity.GetCurrent();
     if (!identity.IsSystem || System.Diagnostics.Process.GetCurrentProcess().SessionId != 0)
@@ -99,12 +100,14 @@ try
     ledger.Put("diagnostic-thread", new { thread, asset });
     var done = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
     var tool = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-    var answers = new List<string>(); var gate = new object();
+    var answers = new List<string>(); var gate = new object(); int turnsStarted = 0;
+    var steeringToken = steer ? Convert.ToHexString(RandomNumberGenerator.GetBytes(12)) : null;
     void Notify(JsonElement notification)
     {
         if (!notification.TryGetProperty("params", out var p) || !p.TryGetProperty("threadId", out var id) || id.GetString() != thread) return;
         var method = notification.GetProperty("method").GetString();
         if (notification.TryGetProperty("id", out _)) { tool.TrySetResult(true); return; }
+        if (method == "turn/started") Interlocked.Increment(ref turnsStarted);
         if (method == "item/started")
         {
             var type = p.GetProperty("item").GetProperty("type").GetString();
@@ -121,11 +124,23 @@ try
     rpc.Notification += Notify;
     try
     {
+        var properties = new Dictionary<string, object> { ["colors"] = new { type = "array", minItems = 3, maxItems = 3,
+            items = new { type = "string", @enum = new[] { "red", "green", "blue", "yellow", "magenta", "cyan" } } } };
+        if (steer) properties["steeringToken"] = new { type = "string" };
         var turn = await rpc.Call("turn/start", new { threadId = thread, effort = "low", approvalPolicy = "never",
             sandboxPolicy = new { type = "readOnly", networkAccess = false }, environments = Array.Empty<object>(),
-            input = new object[] { new { type = "text", text = "Identify the three solid-colored vertical panels in this image, from left to right. Return only JSON with a colors array of exactly three lowercase color names. Allowed names: red, green, blue, yellow, magenta, cyan. Do not use tools." }, new { type = "localImage", path = asset } },
-            outputSchema = new { type = "object", properties = new { colors = new { type = "array", minItems = 3, maxItems = 3,
-                items = new { type = "string", @enum = new[] { "red", "green", "blue", "yellow", "magenta", "cyan" } } } }, required = new[] { "colors" }, additionalProperties = false } }, deadline.Token);
+            input = new object[] { new { type = "text", text = "Identify the three solid-colored vertical panels in this image, from left to right. Return only JSON with a colors array of exactly three lowercase color names. Allowed names: red, green, blue, yellow, magenta, cyan. Do not use tools." +
+                (steer ? " A native steering message will provide a steeringToken. Include its exact value in your JSON; do not guess it." : "") }, new { type = "localImage", path = asset } },
+            outputSchema = new { type = "object", properties, required = steer ? new[] { "colors", "steeringToken" } : new[] { "colors" }, additionalProperties = false } }, deadline.Token);
+        if (steer)
+        {
+            if (done.Task.IsCompleted || tool.Task.IsCompleted) throw new InvalidOperationException("Diagnostic turn ended or used a tool before steering; no fresh-turn fallback");
+            var active = turn.GetProperty("turn").GetProperty("id").GetString()!;
+            var receipt = await rpc.Call("turn/steer", new { threadId = thread, expectedTurnId = active,
+                input = new[] { new { type = "text", text = "The steeringToken is " + steeringToken + ". Return it exactly with the image colors. Do not use tools." } } }, deadline.Token);
+            NativeEventView.VerifySteer(receipt, active);
+            ledger.Put("verified-steering", new { thread, turn = active, token = steeringToken, receipt });
+        }
         var winner = await Task.WhenAny(done.Task, tool.Task, Task.Delay(TimeSpan.FromSeconds(90), deadline.Token));
         if (winner != done.Task || tool.Task.IsCompleted) throw new InvalidOperationException("Diagnostic tool activity or deadline; no retry, owned native process will stop");
         var completed = await done.Task;
@@ -135,11 +150,16 @@ try
         using var parsed = JsonDocument.Parse(answer);
         var colors = parsed.RootElement.GetProperty("colors").EnumerateArray().Select(c => c.GetString()).ToArray();
         if (!colors.SequenceEqual(fixture.Colors)) throw new InvalidDataException("Model answer did not match private randomized image truth");
+        if (steer && (Volatile.Read(ref turnsStarted) != 1 || !parsed.RootElement.TryGetProperty("steeringToken", out var returnedToken) ||
+            returnedToken.ValueKind != JsonValueKind.String || returnedToken.GetString() != steeringToken))
+            throw new InvalidDataException("Exact steering input was not consumed in one native turn");
         await quota.Read(rpc, deadline.Token);
         File.WriteAllText(Path.Combine(state, "result.json"), JsonSerializer.Serialize(new { verified = true, at = DateTimeOffset.UtcNow,
             generatedPixelsOnly = true, actualTelegramUpload = true, actualTelegramDownload = true, generatedMessageRemoved = true,
             diagnosticThread = thread, nativePid = rpc.Pid, ownerSid = policy.OwnerSid, actualModelImageInterpretation = true, colors,
             nativeToolActivityObserved = false, modelTurns = 1, liveRouterDatabaseOpened = false, telegramPolling = false,
+            actualNativeSteeringVerified = steer, nativeTurnStartedEvents = Volatile.Read(ref turnsStarted),
+            ownerTelegramIntakeVerified = false, phoneRoundTripVerified = false,
             globalAdmissionVerified = false, quotaBefore = before, quotaAfter = quota.Snapshot, unknown = ledger.Unknown,
             asset, sha256 = Convert.ToHexString(SHA256.HashData(downloaded)) }));
     }

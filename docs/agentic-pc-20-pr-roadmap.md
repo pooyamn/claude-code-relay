@@ -6,6 +6,16 @@ Build testable security and delivery foundations first. Introduce the builder wi
 
 ## Execution status
 
+2026-10-03 native bubble/steering integration: the PC adapter now renders native
+user input and tool names/completions into the same bounded bubble, and verifies
+the exact returned steering turn ID before reporting acceptance. 284 local and
+287 actual Windows checks pass. A real isolated one-turn image diagnostic also
+consumed a random value supplied only through native steering, with no tools or
+unknown operations. The live LG thread/bubble and main model-start/message
+counts remain unchanged; phone/authenticated-owner round trips, company grants,
+all-source admission and recovery remain gates, not implied by these results.
+[Exact evidence and limits](pr6-telegram-outbound.md#pc-native-origin-bubble-and-steering-receipts-2026-10-03).
+
 2026-10-03 partial PR 12 PC discovery: a protected metadata-only report now
 records 27 candidate components, 6,059 entries and ten SQLite candidates on the
 actual Windows host. Twenty-two Windows checks pass, including real junctions,

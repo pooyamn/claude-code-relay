@@ -94,6 +94,70 @@ Hamal/Mac wiring change is performed here.
 Include `state/diagnostics/media-*` ledgers/claims/truth/receipts in that cohort;
 restoration never grants another diagnostic send or model turn.
 
+## PC native-origin bubble and steering receipts (2026-10-03)
+
+The PC handler previously ignored completed native `userMessage` items and
+displayed only generic tool types. It now reflects bounded, literal native input
+into the same topic bubble and names MCP/dynamic tools, with command completion
+status/exit codes. Attachment URLs/paths, arbitrary MCP arguments/results and raw
+reasoning are not mirrored. Known credential-shaped text uses the existing
+literal/redaction helper; this is not a complete data-loss-prevention guarantee.
+Slash text in this view never executes a bot command or authenticates a human.
+Existing exact-thread/turn filters still reject stale or foreign events. A
+bounded 2,048-item live display cache coalesces repeated completions; it is not
+durable action-delivery authority. The rolling message remains bounded to 3,900
+characters with its existing elapsed/goal footer.
+
+The router also validates the returned `turnId` against `expectedTurnId` before
+describing steering as accepted. A missing, malformed or different receipt
+retains the original input and holds reconciliation, without a queued/fresh-turn
+fallback or mutation replay. [Native steering and event contracts](https://learn.chatgpt.com/docs/app-server).
+
+Joined fixtures cover a native-origin turn with **zero router model starts**,
+native input/tool/output/final events editing an existing bubble, repeated
+completion coalescing, stale/foreign exclusion and all three bad-receipt forms.
+Formatter checks cover bounds, Unicode, malformed optional fields, redaction
+and private attachment/tool metadata. The extended local suite passed 284 checks.
+Fixtures do not establish that a phone client reaches this exact app-server.
+
+`MediaProbe --steer` adds one finite actual-native acceptance test. It starts one
+generated-image turn, then supplies a random value only through `turn/steer`.
+Success requires an exact receipt, one `turn/started` event, correct private image
+truth and that exact steering value in final structured output. Tools, an ended
+turn, ambiguity or a deadline stop the diagnostic without starting a replacement
+turn. `--observe-only` is mutually exclusive. It keeps the same protected claim,
+ledger, quota guard and medium-owner launcher; no live router database or polling
+is used. This is not authenticated Telegram-owner or phone round-trip acceptance.
+
+Actual Windows release acceptance passed 287 checks before and after copying,
+plus the diagnostic dependency run. The installed router DLL SHA-256 is
+`A7F98406A09C52ADB92000BA5CAA0EFDD53E79735938A797B6713E796E1FE646`.
+The fresh identity, credential/code denial, read-only attachment ACL, native
+sandbox and goal-read proof passed at `2026-10-03T13:13:44.6488897Z` without a
+model turn or polling. Activation resumed the exact LG thread/bubble 161 and
+restored startup supervision. The previous release remains in
+`release-8e082f06caf94458ac7f9cc937b8586b/previous-bin`.
+
+The real steering diagnostic passed at `2026-10-03T13:16:49.731147Z`, run
+`7804f93aac3e4ed4b3dc7ea12d6e209a`, native thread
+`01a101e8-d5c0-7520-8e88-bfb33b3629cc`. One native turn accepted and consumed the
+random steering value; the image answer matched private truth `blue, cyan,
+green`. Telegram upload/download bytes matched SHA-256
+`73145CE804E24D1F3C3B445502C39555016C6F611EA1BA138929A4DFD71094C9`.
+No native tool or unknown operation was observed; the confirmed generated bot
+message was removed, with its bytes/claims/receipts retained. The diagnostic task
+finished with result 0, and its native PID 10112 was independently confirmed gone.
+Included usage was allowed at rounded 29% before/after, not zero-cost or global
+admission/reserve proof.
+
+Fresh observation at `2026-10-03T13:18:41.4129076Z` confirms live native PID 13532,
+idle/unheld bubble 161, zero unknown operations, unchanged main turn/start (4),
+sendMessage (2) and created-topic (1) receipts. Native remote PIDs 5420/9188 and
+all VPN/LG services remained running. Hamal and Mac wiring are unchanged. These
+joined-fixture and isolated-native results do **not** prove real authenticated
+owner steering through Telegram, phone-client attachment to the exact app-server,
+employee/company isolation, goal-continuation admission or clean restore.
+
 ## Prepared mechanism
 
 `relay_core/telegram_scheduler.py` extends the PR 5 outbox in a separate private
