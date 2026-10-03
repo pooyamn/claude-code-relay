@@ -1,7 +1,9 @@
 param(
  [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-f]{32}$')][string]$RunId,
  [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-f]{32}$')][string]$MigrationRun,
- [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-fA-F]{64}$')][string]$HistoryScriptSha256
+ [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-fA-F]{64}$')][string]$HistoryScriptSha256,
+ [switch]$NativeReads,
+ [ValidatePattern('^[0-9a-fA-F]{64}$')][string]$NativeScriptSha256
 )
 # One-shot migration evidence, not a new broker or production authorization.
 # Never read credential bytes, start models, replay actions or change routing.
@@ -25,6 +27,7 @@ $expectedRoot='C:\ProgramData\OracovaNativeRemote\migration-probe-'+$RunId
 if($PSScriptRoot -ne $expectedRoot){throw 'Reviewed literal migration probe required'}
 $historyScript=Join-Path $PSScriptRoot 'verify-pc-migration-histories.py'
 if((Get-FileHash -LiteralPath $historyScript).Hash -ne $HistoryScriptSha256){throw 'Reviewed history checker digest mismatch'}
+if($NativeReads -and (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot 'restore-pc-native-histories.py')).Hash -ne $NativeScriptSha256){throw 'Reviewed native reader digest required'}
 $state=Join-Path 'C:\Users\pou\.native-remote' ('migration-probe-'+$RunId)
 if(Test-Path -LiteralPath $state){throw 'Existing attempt preserved; never replay'}
 [IO.Directory]::CreateDirectory($state)|Out-Null
@@ -74,6 +77,17 @@ except OSError as error:
  [IO.File]::WriteAllText((Join-Path $state 'histories.json'),($raw -join "`n"),$utf8)
  $histories=$raw|ConvertFrom-Json
  if($result.historyCheckExit -ne 0 -or $histories.uid -ne 1000 -or $histories.bindings.Count -ne 14){throw 'Captured history check failed; retain evidence'}
+ if($NativeReads){
+  $result.failureStage='native-history-restore-and-read'
+  $nativeScript='/mnt/c/ProgramData/OracovaNativeRemote/migration-probe-'+$RunId+'/restore-pc-native-histories.py'
+  $raw=& 'C:\Windows\System32\wsl.exe' -d Ubuntu-24.04 -u pou --exec /usr/bin/python3 -I -B $nativeScript $MigrationRun $RunId 2> (Join-Path $state 'native-read-stderr.private.txt')
+  $result.nativeReadExit=$LASTEXITCODE
+  [IO.File]::WriteAllText((Join-Path $state 'native-read.json'),($raw -join "`n"),$utf8)
+  if($result.nativeReadExit -ne 0){throw 'Native restore/read failed; retain its evidence before further action'}
+  $native=$raw|ConvertFrom-Json
+  if(-not $native.complete -or -not $native.nativeStopped -or $native.nativeReads.Count -ne 5 -or $native.loadedThreadsAfterReads.Count -ne 0 -or $native.modelTurnsStarted -ne 0 -or $native.sessionsResumed){throw 'Native read acceptance missing'}
+  $result.nativeReadComplete=$true
+ }
  $result.complete=$true
  $result.Remove('failureStage')
 }

@@ -147,8 +147,9 @@ The protected destination is
 Private local transfer receipts remain beside their generated archives. The
 archives are initial seeds: source writers were not frozen, live socket objects
 are not portable files, and database/worktree consistency still requires final
-checkpoint capture. They are not a completed encrypted daily backup or a proven
-native restore. No source data or generated archive has been deleted.
+checkpoint capture. The archives alone are not a completed encrypted daily backup
+or proof of native continuity; subsequent restore checks are recorded below.
+No source data or generated archive has been deleted.
 
 The small framed SSH transfer passed, but three bulk transfers stalled at 64 KiB
 with blocked producers and receivers. Those exact owned receivers were stopped,
@@ -175,8 +176,8 @@ receive the final source delta rather than being treated as an up-to-date checko
 Matching native Linux Codex 0.160.0 and Claude 2.1.288 are installed in private
 owner preparation directories and both version checks pass. The Codex package
 matches the published release digest. Claude's manifest signature, pinned
-Anthropic key fingerprint and binary checksum all pass. No session, login or
-router transport has been started or changed. Background and manual Claude
+Anthropic key fingerprint and binary checksum all pass. No session has been
+resumed, and logins and router transport remain unchanged. Background and manual Claude
 updates were disabled for the preparation invocation; permanent launch settings
 still require inspection and merging. A real model must launch from the limited
 interactive Windows owner token, not inherit the SSH administrator context.
@@ -233,14 +234,43 @@ grants. The successful task has no triggers and is terminal with exit 0;
 failed attempts and their output remain available for diagnosis. No model,
 native resume, action replay or routing change was started by these checks.
 
+At 12:15 PM PDT, a second Interactive/Limited task in owner session 1 restored
+the history folders at their original Unix paths as Linux UID 1000. It copied
+all 149 Codex rollout files, all 744 files in Claude's project-history folder,
+the Codex history/index files, and six working database clones from the closed
+backup-API snapshots. The 901 regular files total 4,450,410,314 bytes. Source and
+destination tree signatures match; directory modes and symlink targets are
+included, and the preserved seeds remain untouched. Existing destinations and
+partial copies are refused rather than overwritten or replayed. Settings,
+credentials and hooks were not activated by this restore.
+
+The pinned native Linux Codex 0.160.0 then read all five original pinned
+conversations through its stdio app-server: relay, marginal-requests, web,
+augur-1 and the older DUT Codex conversation. Their exact IDs, original
+workspaces, full turns and message/tool item records were checked: 314 turns
+and 19,660 items in total. All five remained `notLoaded`; loaded-thread lists
+were empty before and after, and the owned reader process exited and was reaped.
+Its clean environment contained no credentials, and its client permitted only
+initialization and read RPCs. This uses the documented distinction between
+[reading a stored thread and resuming it](https://learn.chatgpt.com/docs/app-server).
+Thirteen preservation/restore tests pass. Windows and both Linux identities
+again failed actual open/close checks on Khadang's protected token. The task
+completed with exit 0; private results are retained under migration probe
+`1885add62a8f45c7b8c25f781886d093` on the PC.
+
+This proves Codex can read the restored full histories, not native continuation
+or phone connectivity. Claude's native context recovery is still untested;
+DUT remains selected to Claude, not its older Codex pin. All real resumes,
+settings/logins, source-final checkpoints and topic cutovers remain pending.
+
 Five bindings still need source-state reconciliation. Startup Ideas,
 kicad-copilot-research and mimic-fast-pcb lack a selected backend marker;
 hardware-lite and qwen-lab have a Claude marker but no exact session pin.
 Mimic's existing Claude transcript is preserved, not silently selected. Qwen's
 actual provider configuration must also be preserved and checked. These are
-not missing-history permissions to invent replacement conversations. Native
-application reads/resumes, final checkpoint capture and topic cutover remain
-separate pending checks.
+not missing-history permissions to invent replacement conversations. Claude
+native recovery, both tools' real resumes, final checkpoint capture and topic
+cutover remain separate pending checks.
 
 ARM GCC 13.2.1, newlib, OpenOCD 0.12.0, CMake 3.28.3, Ninja 1.11.1,
 GDB, Python venv and build dependencies are installed. Tool versions were read
