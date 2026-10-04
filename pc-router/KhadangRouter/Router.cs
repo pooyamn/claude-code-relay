@@ -20,6 +20,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         public long ClaudeStateRevision;
         public string ClaudeState = "unverified";
         public string? ClaudeRemoteState;
+        public string? ClaudeRemoteUrl;
         public bool ClaudeHasDelta;
         public string? ClaudeResultStatus;
         public readonly object Gate = new();
@@ -127,6 +128,12 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 lock (session.Gate)
                     if (revision == session.ClaudeStateRevision)
                         ApplyClaudeState(session, session.ClaudeInfo.Value.GetProperty("session_state").GetString()!);
+                var remoteReceipt = await ClaudeRemoteControl.Enable(claude, binding, ledger, stop);
+                lock (session.Gate)
+                {
+                    session.ClaudeRemoteState = "ready"; session.ClaudeRemoteUrl = remoteReceipt.SessionUrl;
+                    session.Bubble.Append("\nClaude app: " + remoteReceipt.SessionUrl + "\n"); Touch(session);
+                }
             }
         }
         rpc.Notification += OnNative;

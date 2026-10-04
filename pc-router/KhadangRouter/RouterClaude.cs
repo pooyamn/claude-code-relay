@@ -127,7 +127,8 @@ public sealed partial class Router
                 break;
             case "/remote":
                 lock (session.Gate) answer = "This Claude process's Remote Control state: " + (session.ClaudeRemoteState ?? "not yet observed") +
-                    ". This command does not enable, disable or reconnect it.";
+                    (session.ClaudeRemoteUrl == null ? "" : "\n" + session.ClaudeRemoteUrl) +
+                    "\nRead-only status; ready means enrolled, not proof of phone connection.";
                 break;
             case "/cancel":
                 if (!session.Busy) { answer = "No active native Claude work."; break; }

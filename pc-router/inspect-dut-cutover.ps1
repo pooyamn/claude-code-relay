@@ -3,16 +3,20 @@ $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 # Read only safe migration metadata; never print unrelated owner messages.
 $raw=(. (Join-Path $PSScriptRoot 'inspect-state.ps1')) -join "`n"
 $s=$raw|ConvertFrom-Json
-$operations=@();$updates=@()
+$operations=@();$updates=@();$appControls=@()
 foreach($row in [RouterReceipts]::Read("SELECT kind,status,payload,result FROM operations ORDER BY rowid")){
  $p=$row[2]|ConvertFrom-Json;$r=if($row[3]){$row[3]|ConvertFrom-Json}else{$null}
+ if($row[0] -eq 'claude/control/remote_control' -and $p.SessionId -eq '7dc840b0-402f-451e-bc79-dadfb706d363'){
+  $appControls+=@{status=$row[1];session=$p.SessionId}
+ }
  if($p.parameters.threadId -in @('7dc840b0-402f-451e-bc79-dadfb706d363')){
   $operations+=@{kind=$row[0];status=$row[1];thread=$p.parameters.threadId;turn=$r.turn.id}
  }elseif(($p.chat_id -eq -1004395661179 -and $p.message_thread_id -eq 53) -or
   ($r.chat.id -eq -1004395661179 -and $r.message_thread_id -eq 53)){
   $operations+=@{kind=$row[0];status=$row[1];message=$r.message_id;returnedChat=$r.chat.id;returnedTopic=$r.message_thread_id;
    requestedTopic=$p.message_thread_id;requestedCharacters=([string]$p.text).Length;
-   connectedNotice=([string]$r.text -like '*Connected to the PC session.*')}
+   connectedNotice=([string]$r.text -like '*Connected to the PC session.*');
+   appNotice=([string]$r.text -like '*Claude app: https://claude.ai/code/*')}
  }
 }
 foreach($row in [RouterReceipts]::Read('SELECT id,status,payload FROM updates ORDER BY id DESC LIMIT 50')){
@@ -24,6 +28,8 @@ foreach($row in [RouterReceipts]::Read('SELECT id,status,payload FROM updates OR
 $root='C:\ProgramData\KhadangRouter'
 $resultRows=[RouterReceipts]::Read("SELECT value FROM meta WHERE key='claude/result/7dc840b0-402f-451e-bc79-dadfb706d363'")
 $lastResult=if($resultRows.Count){$resultRows[0][0]|ConvertFrom-Json}else{$null}
+$appRows=[RouterReceipts]::Read("SELECT value FROM meta WHERE key='claude/remote/7dc840b0-402f-451e-bc79-dadfb706d363'")
+$app=if($appRows.Count){$appRows[0][0]|ConvertFrom-Json}else{$null}
 [ordered]@{service=$s.service;startup=(Get-ScheduledTask -TaskName 'Oracova-KhadangStartup').State.ToString();
  unknown=$s.status.unknown;nativePid=$s.status.nativePid;nativeLinuxPid=$s.status.nativeLinuxPid;
  policy=(Get-FileHash "$root\config.json").Hash;router=(Get-FileHash "$root\bin\KhadangRouter.dll").Hash;
@@ -35,6 +41,9 @@ $lastResult=if($resultRows.Count){$resultRows[0][0]|ConvertFrom-Json}else{$null}
  bindings=$s.bindings;updates=$updates;operations=$operations;nativeSessions=$s.status.nativeSessions;statusAt=$s.status.at;
  lastNativeResult=@{session=$lastResult.session_id;subtype=$lastResult.subtype;isError=$lastResult.is_error;
   replyCharacters=([string]$lastResult.result).Length};
+ claudeApp=@{phase=$app.phase;session=$app.ThreadId;bridgeSessionId=$app.receipt.BridgeSessionId;
+  url=$app.receipt.SessionUrl;at=$app.at;controls=$appControls;
+  telegramLinkConfirmed=(@($operations|Where-Object {$_.status -eq 'confirmed' -and $_.appNotice}).Count -gt 0)};
  bubbles=@($s.metadata|Where-Object key -like 'bubble/*'|ForEach-Object {@{thread=$_.key;chat=$_.value.chat;topic=$_.value.topic;
   message=$_.value.message;busy=$_.value.busy;held=$_.value.held;sendUnknown=$_.value.sendUnknown;pending=@($_.value.pendingResponses).Count}});
  at=[DateTimeOffset]::UtcNow.ToString('o')}|ConvertTo-Json -Depth 10 -Compress

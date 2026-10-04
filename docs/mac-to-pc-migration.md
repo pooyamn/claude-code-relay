@@ -1450,10 +1450,81 @@ Deployment facts:
   encrypted off-machine disaster-recovery system.
 
 Pouya then reported DUT missing from the Claude app and requested Mac-like
-Remote Control behavior, **Claude only**. The active streaming adapter currently
+Remote Control behavior, **Claude only**. At that observation the streaming adapter
 reports bridge state but does not enable Remote Control. The earlier native
 `remote_control` control-request acceptance already established the applicable
 version-pinned mechanism. Same-process app enrollment and phone/Telegram
 continuity are the next change; Telegram routing success does not establish
 those. Full migration, ten remaining original routes, bench relocation and
 Mac-independent recovery remain incomplete. The Mac has not been erased.
+
+### DUT same-session Claude Remote Control, October 3 at 9:27 PM PDT
+
+DUT's existing native stream is now enrolled in Claude app Remote Control,
+named **DUT Board Design - PC**. The native `remote_control` request returned
+its cloud mapping and a validated first-party HTTPS app URL at
+`2026-10-04T04:26:15.3061367Z`; its operation receipt is confirmed and the
+protected `claude/remote/7dc840b0-402f-451e-bc79-dadfb706d363` state is `ready`.
+The link was delivered privately and in the existing Telegram bubble. The
+cloud mapping is not a replacement native UUID: native conversation
+`7dc840b0-402f-451e-bc79-dadfb706d363`, PCBA topic **53**, workspace and native
+subscription all remain the same. No second worker or model prompt was used
+to enroll it.
+
+The mechanism is explicit same-stream SDK control, not a second CLI or a
+read-only bridge-status query. The measured SDK **0.3.288** contract on pinned
+Claude **2.1.288** uses `enabled`, `name` and `keep_session_on_exit`. A confirmed
+cloud mapping is retained and supplied as `reattach_session_id` on subsequent
+initialization; a durable attempting/unknown enrollment is held for
+reconciliation rather than repeated. Identity and URL validation reject
+missing mappings, non-HTTPS/non-Claude hosts, userinfo, custom ports, empty
+code paths and fragments. This is a **version-bound native adapter**, not a
+claim that the private SDK contract survives upgrades without qualification.
+An upgrade needs a compatible same-stream enable/reattach check.
+
+Local credential/network/model-free checks passed **806**; actual Windows
+checks passed **809** during staging, before replacement and against installed
+bytes. They cover Claude-only enrollment, exact conversation ownership,
+no Codex remote-control calls, confirmed-mapping reattachment, uncertain-effect
+holds and URL validation. Those fixtures are separate from the actual live
+native enrollment receipt and do not establish a phone connection.
+
+Web had active work when deployment was first attempted. The preflight refused
+before mutation; deployment proceeded only after all five routes were idle.
+A fresh stopped-history checkpoint captured **249,409 bytes**, SHA-256
+`f58f48f81295a9e4bd864c92c72e726020c187bf69629644fc4d74a883be0e9e`;
+checkpoint SHA-256 is
+`8ea204ce823c5d3229973c2e576134a6b3ee1739d9a8c0e9191c224140d5f385`.
+Only the protected Claude package/checkpoint policy changed; its seven Python
+files, bindings and native IDs did not. Existing code, policy, service/task
+preimages and a consistent SQLite snapshot are retained.
+
+Fresh installed-code owner/OS/credential/sandbox proof passed at
+`2026-10-04T04:25:10.9520396Z`. The previous actual Claude handoff/tool-owner/
+continuity reports were **explicitly reused**, not rerun or presented as new
+model evidence: the pinned native executable, Python connector files, stream
+parser, owner launcher, policy, ledger and program gates were independently
+unchanged. That reuse is recorded separately in the protected production
+proof; the new app hook additionally required fresh Windows fixtures and
+actual live native enrollment.
+
+Current policy SHA-256 is
+`507DB6D32B51692EEB304C12566977E7A29EB6AC53ED0B2927546F472916C95D`;
+router DLL SHA-256 is
+`94111E96E68F5D935FAA3DF94085E81F06AC3867E28A75DF290A744048D55841`.
+Policy/ledger/service recovery is in
+`C:\ProgramData\KhadangRouter\release-d1f538b6fe9744739d9a2fc6a6a2efba`;
+previous binaries are in
+`C:\ProgramData\KhadangRouter\release-8784f5d8f3f345b0baab0ef722f4f5fb\previous-bin`.
+At `2026-10-04T04:27:32.014519Z`, all five routes were healthy with zero unknown,
+held or pending effects, DUT process **28446** connected, and the shared Linux
+Codex daemon still **2141**. The idle shared-service restart recreated the
+Windows native transport (**26764**); Codex behavior, daemon enrollment and
+session IDs were unchanged. Startup supervision was restored at **04:27:47Z**.
+
+`ready` means native cloud enrollment, **not** an observed phone connection.
+Actual phone-to-DUT/Telegram continuity and native cloud reattachment across a
+later restart remain to be accepted. Console-only owner selection and automatic
+checkpoint refresh on recovery remain separate outstanding mechanisms.
+Original-topic routing stays **4 of 14**; this app fix does not complete the
+remaining migration or authorize erasing the Mac.

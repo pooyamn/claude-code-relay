@@ -142,6 +142,13 @@ public static class MixedRoutingTests
                 await bot.Ready.Task.WaitAsync(stop.Token);
                 var claude = topics.Opened.Single(c => c.SessionId == Pin);
                 var other = topics.Opened.Single(c => c.SessionId == Pin2);
+                var remoteRequest = claude.Controls.Single(c => c.Kind == "remote_control").Args;
+                Check(remoteRequest.GetProperty("enabled").GetBoolean() && remoteRequest.GetProperty("keep_session_on_exit").GetBoolean() &&
+                    !remoteRequest.TryGetProperty("reattach_session_id", out _) && ledger.Get("claude/remote/" + Pin)!.Value.GetProperty("phase").GetString() == "ready",
+                    "Claude startup enrolls its existing owned stream once; no extra native conversation or copied worker secret");
+                Check(other.Controls.Count(c => c.Kind == "remote_control") == 1 &&
+                    !win.Calls.Any(c => c.Kind == "remote_control") && !linux.Calls.Any(c => c.Kind == "remote_control"),
+                    "App enrollment is Claude-only and exact-conversation scoped");
                 bot.Post(Enumerable.Range(0, 3).Select(i => bot.Update(100 + i, bindings[i], "START-" + i)).ToArray());
                 await Wait(() => Done(ledger, 100, 101, 102), stop.Token);
                 Check(win.Starts.Single().GetProperty("threadId").GetString() == bindings[0].ThreadId &&
@@ -219,6 +226,27 @@ public static class MixedRoutingTests
             finally { stop.Cancel(); try { await run; } catch (OperationCanceledException) { } }
             Check(topics.Opened.All(c => c.Disposed), "Normal shutdown releases every acquired Claude stream");
         }
+        var receipt = Json(new { bridge_session_id = "session_fixture", session_url = "https://claude.ai/code/session_fixture" });
+        Check(ClaudeRemoteControl.Parse(receipt).BridgeSessionId == "session_fixture", "Native Remote Control identity and first-party URL are required");
+        foreach(var invalidUrl in new[] { "http://claude.ai/code/session_fixture", "https://claude.ai.evil.test/code/session_fixture", "https://user@claude.ai/code/session_fixture", "https://claude.ai/settings", "https://claude.ai/code/", "https://claude.ai:8443/code/session_fixture", "https://claude.ai/code/session_fixture#secret" })
+        {
+            try { ClaudeRemoteControl.Parse(Json(new { bridge_session_id = "session_fixture", session_url = invalidUrl })); throw new Exception("Unsafe remote URL accepted"); }
+            catch(InvalidDataException) { checks++; }
+        }
+        var remoteDirectory=Path.Combine(directory,"remote-recovery");Directory.CreateDirectory(remoteDirectory);
+        using(var ledger=new Ledger(Path.Combine(remoteDirectory,"router.db")))
+        {
+            var native=new Claude(Pin);var binding=bindings[2];
+            await ClaudeRemoteControl.Enable(native,binding,ledger,CancellationToken.None);
+            await ClaudeRemoteControl.Enable(native,binding,ledger,CancellationToken.None);
+            Check(native.Controls.Single(c=>c.Args.TryGetProperty("reattach_session_id",out _)).Args.GetProperty("reattach_session_id").GetString()=="session_fixture" &&
+                native.Inputs.Count==0,"Confirmed cloud mapping is reattached without native prompts, resets or replacement workers");
+            ledger.Put("claude/remote/"+Pin,new{phase="attempting"});var count=native.Controls.Count;
+            try{await ClaudeRemoteControl.Enable(native,binding,ledger,CancellationToken.None);throw new Exception("Uncertain remote enrollment repeated");}
+            catch(InvalidOperationException){Check(native.Controls.Count==count,"Interrupted Remote Control enrollment is not automatically replayed");}
+            try{await ClaudeRemoteControl.Enable(native,bindings[3],ledger,CancellationToken.None);throw new Exception("Foreign native session enrolled");}
+            catch(InvalidDataException){Check(native.Controls.Count==count,"Foreign conversation rejected before native enrollment");}
+        }
         return checks;
     }
     private static string Tail(Ledger ledger) => ledger.Get("bubble/" + Pin)!.Value.GetProperty("tail").GetString()!;
@@ -273,6 +301,7 @@ public static class MixedRoutingTests
         public Task<JsonElement> Control(string subtype, object parameters, CancellationToken stop, bool effect = true)
         {
             Controls.Add((subtype, Json(parameters)));
+            if (subtype == "remote_control") return Task.FromResult(Json(new { bridge_session_id = "session_fixture", session_url = "https://claude.ai/code/session_fixture" }));
             if (subtype == "get_usage" && scenario == "slow-usage") return UsageReply.Task.WaitAsync(stop);
             if (subtype == "get_usage" && scenario == "failed-usage") throw new IOException("Fixture usage read failure");
             return Task.FromResult(subtype == "get_usage" ?
