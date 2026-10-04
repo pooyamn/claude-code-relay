@@ -3020,3 +3020,38 @@ access, encrypted daily off-machine backup with independent key recovery and
 a clean-machine restore. No Mac-erasure approval or target resolution occurred.
 Weekly quota remained8% available at20:42:06Z, above the owner's5% pause gate.
 The full migration objective remains active and incomplete.
+
+### KiCad research PC environment and continuation handoff, October 4
+
+The preceding turn completed the workspace byte audit and protected remaining
+file preservation. This continuation moved an actual project dependency from
+Darwin to the PC rather than treating copied virtual-environment files as an
+executable Linux environment. At20:55:51Z the new ordinary UID1000 environment
+under `/Users/pouya/.migration/kicad-portable-yjws1atg/venv` passed all12 original
+synthetic scorer tests and IPC/MCP/copilot-module import checks. All49 external
+package versions match a fresh observation of the original Mac Python3.12
+environment exactly. Linux pip bootstrap is separately recorded; local
+kicad-tools0.14.0 and kipilot-mcp0.1.1 use their preserved source paths through
+explicit PYTHONPATH, not an editable vendor installation. The original Darwin
+`.venv`, vendor repositories, source project and existing PC environments were
+not overwritten. Nine selected copilot/manifest hashes matched Mac/PC.
+
+The exact live-board scorer test was excluded by an explicit12-node selection.
+No KiCad client or LLM was instantiated, model/API request sent, source/native
+session restarted, topic changed or board edited. An import probe rejects
+Python socket connects. Tests ran with bytecode, pytest plugin autoload and its
+cache provider disabled. Six preparation fixtures cover exact pins, local
+version refusal, requirement-option injection, exclusion of the live test,
+test-set change refusal and credential environment isolation. Actual project
+evidence is separate from the fixtures. The result SHA256 is
+`a9a9779a5ffe48d1221ad9073ae3d21d4c3555a7d8cb409918bc6c30081f4983`.
+
+A new private PC project handoff records the current clean-before-handoff main
+checkout, real tested commands/evidence, unfinished P6 demo, historical versus
+current routing, pending decisions/actions, source history reference and next
+cutover steps. It explicitly preserves the owner's undecided destination for
+topic6004 and does not infer current Claude ownership from its July document.
+This closes offline environment preparation, not live GUI/IPC/demo, a fresh
+agent handoff read, owner phone input or source-writer/final-delta acceptance.
+No Khadang guard/credential/policy changed. Weekly quota still had8% remaining
+at20:56:38Z, above the5% pause gate; migration stays active and incomplete.
