@@ -64,6 +64,15 @@ with approvals never. This is not company/role acceptance: native Claude, media,
 all-source admission, goal recovery and boot/startup acceptance remain pending.
 [Current PC cutover evidence](../pc-router/deployment-status.json).
 
+2026-10-04 explicit personal-access exception: Pouya requested normal access
+for Telegram account `199200674` (`@MJ_MN`) across all mapped topics. The PC
+adapter now admits direct conversation/attachments from that numeric ID while
+keeping slash controls, model switches and exact approvals owner-only. This is
+an explicitly trusted personal allowlist, not company/project/role enforcement
+or an isolated employee OS account: these requests still reach the existing
+full-access owner-native sessions. Do not generalize this grant to other users
+or companies. Bot/forward/proxy/unlisted/foreign-chat inputs remain denied.
+
 2026-10-03 native remote milestone: both PC Codex and Claude Remote Control
 report Connected as the non-elevated owner. Sign-in/single-instance supervisor
 tasks are installed. Codex uses a **workaround for characterized Windows CLI
@@ -487,8 +496,9 @@ Real boundaries:
   protected interfaces. Role-host Windows interop/PATH, drive/fstab mounts,
   WSL init/interop endpoints and manual namespace/mount escape must also be
   controlled. Automount off alone is insufficient. The Windows migration
-  adapter remains owner-only until this is enforced; current full-access
-  owner defaults are not employee grants. [Measured gap and partial Linux
+  adapter is not company/role enforcement until this is proven; the explicitly
+  trusted personal participant exception above does not make current full-access
+  owner defaults general employee grants. [Measured gap and partial Linux
   proof](pc-wsl-identity-evidence.md). This security-sensitive topology change
   requires the protected owner/Jev review path, not automatic test clearance.
 - **WSL integration settings are not host containment.** Microsoft's explicit

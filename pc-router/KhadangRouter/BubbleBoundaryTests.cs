@@ -57,6 +57,16 @@ public static class BubbleBoundaryTests
         await Flush();
         Check(bot.Sends == 8 && bot.BubbleEdits == edits + 1 && response.Message == 907,
             "Restart restyles a retained bubble in place without a new message or model action");
+        response.LastRendered = ""; bot.UnknownEdit = true;
+        await Flush();
+        Check(response.SendUnknown && response.Message == 907 && bot.Sends == 8, "Timed-out known-message edit retains uncertain display evidence without a new send");
+        bot.UnknownEdit = false; await Flush();
+        Check(!response.SendUnknown && bot.Sends == 8 && response.Message == 907 && !(bool)sessionType.GetField("Held")!.GetValue(session)!,
+            "Next editor tick safely amends the same confirmed message, without blocking native input or duplicating finals");
+        var knownEditRestored = constructor.Invoke(new object[] { binding, native });
+        var knownEditReceipt = Json(new { pendingResponses = new[] { new { text = "Existing progress", message = 907, lastRendered = "", sendUnknown = true } } });
+        typeof(Router).GetMethod("RestorePendingBubbles", BindingFlags.NonPublic | BindingFlags.Static)!.Invoke(null, new[] { knownEditRestored, (object)knownEditReceipt });
+        Check(!(bool)sessionType.GetField("Held")!.GetValue(knownEditRestored)!, "Restoration distinguishes an uncertain edit of a known message from an unknown initial send");
         Start("unknown"); bot.UnknownSend = true; await Flush();
         Finish("unknown", "UNKNOWN-FINAL"); Start("after-unknown"); Finish("after-unknown", "NOT-REPLAYED"); await Flush();
         Check(bot.Sends == 9 && !bot.Messages.Values.Any(t => t.Contains("NOT-REPLAYED")), "Uncertain send is not replayed or bypassed by a later response");
@@ -79,7 +89,7 @@ public static class BubbleBoundaryTests
     {
         public int Sends;
         public int BubbleSends, BubbleEdits, Answers;
-        public bool UnknownSend;
+        public bool UnknownSend, UnknownEdit;
         public Action? BeforeSend;
         public readonly Dictionary<int, string> Messages = new();
         public Task<JsonElement> Call(string method, object parameters, CancellationToken stop, bool effect = false) => throw new Exception("No polling or controls in bubble boundary tests");
@@ -95,7 +105,7 @@ public static class BubbleBoundaryTests
         public Task<JsonElement> SendBubble(long chat, int topic, string text, CancellationToken stop)
         { BubbleSends++; return Send(chat, topic, text, stop); }
         public Task EditBubble(long chat, int message, string text, CancellationToken stop)
-        { BubbleEdits++; return Edit(chat, message, text, stop); }
+        { BubbleEdits++; if (UnknownEdit) throw new TelegramFailure(0); return Edit(chat, message, text, stop); }
         public Task<JsonElement> SendAnswer(long chat, int topic, AnswerPart part, CancellationToken stop)
         { Answers++; return Send(chat, topic, part.Text, stop); }
     }

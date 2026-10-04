@@ -83,6 +83,7 @@ public static class SelfTests
         checks += QuotaTests.Run(root, policy).GetAwaiter().GetResult();
         checks += AttachmentTests.Run(root, policy).GetAwaiter().GetResult();
         checks += RoutingTests.Run(root, policy).GetAwaiter().GetResult();
+        checks += ParticipantTests.Run(root, policy).GetAwaiter().GetResult();
         checks += MixedRoutingTests.Run(root, policy).GetAwaiter().GetResult();
         // A unique test-owned directory, never a workspace/service path.
         Directory.Delete(root, recursive: true);

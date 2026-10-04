@@ -115,7 +115,11 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             {
                 session.Bubble.Append(saved.GetProperty("tail").GetString()!);
                 session.Message = saved.GetProperty("message").ValueKind == JsonValueKind.Number ? saved.GetProperty("message").GetInt32() : null;
-                session.SendUnknown = saved.GetProperty("sendUnknown").GetBoolean();
+                // A retained ID came from a confirmed initial send. An edit of
+                // that same message may be amended again without duplicating
+                // a new message, native input or external action. Keep its
+                // original uncertain operation in the display audit.
+                session.SendUnknown = saved.GetProperty("sendUnknown").GetBoolean() && session.Message == null;
                 if (saved.GetProperty("busy").GetBoolean() && !saved.GetProperty("held").GetBoolean() &&
                     saved.TryGetProperty("turn", out var previousTurn) && previousTurn.ValueKind == JsonValueKind.String)
                     session.RestoreTurn = previousTurn.GetString();
@@ -277,7 +281,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         Session? target = null;
         try
         {
-            if (!update.TryGetProperty("message", out var message) || !policy.OwnerMessage(message)) { ledger.Finish(updateId, "denied"); return; }
+            if (!update.TryGetProperty("message", out var message) || !policy.ConversationMessage(message)) { ledger.Finish(updateId, "denied"); return; }
             if (!policy.TryAddress(message, out var address)) { ledger.Finish(updateId, "denied"); return; }
             if (!sessions.TryGetValue(address, out var session))
             {
@@ -351,7 +355,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                     if (mediaTurn != null && active != mediaTurn) throw new AttachmentFailure("Active turn ended or changed during attachment download; staged files held, no fresh-turn fallback");
                     if (session.Busy && active == null) throw new InvalidOperationException("Native turn identity not yet confirmed; no queue fallback");
                 }
-                var input = Attachments.Input(policy.OwnerId, message.GetProperty("message_id").GetInt64(), text, files, session.Binding.Runtime);
+                var input = Attachments.Input(message.GetProperty("from").GetProperty("id").GetInt64(), message.GetProperty("message_id").GetInt64(), text, files, session.Binding.Runtime);
                 if (active != null)
                 {
                     var receipt = await session.Native.Call("turn/steer", new { threadId = session.Binding.ThreadId, expectedTurnId = active, input }, stop);

@@ -53,6 +53,7 @@ public sealed partial class Router
                 SendUnknown = receipt.GetProperty("sendUnknown").GetBoolean()
             };
             RestoreAnswer(response, receipt);
+            if (response.Message != null) response.SendUnknown = false;
             session.PendingBubbles.Enqueue(response);
             if (response.SendUnknown || response.Answer.Parts.Any(p => p.SendUnknown)) { session.Held = true; session.Status = "Held — reconcile uncertain response delivery"; }
         }
@@ -105,7 +106,7 @@ public sealed partial class Router
                     !completed.SendUnknown && completed.Text == completed.LastRendered && completed.Answer.Delivered)
                     session.PendingBubbles.Dequeue();
                 response = session.PendingBubbles.TryPeek(out var pending) ? pending : session.Response;
-                if (response.SendUnknown || response.Message == null && response.Answer.Parts.Any(p => p.SendUnknown)) return;
+                if (response.SendUnknown && response.Message == null || response.Message == null && response.Answer.Parts.Any(p => p.SendUnknown)) return;
                 text = ReferenceEquals(response, session.Response) ? RenderBubble(session) : response.Text;
                 message = response.Message; revision = session.Revision;
             }
@@ -171,6 +172,7 @@ public sealed partial class Router
         }
         void Delivered()
         {
+            response.SendUnknown = false;
             response.LastRendered = text;
             if (ReferenceEquals(response, session.Response)) session.Dirty = revision != session.Revision;
             Persist(session);
@@ -186,7 +188,7 @@ public sealed partial class Router
             {
                 while (session.PendingAnswers.TryPeek(out var delivered) && delivered.Delivered) session.PendingAnswers.Dequeue();
                 if (!session.PendingAnswers.TryPeek(out answer!)) { Persist(session); return true; }
-                if (session.SendUnknown || answer.Parts.Any(p => p.SendUnknown)) return false;
+                if (session.SendUnknown && session.Message == null || answer.Parts.Any(p => p.SendUnknown)) return false;
             }
             foreach (var part in answer.Parts)
             {

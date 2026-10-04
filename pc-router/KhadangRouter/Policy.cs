@@ -7,7 +7,7 @@ public sealed record RouterPolicy(string BotUsername, long BotId, long OwnerId, 
     string OwnerSid, string CodexExecutable, string CodexSha256, string CredentialFile,
     string StateDirectory, string WorkspaceRoot, int MaximumSessions = 3, int StartSpacingSeconds = 5,
     bool OwnerFullAccess = false, ChatRoute[]? AdditionalChats = null, string? LinuxWorkspaceRoot = null,
-    LinuxCodexRuntime? LinuxCodex = null, LinuxClaudeRuntime? LinuxClaude = null)
+    LinuxCodexRuntime? LinuxCodex = null, LinuxClaudeRuntime? LinuxClaude = null, long[]? ParticipantIds = null)
 {
     [JsonIgnore] public string NativeApprovalPolicy => OwnerFullAccess ? "never" : "on-request";
     [JsonIgnore] public string NativePermissionProfile => OwnerFullAccess ? ":danger-full-access" : ":workspace";
@@ -45,6 +45,9 @@ public sealed record RouterPolicy(string BotUsername, long BotId, long OwnerId, 
             if (route == null || route.Chat >= 0 || route.Chat < -4_503_599_627_370_495L ||
                 route.IsForum && !route.Chat.ToString().StartsWith("-100") || !seen.Add(route.Chat))
                 throw new InvalidDataException("Invalid or duplicate migration chat");
+        if (ParticipantIds is { Length: > 64 } || (ParticipantIds ?? []).Any(id => id <= 0 || id > 4_503_599_627_370_495L || id == OwnerId) ||
+            (ParticipantIds ?? []).Distinct().Count() != (ParticipantIds?.Length ?? 0))
+            throw new InvalidDataException("Exact unique non-owner Telegram participant IDs required");
     }
     public static string WindowsPath(string path)
     {
@@ -86,13 +89,28 @@ public sealed record RouterPolicy(string BotUsername, long BotId, long OwnerId, 
             !LinuxPath(binding.Workspace).StartsWith(LinuxPath(LinuxWorkspaceRoot) + "/", StringComparison.Ordinal))
             throw new InvalidDataException("Linux workspace is outside the explicitly admitted PC root");
     }
-    public bool OwnerMessage(JsonElement message)
+    private bool HumanMessage(JsonElement message, out long user)
     {
+        user = 0;
         return message.ValueKind == JsonValueKind.Object && message.TryGetProperty("from", out var sender) && sender.ValueKind == JsonValueKind.Object &&
-            sender.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.Number && id.TryGetInt64(out var user) && user == OwnerId &&
+            sender.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.Number && id.TryGetInt64(out user) && user > 0 &&
             sender.TryGetProperty("is_bot", out var bot) && bot.ValueKind == JsonValueKind.False &&
             TryAddress(message, out _) &&
             !new[] { "sender_chat", "forward_origin", "forward_date", "via_bot" }.Any(key => message.TryGetProperty(key, out _));
+    }
+    public bool OwnerMessage(JsonElement message) => HumanMessage(message, out var user) && user == OwnerId;
+
+    // Normal conversation access across admitted chats/topics, never owner
+    // authority. Slash controls and the legacy model-switch alias fail closed
+    // before either native backend or attachment download can be invoked.
+    public bool ConversationMessage(JsonElement message)
+    {
+        if (!HumanMessage(message, out var user)) return false;
+        if (user == OwnerId) return true;
+        if (!(ParticipantIds ?? []).Contains(user)) return false;
+        if (message.TryGetProperty("text", out var text) && text.ValueKind == JsonValueKind.String &&
+            (text.GetString()!.TrimStart().StartsWith('/') || ModelCommand.TryParse(text.GetString()!, BotUsername, out _))) return false;
+        return true;
     }
 
     public bool TryChat(long chat, out bool isForum)

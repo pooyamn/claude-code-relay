@@ -53,7 +53,7 @@ public sealed partial class Router
         }
         // Native image blocks, not Codex localImage objects. Bounded and fully
         // prepared before any native mutation or local 'Working' transition.
-        var content = ClaudeInput.Create(policy.OwnerId, message.GetProperty("message_id").GetInt64(), body, files, session.Binding.Runtime);
+        var content = ClaudeInput.Create(message.GetProperty("from").GetProperty("id").GetInt64(), message.GetProperty("message_id").GetInt64(), body, files, session.Binding.Runtime);
         await session.Dispatch.WaitAsync(stop);
         try
         {

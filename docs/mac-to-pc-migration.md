@@ -2205,3 +2205,60 @@ Weekly usage is 14% remaining, above the owner's 5% pause threshold.
 Actual USB/hardware relocation, board TLS/network/flash/debug acceptance,
 legacy IOKit-only tools, original topic access/provider choices, full backup and
 headless/reboot/outside-LAN recovery remain; the Mac is not ready to erase.
+
+### Normal Telegram access and permanent display recovery, October 4 at 3:58 AM PDT
+
+PC-only deployment `da599c5bc3014cda890d09e2c0abdf44` is live and verified.
+The owner requested normal access for the account behind denied DUT messages
+4818/4819, then clarified all topics and normal access. Actual numeric sender
+`199200674` (`@MJ_MN`) now has conversation/attachment access across every mapped
+topic; owner `110123423` alone retains slash/model/approval/goal controls.
+No wildcard sender admission, new topic, role identity or company boundary was
+introduced. Participant tasks still use the owner's existing native tool
+permissions; this is a trusted personal allowance, not OS-level isolation.
+No previously denied DUT input was replayed. A new human-account round trip has
+not yet been observed.
+
+995 Linux and 998 actual sealed Windows regressions passed. They cover direct
+sender authentication across admitted topics, both Codex/Claude start/steer,
+attachment admission, rejected controls, bots/forwards/proxy/unlisted users and
+foreign chats. Actual fresh no-model Windows/WSL owner/credential/code proof
+completed `10:50:51Z`. Native executables, launchers and connector sources are
+unchanged; earlier Claude tool/continuity evidence was explicitly reused,
+not described as a rerun. Seven histories were quiescent and hash-checked before
+fresh checkpoints resumed their exact native IDs. All twelve bindings are
+unchanged. Existing Linux Codex PID2141, exact current turn
+`01a10676-f787-7fd0-89b9-aab30c4cfc40` and active migration goal survived;
+the service-owned Windows native process is now PID19956. All seven Claude
+streams connected, zero held/global-unknown sessions/effects, startup task
+enabled/Ready. No Mac connection was used for deployment.
+
+Permanent source guard `36dcce0` is now installed together with known-message
+edit recovery. An uncertain edit of a retained confirmed Telegram message can
+amend that same ID again; uncertain initial sends, final-answer sends and native
+effects remain fenced. A new amendment of original progress message13670 is
+confirmed. The original intent `c52d56f5a9f247da87c3c2aaf9a1553b` remains
+`unknown-presentation` with its original audit/payload/result untouched—one
+display-unknown operation is still correctly reported, not reclassified as
+confirmed. The retained output backlog drained; current controller bubble13679
+has zero pending response/final queues. Native work and old denied inputs were
+not repeated.
+
+Current DLL SHA256 `87e41db2c0f5b00c2f8f081ae9769f6fdc33ce1a05ffdafc498af49abfbb7db9`;
+policy `a9bb49fec1aeac1e7da96fe2d494fe20f9adb50a8c4bc20d0ac86cb1703fb20f`.
+Protected preimages, consistent SQLite snapshot, actual proofs, startup XML and
+deployment receipts are under
+`C:\ProgramData\KhadangRouter\release-da599c5bc3014cda890d09e2c0abdf44`.
+Candidate archive SHA256
+`3ddf45b2b7ddf3c29287ce3d640aa90b155c7e3ad2b16869c2da18391fba1ebc`.
+Reviewed staging helper hash `78195e60...60303c`; final verifier hash
+`c2866780...1724fc` fixes UTF-8 decoding of retained topic names. The initial
+ANSI-name comparison failure was independently checked field by field: no
+actual binding change occurred, and UTF-8 readback verified all twelve.
+All seven new checkpoint digests are in deployment status; they are consumed,
+so another manual restart still requires fresh quiescent evidence.
+
+Bench/tool changes were committed and pushed as `4313273`. Full-source/archive
+refresh, remaining topic choices/access, actual hardware/Fusion qualification,
+off-machine disaster restore and headless/outside-LAN recovery remain open.
+This is migration progress, not permission to erase the Mac or a completion claim.
