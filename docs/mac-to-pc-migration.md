@@ -1053,6 +1053,26 @@ not stopped, re-paired or restarted. Code expiry after acceptance does not
 undo the confirmed registered phone; do not issue another code as a connection
 workaround.
 
+At `2026-10-04T01:25:50Z`, the owner clarified that code entry produced no
+error but added no PC. Root cause is now verified: the copied `state_5.sqlite`
+contains the Mac's `remote_control_enrollments` row, including its server and
+environment IDs. Those IDs match the WSL connection and issued pairing code;
+fresh read-only RPC on the live Mac reports `connected` to that exact same
+environment. The enrollment primary key is WebSocket URL, account ID and
+app-server client name, **not installation ID**. The PC's different installation
+ID therefore did not invalidate the migrated live-host registration. The code
+paired the phone with the existing Mac identity, not a distinct PC.
+
+Corrected acceptance: code claimed and phone registered against the copied
+identity, **distinct PC enrollment and app visibility not verified**. Repair
+must back up the PC database, clear only that copied enrollment locally, then
+let the empty WSL daemon enroll its own host and issue a new native pairing
+code. This requires stopping only the new WSL daemon while changing its cache,
+not the live Mac, Windows remote hosts, Telegram router or any histories/auth.
+No enrollment was deleted or live daemon stopped; owner approval for the
+targeted local cache removal is pending. History migration must exclude live
+remote enrollment state in future restores.
+
 All 27 native-connector/observer fixtures pass in an OS sandbox without network
 or owner credentials. Both deployment scripts parse on Windows and eight exact
 missing-socket classifier fixtures pass. Native absent-daemon `version` reports
