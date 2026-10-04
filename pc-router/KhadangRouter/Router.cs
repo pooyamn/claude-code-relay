@@ -769,7 +769,8 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
     }
     private void StatusFile() => File.WriteAllText(Path.Combine(policy.StateDirectory, "status.json"), JsonSerializer.Serialize(new {
         host = Environment.MachineName, pcOnly = true, bot = policy.BotUsername, nativePid = rpc.Pid, offset = ledger.Offset,
-        unknown = ledger.Unknown, bindings = sessions.Values.Select(s => s.Binding), nativeQuota = quota.Snapshot,
+        unknown = ledger.Unknown, presentationUnknown = ledger.PresentationUnknown,
+        bindings = sessions.Values.Select(s => s.Binding), nativeQuota = quota.Snapshot,
         nativeRemote = remote.Snapshot, nativeLinuxPid = linuxRpc?.Pid, nativeLinuxQuota = linuxQuota.Snapshot,
         nativeLinuxRemote = linuxRemote.Snapshot,
         nativeSessions = sessions.Values.Select(s => new { binding = s.Binding, pid = s.Claude?.Pid ?? s.Native.Pid,

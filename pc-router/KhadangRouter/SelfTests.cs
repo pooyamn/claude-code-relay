@@ -47,6 +47,23 @@ public static class SelfTests
             ledger.Confirm(attempt, JsonSerializer.SerializeToElement(new { ok = true }));
             Check(ledger.Unknown == 2, "Unknown attempt cannot be blindly confirmed/replayed");
         }
+        using (var ledger = new Ledger(Path.Combine(root, "display-timeouts.db")))
+        {
+            var edit = ledger.Attempt("telegram/editMessageText", new { chat_id = -100123, message_id = 7, text = "Working" });
+            ledger.Outcome(edit, "unknown");
+            Check(ledger.Unknown == 0 && ledger.PresentationUnknown == 1, "Unknown display edit does not globally stop native input");
+            ledger.Exec("UPDATE operations SET status='unknown-presentation' WHERE id=?", edit);
+            Check(ledger.Unknown == 0 && ledger.PresentationUnknown == 1, "Live display classification preserves visible uncertainty");
+            var send = ledger.Attempt("telegram/sendMessage", new { chat_id = -100123, text = "Final" });
+            ledger.Outcome(send, "unknown");
+            Check(ledger.Unknown == 1, "Unknown initial message send still holds native admission");
+            var native = ledger.Attempt("claude/user/send-now", new { SessionId = "native-session" });
+            ledger.Outcome(native, "unknown");
+            Check(ledger.Unknown == 2, "Unknown native input still holds admission");
+            ledger.Receive(101, "{}"); ledger.Claim(101);
+        }
+        using (var ledger = new Ledger(Path.Combine(root, "display-timeouts.db")))
+            Check(ledger.Unknown == 3 && ledger.PresentationUnknown == 1, "Restart keeps uncertain native/send/dispatch holds and separate display audit");
         checks += NativeViewTests.Run();
         checks += NativeChannelTests.Run(root).GetAwaiter().GetResult();
         checks += LinuxCodexRuntimeTests.Run(policy).GetAwaiter().GetResult();

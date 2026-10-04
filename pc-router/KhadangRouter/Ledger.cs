@@ -53,7 +53,12 @@ public sealed class Ledger : IDisposable
     public List<(long Id, JsonElement Payload)> Pending() => Rows("SELECT id,payload FROM updates WHERE status='received' ORDER BY id")
         .Select(row => (long.Parse(row[0]!), JsonDocument.Parse(row[1]!).RootElement.Clone())).ToList();
     public int Unknown => int.Parse(Rows("SELECT COUNT(*) FROM updates WHERE status='unknown'")[0][0]!) +
-        int.Parse(Rows("SELECT COUNT(*) FROM operations WHERE status='unknown'")[0][0]!);
+        int.Parse(Rows("SELECT COUNT(*) FROM operations WHERE status='unknown' AND kind<>'telegram/editMessageText'")[0][0]!);
+    // An edit addresses an existing Telegram message. Its uncertain display
+    // outcome must remain visible, but cannot duplicate a model/external action
+    // or justify stopping input to every unrelated native conversation.
+    // Unknown sends, native writes and incoming dispatches still fail closed.
+    public int PresentationUnknown => int.Parse(Rows("SELECT COUNT(*) FROM operations WHERE kind='telegram/editMessageText' AND status IN ('unknown','unknown-presentation')")[0][0]!);
     public string Attempt(string kind, object payload)
     {
         var id = Guid.NewGuid().ToString("N");

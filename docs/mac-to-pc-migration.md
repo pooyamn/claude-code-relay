@@ -2079,3 +2079,39 @@ independent outside-LAN recovery and daily encrypted clean-machine restore
 remain unverified. Original topic choices/access and final Mac writer/capture
 closure remain required. Weekly quota is still 15% available; migration stays
 active under the owner's 5%-remaining pause condition. The Mac is not erased.
+
+### DUT global display hold cleared October 4 at 3 AM PDT
+
+DUT's exact native session `7dc840b0-402f-451e-bc79-dadfb706d363`
+was connected and had answered owner input 4820. Telegram confirmed its live
+bubble 4821 and separate final 4822. However, a subsequent CC relay bubble
+edit of message 13670 timed out. Its intent
+`c52d56f5a9f247da87c3c2aaf9a1553b` entered the global unknown-effect fence,
+blocking unrelated native admission, including DUT.
+
+At `2026-10-04T10:00:58.9702471Z`, the administrator maintenance lane ran the
+reviewed `pc-router/classify-display-timeout.ps1` helper, SHA
+`de540eb6554fb9b8d635d8c3c78f3ea9ea51d5948398ca5c2207918d1ce88512`.
+It pinned the installed policy/router, exact operation/payload digest and
+uniquely confirmed original message. One SQLite transaction changed only that
+operation's status to `unknown-presentation` and added a protected preimage
+audit under `presentation-timeout/<intent>`. It did **not** confirm delivery,
+retry Telegram/model input, change bindings/auth, or restart processes. No bot
+credential was read. The ended Mac administrator SSH master was renewed using
+the existing pinned PC host key; host verification was not bypassed.
+
+Fresh router status at `10:01:33.8965733Z`: Running, global unknown 0, Windows
+native PID11252 and shared Linux PID2141 unchanged; DUT PID79418 connected,
+not held, not send-unknown, idle/Done. There is still one explicitly uncertain
+presentation intent, and the existing CC relay process's display remains held.
+A new genuine owner DUT round trip after this repair has not yet been observed.
+Earlier messages 4818/4819 were independently rejected because their sender
+was not the configured owner; employee authorization is not silently expanded.
+
+Source now separates display uncertainty from admission holds and reports a
+separate presentation count. All **929** PC Linux router checks passed,
+including regression guards for unknown message sends, native input and
+interrupted dispatches remaining fenced across restart. This source change is
+**not yet installed**; a future deployment requires fresh exact checkpoints and
+safe display reconciliation. The live intervention is the one-intent repair,
+not a claimed permanent redeployment or final migration acceptance.

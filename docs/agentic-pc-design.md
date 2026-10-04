@@ -603,6 +603,18 @@ R2 setup (one time, by Pouya)
 
 One outbound scheduler in the router owns every Telegram send, with priorities: approvals and alerts first, final replies next, bus and status last. It tracks the group's ~20 messages/minute budget, coalesces, and honours `retry_after` durably.
 
+Uncertain display edits and uncertain actions are separate failure domains.
+A timed-out edit of an already known bubble remains explicitly unconfirmed,
+with its original intent/payload retained, but must not globally stop incoming
+work in unrelated sessions. Its affected display remains held until safely
+reconciled; do not replay a stale edit or claim it delivered. Uncertain initial
+message sends, native writes and interrupted incoming dispatches retain their
+existing safety fences. Expose presentation uncertainty separately in status.
+This distinction follows the October 4 DUT outage: one CC relay bubble-edit
+timeout blocked all topics. The exact live intent was classified without
+restarting or replaying; the permanent source guard passed 929 offline checks
+but still awaits a safe deployment. See the migration incident record below.
+
 | What | Where | Notifies |
 |---|---|---|
 | Inter-session messages with delivery state | Bus topic | no |
