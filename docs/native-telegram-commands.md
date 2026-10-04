@@ -26,6 +26,11 @@ signal bounded. Failures never block native delivery, hold a session, create a
 durable action/unknown record or automatically retry an incoming message.
 Typing acknowledges the bridge or active work, not model acceptance or proof of
 progress. The rolling code-block bubble and separate final messages are unchanged.
+Bubble creation already sets `disable_notification:true` (send without sound),
+including non-forum destinations; updates amend the same message. Separate final
+answers omit that flag and retain normal notifying delivery, subject to the
+user's Telegram notification settings.
+[Telegram silent message parameter](https://core.telegram.org/bots/api#sendmessage).
 Sanitized `receiptTyping` status counters record attempts, confirmations,
 failures, suppressions and the last confirmed destination/time—never input text,
 credentials or URL-bearing errors.

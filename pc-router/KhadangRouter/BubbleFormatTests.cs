@@ -14,6 +14,12 @@ public static class BubbleFormatTests
         Check((string)send["text"] == literal && !send.ContainsKey("parse_mode"), "Code-block formatting never changes or escapes bubble text");
         Check(entity.type == "pre" && entity.offset == 0 && entity.length == literal.Length, "Whole bubble including tools/timer/goal is preformatted in UTF-16");
         Check((int)send["message_thread_id"] == 53 && (long)send["chat_id"] == -100123, "Formatted bubble retains exact destination");
+        Check(send.TryGetValue("disable_notification", out var silent) && silent is true,
+            "Progress bubble uses Telegram send without sound");
+        Check(Telegram.BubbleSendParameters(-5238984877, 0, literal)["disable_notification"] is true,
+            "Non-forum progress bubble is silent too");
+        Check(!Telegram.AnswerParameters(-100123, 53, new AnswerPart("Clean final answer", [])).ContainsKey("disable_notification"),
+            "Separate final answer retains notifying delivery rather than silent bubble settings");
         var edit = Telegram.BubbleEditParameters(-100123, 901, literal);
         Check((int)edit["message_id"] == 901 && (string)edit["text"] == literal, "Amendment preserves existing bubble message ID and text");
         Check(!Telegram.SendParameters(-100123, 53, literal).ContainsKey("entities"), "Ordinary control messages keep their existing plain formatting");
