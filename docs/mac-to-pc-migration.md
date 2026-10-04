@@ -2679,3 +2679,81 @@ final deltas, Mac ACL/xattr closure, protected personal/Library data, remaining
 two topics, hardware relocation, remote cold-boot/auto-login acceptance and
 encrypted off-machine clean restore remain unresolved. The Mac is not ready
 to erase.
+
+### Nested repository audit and missing history recovery, October 4 at 8:52 AM PDT
+
+A full-workspace `rsync` checksum **dry run** timed out, exit30, before emitting
+any comparison rows. Its private failed receipt is retained: zero output does
+not mean source/target contents match. Neither workspace was modified by it.
+
+The bounded read-only Git inventory then visited80268 Mac and86781 PC
+directories, including nested projects, bare repositories and linked worktrees,
+without following directory symlinks or enabling Git optional index writes,
+fsmonitor, hooks or network fetch. Detailed private inventories, source branch
+names, status bytes and paths are not published in Git. Discovery had no errors.
+It found78 Mac repository markers versus77 PC markers, but one Mac dependency's
+`.git` metadata contains broken symbolic links and is not a valid repository.
+An initial inventory incorrectly let Git fall back to its parent repository;
+that observation is retained as superseded, not accepted as missing valid work.
+The corrected inventory explicitly pins each Git directory/worktree. All77
+valid source repositories are present on the PC. Four HEADs, eleven ref sets and
+eleven status observations differ; none is treated as permission to reset newer
+PC branches or overwrite dirty files. HEAD/ref readings were stable across each
+individual observation, not a global final writer fence.
+
+Actual PC object queries checked367 source ref/HEAD tips. One was missing:
+`9ce9443def6034046e2a85f62443640a867a8168` from the relay's source
+`codex/response-bubble-hotfix` branch. A narrowly scoped SSH fetch imported it
+into `refs/migration/mac-20261004/recovered-tip-9ce9443`, with no force, tag
+import, FETCH_HEAD replacement, submodule recursion, auto-maintenance or hooks.
+The live branch, HEAD, index bytes and unrelated tracked/untracked edits were
+unchanged. Post-recovery queries found zero missing tips across the same367
+observations. The recovered tip's1761 reachable objects were present; this does
+not establish ancestry/blob closure for every other source tip.
+[Git fetch controls](https://git-scm.com/docs/git-fetch) document the explicit
+no-FETCH_HEAD/no-maintenance options; the recorded unchanged state is measured
+PC evidence, not inferred from those flags alone.
+
+Protected run`54cbb10292e5426d94d6a64501a9c25f` contains:
+
+- `vm-ai-hil-kicad-dependency.tar.gz`:22988800 bytes, SHA256
+  `111c8b39452680400fd68a896429ac7c1dc161e5d2aff0430cd982d4feb0de34`.
+  The literal dependency cohort preserves its files and broken Git links without
+  following/activating them. Producer, transport and archive reader exited0;
+  warnings0, source/saved archive digests matched. It is an accepted recovery
+  seed, not a per-file SHA256 manifest or final snapshot.
+- `recovered-relay-tip.bundle`:1383545 bytes, SHA256
+  `6098219f206af7eb197450e47486593e897523cf213aeab74bbce6b1d18073f5`.
+  A fresh empty private **Linux** Git repository imported the offline bundle,
+  recovered the exact tip and passed `git fsck --strict`. Two earlier attempts
+  on administrator-protected DrvFS failed Git's `config.lock` chmod/filemode
+  setup, exit128. Their repositories/logs and corrected diagnostic audit remain
+  unaccepted; an initial argument-construction explanation was only a hypothesis.
+  No Windows ACL was weakened to make Git initialization pass.
+  [Git bundle format](https://git-scm.com/docs/git-bundle) documents the standalone
+  object/ref container; actual restoration/integrity checks, not its format
+  alone, establish this narrowly scoped branch recovery.
+- Seven private inventory/comparison/recovery receipts,5509528 bytes, copied
+  without replacement and independently rehashed. The accepted archive, bundle,
+  restore proof, failed receipts and final audit reside under
+  `C:\ProgramData\OracovaMigration\54cbb10292e5426d94d6a64501a9c25f`.
+
+Final saved-file hash/size and Administrator/SYSTEM-only ACL checks passed at
+15:52:10Z. Ordinary Linux UID1000 opening either archive/bundle was denied before
+any bytes were read. Four new inventory fixtures and33 actual sealed Windows
+receiver checks passed; the receiver's process-local test policy did not change
+system execution policy. No source temporary archive, source permission change,
+model turn, router/native restart, active project replacement or deletion occurred.
+Live router readback remained Running,12 routes/seven Claude streams, native
+PIDs2141/20968, global unknown0 and retained presentation unknown1, with unchanged
+code/policy digests. All capture/inventory jobs and administrator SSH are terminal;
+SSH closed15:53:03Z, exit0. Weekly usage remained12% at15:49:11Z, above the5% gate.
+
+This turn closes one demonstrated Git-history gap and preserves a separate
+source dependency. It does **not** certify all dirty/untracked/ignored file
+contents, final source deltas, other Mac home/account/Library access, checked
+handoffs for every unbound project, remaining two topics, transferred hardware,
+outside-LAN/cold-boot/secure sign-in acceptance or encrypted off-machine full
+restore. Next, compare file contents for the recorded dirty/untracked project
+state and bounded ignored cohorts, preserving Mac-only deltas without replacing
+newer PC work. The migration goal remains active and the Mac is not ready to erase.

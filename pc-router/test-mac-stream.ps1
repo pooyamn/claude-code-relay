@@ -23,7 +23,7 @@ try{
   Assert ($out.Length -eq 0) 'Byte bound cannot silently truncate as success'
  }finally{$bounded.Dispose();$out.Dispose()}
  try{$f=New-MigrationStreamFile (Join-Path $root 'fixture.bin');$f.Dispose();throw 'accepted'}catch{Assert ($_.Exception.Message -match 'exists') 'Existing archive never overwritten'}
- foreach($profile in @('vm-personal','vm-library','vm-extra-work','vm-owner-tools','vm-owner-tools-manifest','vm-package-caches','vm-editor-cache','vm-darwin-cad-tools','vm-codex-sqlite','physical-projects','physical-bench-home')){
+ foreach($profile in @('vm-personal','vm-library','vm-extra-work','vm-owner-tools','vm-owner-tools-manifest','vm-package-caches','vm-editor-cache','vm-darwin-cad-tools','vm-codex-sqlite','vm-ai-hil-kicad-dependency','physical-projects','physical-bench-home')){
   $source=Get-MigrationStreamSource $profile
   Assert ($source.host -in @('mac','bench-mac') -and $source.members.Count -gt 0) 'Explicit pinned source profiles only'
  }
@@ -39,6 +39,8 @@ try{
  Assert ($cad.members.Count -eq 1 -and $cad.members[0] -eq 'oss-cad-suite') 'Original Darwin CAD installation is preserved separately from the active Linux replacement'
  $sqlite=Get-MigrationStreamSource 'vm-codex-sqlite'
  Assert ($sqlite.captureMode -eq 'sqlite-backup-api-memory' -and $sqlite.root -eq '/Users/pouya/.codex') 'SQLite profile explicitly requires backup API memory capture, never raw live-file tar'
+ $dependency=Get-MigrationStreamSource 'vm-ai-hil-kicad-dependency'
+ Assert ($dependency.host -eq 'mac' -and $dependency.user -eq 'pouya' -and $dependency.root -eq '/Users/pouya/.openclaw/workspace/ai-hil/hardware/duts/dut-d/node_modules' -and $dependency.members.Count -eq 1 -and $dependency.members[0] -eq 'circuit-json-to-kicad') 'Source-only dependency has a literal bounded profile, not an arbitrary project/root grant'
  try{Get-MigrationStreamSource '../';throw 'accepted'}catch{Assert ($_.Exception.Message -match 'explicitly selected') 'No arbitrary source/root injection'}
  Assert ((ConvertTo-MigrationNativeArgument 'a"b\') -eq '"a\"b\\"') 'Embedded quote and final backslash literal'
  Assert ((ConvertTo-MigrationNativeArgument 'literal$(name);&') -eq '"literal$(name);&"') 'Arguments do not use a local shell'

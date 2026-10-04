@@ -1,5 +1,5 @@
 param(
- [Parameter(Mandatory=$true)][ValidateSet('vm-personal','vm-library','vm-extra-work','vm-owner-tools','vm-owner-tools-manifest','vm-package-caches','vm-editor-cache','vm-darwin-cad-tools','vm-codex-sqlite','physical-projects','physical-bench-home')][string]$Profile,
+ [Parameter(Mandatory=$true)][ValidateSet('vm-personal','vm-library','vm-extra-work','vm-owner-tools','vm-owner-tools-manifest','vm-package-caches','vm-editor-cache','vm-darwin-cad-tools','vm-codex-sqlite','vm-ai-hil-kicad-dependency','physical-projects','physical-bench-home')][string]$Profile,
  [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-f]{32}$')][string]$RunId,
  [ValidatePattern('^[0-9a-f]{64}$')][string]$SqliteProducerSha256,
  [ValidatePattern('^[0-9a-f]{64}$')][string]$OwnerToolsProducerSha256
@@ -52,6 +52,9 @@ function Get-MigrationStreamSource([string]$Name){
   'vm-editor-cache' {return @{host='mac';user='pouya';root='/Users/pouya';members=@('.vscode-server')}}
   'vm-darwin-cad-tools' {return @{host='mac';user='pouya';root='/Users/pouya';members=@('oss-cad-suite')}}
   'vm-codex-sqlite' {return @{host='mac';user='pouya';root='/Users/pouya/.codex';members=@('.');captureMode='sqlite-backup-api-memory'}}
+  # Preserve this source-only dependency metadata before Mac retirement. Its
+  # broken .git links are retained as links, never activated or followed.
+  'vm-ai-hil-kicad-dependency' {return @{host='mac';user='pouya';root='/Users/pouya/.openclaw/workspace/ai-hil/hardware/duts/dut-d/node_modules';members=@('circuit-json-to-kicad')}}
   'physical-projects' {return @{host='bench-mac';user='oracova';root='/Users/pouya';members=@('Codes','Developer','Sources','flutter_blue_plus','flutter_bluetooth')}}
   'physical-bench-home' {return @{host='bench-mac';user='oracova';root='/Users/oracova';members=@('.')}}
   default {throw 'Only explicitly selected migration source profiles admitted'}
