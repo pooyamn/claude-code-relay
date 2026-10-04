@@ -18,6 +18,7 @@ import sys
 import time
 
 ROOT = Path('/Users/pouya/oracova-bench')
+SOURCE_ROOTS = {'bench': '/Users/oracova/oracova-bench', 'supervisor-tools': '/Users/oracova/supervisor-tools'}
 EXCLUDED = 'xpack-openocd-0.12.0-7'
 MAX_FILES = 3000
 MAX_BYTES = 128 * 1024 * 1024
@@ -59,7 +60,7 @@ def relative_path(value, allow_root=False):
 
 def inventory(value):
     if value.get('schema') != 'ccrelay.personal_bench_payload.v1' or \
-            value.get('source') != '/Users/oracova/oracova-bench' or value.get('excludedDarwinTool') != EXCLUDED:
+            value.get('source') not in SOURCE_ROOTS.values() or value.get('excludedDarwinTool') != EXCLUDED:
         raise ValueError('Wrong physical bench inventory')
     files = value['files']; directories = value['directories']
     if not isinstance(files, dict) or not 1 <= len(files) <= MAX_FILES or not isinstance(directories, list) or \
@@ -129,7 +130,8 @@ def run(args):
     if sys.platform != 'linux' or os.getuid() != 1000 or os.geteuid() != 1000:
         raise ValueError('Ordinary PC Linux owner required')
     if args.snapshot_source:
-        command = '/usr/bin/ruby -rjson -rdigest -retc -e ' + shlex.quote(SOURCE)
+        selected = SOURCE.replace('/Users/oracova/oracova-bench', SOURCE_ROOTS[args.source_kind])
+        command = '/usr/bin/ruby -rjson -rdigest -retc -e ' + shlex.quote(selected)
         result = subprocess.run(['/usr/bin/ssh', '-o', 'BatchMode=yes', 'bench-mac', command],
                                 capture_output=True, timeout=60, check=True)
         if len(result.stdout) > 2 * 1024 * 1024:
@@ -143,7 +145,9 @@ def run(args):
         body = path.read_bytes()
         if hashlib.sha256(body).hexdigest() != args.expected_sha256:
             raise ValueError('Source inventory digest changed')
-        result = verify(json.loads(body))
+        value = inventory(json.loads(body))
+        destination = Path('/Users/pouya') / value['source'].rsplit('/', 1)[-1]
+        result = verify(value, root=destination)
         result['sourceInventorySha256'] = args.expected_sha256
         if args.result:
             write_private(Path(args.result), result)
@@ -157,6 +161,7 @@ if __name__ == '__main__':
     choice.add_argument('--verify')
     parser.add_argument('--expected-sha256')
     parser.add_argument('--result')
+    parser.add_argument('--source-kind', choices=SOURCE_ROOTS, default='bench')
     arguments = parser.parse_args()
     try:
         run(arguments)

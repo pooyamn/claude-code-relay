@@ -1,0 +1,5 @@
+--- a/pl_lib.py
++++ b/pl_lib.py
+@@ -3 +3 @@
+-UH = os.environ.get("BENCH_UHUBCTL", "/usr/bin/uhubctl" if sys.platform == "linux" else "/opt/homebrew/bin/uhubctl")
++UH = os.environ.get("BENCH_UHUBCTL", os.path.join(os.path.dirname(os.path.abspath(__file__)), "bin", "uhubctl") if sys.platform == "linux" else "/opt/homebrew/bin/uhubctl")

@@ -41,6 +41,12 @@ class BenchPayloadTests(unittest.TestCase):
         value = self.value(); value['directories'].append('missing/child')
         with self.assertRaises(ValueError): payload.inventory(value)
 
+    def test_only_the_two_explicit_bench_working_roots_are_selected(self):
+        value = self.value(); value['source'] = payload.SOURCE_ROOTS['supervisor-tools']
+        self.assertEqual(payload.inventory(value)['source'], '/Users/oracova/supervisor-tools')
+        value['source'] = '/Users/oracova'
+        with self.assertRaises(ValueError): payload.inventory(value)
+
     @unittest.skipUnless(os.getuid() == 1000, 'PC owner fixture requires UID1000')
     def test_verified_private_copy_and_changed_file_failure(self):
         with tempfile.TemporaryDirectory() as directory:

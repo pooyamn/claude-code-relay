@@ -2115,3 +2115,93 @@ interrupted dispatches remaining fenced across restart. This source change is
 **not yet installed**; a future deployment requires fresh exact checkpoints and
 safe display reconciliation. The live intervention is the one-intent repair,
 not a claimed permanent redeployment or final migration acceptance.
+
+### Native CAD TCP bench tools and PC local maintenance October 4 at 3:21 AM PDT
+
+The exact Linux OSS CAD Suite counterpart of the Mac's **20260621** release
+is installed at `/Users/pouya/oss-cad-suite`. The official
+`oss-cad-suite-linux-x64-20260621.tgz` archive has 717,428,552 bytes and SHA256
+`2bc1823e76b4bcae8750c5063cde4a8ae0d9143bf255f5a1b956e372be60f732`.
+The one-shot installer verifies that digest, bounds and validates all 29,836
+members/contained links before extraction, and refuses an existing install.
+No global PATH or shell configuration changed. Actual MPU6000 RTL simulation
+passed all eight assertions, with both source inputs unchanged. Yosys,
+nextpnr-ecp5 and ecppack version checks also succeeded; no FPGA was flashed.
+
+The suite's bundled OpenOCD explicitly **rejects** TCP-DAP, despite matching
+the Mac suite's build revision. That failure is retained, not called acceptance.
+The bench now uses a separate ordinary-owner OpenOCD built from official source
+commit `d3ebb8d2b9adbfd9a13072e8e446f424b5ff3c0e`, committed October 2.
+The [official adapter documentation](https://openocd.org/doc/html/Debug-Adapter-Configuration.html)
+describes the required CMSIS-DAP TCP backend. The source was unchanged through
+the GCC13.3 warning-as-error build; no privileged OpenOCD process was started.
+Build recipe, from that pinned checkout:
+
+```sh
+./bootstrap
+./configure --prefix=/Users/pouya/.local/share/oracova-openocd-tcp-d3ebb8d2 \
+  --enable-cmsis-dap-tcp --enable-cmsis-dap --enable-cmsis-dap-v2 \
+  --enable-stlink --disable-doxygen-html --disable-doxygen-pdf
+make -j2
+make install
+```
+
+Native binary SHA256:
+`cb908ffef98f3da2a064dfbcd76c6c4d353f39b8b277132a9114c65f0c822587`.
+The bench wrapper and both probe gates now select this exact Linux build,
+preserving explicit overrides and Darwin defaults. Actual config-only execution
+accepts TCP host/port commands and reaches the success marker, **without `init`**
+or any hardware connection. Ubuntu build prerequisites and zsh were installed
+without upgrading or removing packages. Existing standard OpenOCD is retained.
+
+Official **uhubctl v2.6.0**, commit
+`352f5878e999c0a9d5a453b34110479b2056d7e7`, builds against native libusb and is
+installed at `oracova-bench/bin/uhubctl`, SHA
+`7b0eefa7c1a3c36ee5b80ef02ee49f2c57e20f475573c7b6ceb1d4268e0ea59e`.
+Its version check exits before USB initialization. `pl_lib.py` uses that local
+build; both Linux power helpers refuse action without explicit reviewed
+`BENCH_USB_HUB`/`BENCH_USB_PORTS`. Mac hub numbers are not reused.
+
+The physical Mac's `supervisor-tools` directory was separately copied:
+**27 files / 150,004 bytes**, identical source hashes before/after. Its root
+`dapbench` is now a GCC13.3 native ELF built from the unchanged original C,
+SHA `79248e4086fe90f4b1796be87a86b0be5bc768842466e37d3a4fdeec3914437d`.
+The original Mach-O is preserved privately; the benchmark was not executed.
+The bench gate also selects its existing `bin/dapbench` Linux binary.
+Linux USB reset resolves native libusb and requires an explicitly selected
+`BENCH_USBRESET_SERIAL`, checking that serial before resetting; the original
+90-second cooldown/four-per-hour cap remains. No USB device was reset.
+
+Reproducible incremental patches are
+`pc-router/bench-linux-local-uhubctl.patch`,
+`pc-router/bench-linux-tcp-openocd.patch` and
+`pc-router/supervisor-tools-linux.patch`; all source dry runs passed.
+Twenty-six focused checks passed, including config-only TCP acceptance,
+actual zsh parsing, native binaries, and real pre-hardware refusal of unmapped
+recovery calls. All **1,444 unchanged bench files**, **23 unchanged supervisor
+files**, and original preimages for every derived file were reverified.
+Private receipts/preimages live in
+`/Users/pouya/.migration/bench-tools-BSgEcASg`; final runtime receipt SHA
+`f3beef381acc5b16b4305fd7bd37d2f81c2c363ff25b1bf476f80c10fc262415`.
+
+PC-only maintenance now has an actual working path: native **Windows** SSH
+client connects to Windows `127.0.0.1`, with `HostKeyAlias=10.0.0.35` and the
+already pinned server fingerprint
+`SHA256:YdnvvvajofzohZJOVGAezxXT7R6UbrRoWcL9Zf6lYCw`. A normal owner credential
+authenticated the existing Windows administrator maintenance shell; protected
+router hash/service readback succeeded at `10:12:04Z`. zsh installation and
+fresh router inspection used this path without Mac SSH. No private key or
+password file was copied/created, host checks bypassed or firewall broadened.
+The pinned public-key file is `C:\Users\pou\pc-maintenance-known-hosts`.
+OpenSSH is Running/Automatic. WSL-to-host TCP was refused by the existing
+firewall rule, which still allows only the old Mac address; Windows-local SSH
+is not outside-LAN recovery proof.
+
+Fresh `10:21:30.7235132Z` service status: Running, 12 routes, seven Claude
+connections, global unknown0, held0, shared Linux2141/Windows11252 unchanged.
+The separate CC relay display hold/permanent guard deployment from the previous
+incident remains pending. No daemon, pairing, model turn or service restarted.
+Weekly usage is 14% remaining, above the owner's 5% pause threshold.
+Actual USB/hardware relocation, board TLS/network/flash/debug acceptance,
+legacy IOKit-only tools, original topic access/provider choices, full backup and
+headless/reboot/outside-LAN recovery remain; the Mac is not ready to erase.

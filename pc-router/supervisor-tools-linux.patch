@@ -1,0 +1,105 @@
+--- a/probe_gate.sh
++++ b/probe_gate.sh
+@@ -39,7 +39,11 @@
+ set -u
+ MODE=${1:-jtag}
+ [[ "$MODE" == "jtag" || "$MODE" == "swd" ]] || { echo "usage: $0 jtag|swd"; exit 2 }
+-OCD=${OCD:-$(find /tmp/ocd7 -name openocd -type f 2>/dev/null | head -1)}
++if [[ "$(uname -s)" == Linux ]]; then
++  OCD=${OCD:-$HOME/oracova-bench/bin/openocd}
++else
++  OCD=${OCD:-$(find /tmp/ocd7 -name openocd -type f 2>/dev/null | head -1)}
++fi
+ PROBE="0483:3754:0043004F3235511137333439"   # ST-LINK V3 (post-V3J17)
+ # BOARD is the tooling-wide convention (net-config-plan par.7): env overrides,
+ # default = the factory-default address. Discovery resolves it when unknown:
+--- a/usbreset.py
++++ b/usbreset.py
+@@ -13,7 +13,13 @@
+ first and blocks the rest. Override ONLY for a deliberate manual recovery with
+ USBRESET_FORCE=1 (and even then the hourly cap holds).
+ """
+-import ctypes, os, sys, time
++import ctypes, ctypes.util, os, sys, time
++
++# Linux USB numbering is not the preserved Mac topology. Require an explicit
++# device serial and never reset every matching ST-LINK on a shared PC bench.
++DEVICE_SERIAL = os.environ.get("BENCH_USBRESET_SERIAL") if sys.platform == "linux" else None
++if sys.platform == "linux" and not DEVICE_SERIAL:
++    sys.exit("Linux USB reset requires the reviewed BENCH_USBRESET_SERIAL; no device was reset")
+ 
+ COOLDOWN_S = 90          # min seconds between resets
+ MAX_PER_HOUR = 4         # rolling-hour hard cap
+@@ -52,7 +58,10 @@
+ 
+ VID = 0x0483
+ PIDS = (0x3754, 0x374e)
+-lib = ctypes.CDLL("/opt/homebrew/lib/libusb-1.0.dylib")
++LIBUSB = ctypes.util.find_library("usb-1.0") if sys.platform == "linux" else "/opt/homebrew/lib/libusb-1.0.dylib"
++if not LIBUSB:
++    sys.exit("Native libusb is unavailable; no device was reset")
++lib = ctypes.CDLL(LIBUSB)
+ 
+ class Desc(ctypes.Structure):
+     _fields_ = [("bLength", ctypes.c_uint8), ("bDescriptorType", ctypes.c_uint8),
+@@ -68,6 +77,7 @@
+ lib.libusb_reset_device.argtypes = [ctypes.c_void_p]
+ lib.libusb_clear_halt.argtypes = [ctypes.c_void_p, ctypes.c_ubyte]
+ lib.libusb_close.argtypes = [ctypes.c_void_p]
++lib.libusb_get_string_descriptor_ascii.argtypes = [ctypes.c_void_p, ctypes.c_uint8, ctypes.c_void_p, ctypes.c_int]
+ 
+ ctx = ctypes.c_void_p()
+ if lib.libusb_init(ctypes.byref(ctx)) != 0:
+@@ -83,10 +93,16 @@
+         continue
+     if desc.idVendor != VID or desc.idProduct not in PIDS:
+         continue
+-    hit = True
+     h = ctypes.c_void_p()
+     if lib.libusb_open(d, ctypes.byref(h)) != 0:
+         continue
++    if DEVICE_SERIAL:
++        serial = ctypes.create_string_buffer(256)
++        count = lib.libusb_get_string_descriptor_ascii(h, desc.iSerialNumber, serial, len(serial))
++        if count <= 0 or serial.raw[:count].decode("ascii", errors="replace") != DEVICE_SERIAL:
++            lib.libusb_close(h)
++            continue
++    hit = True
+     # Clear any stalled bulk pipes before the reset; a halted endpoint is what
+     # makes every subsequent open report "interfaces are claimed".
+     for ep in (0x01, 0x81, 0x02, 0x82):
+@@ -96,5 +112,7 @@
+     print(f"reset {VID:04x}:{desc.idProduct:04x}")
+ 
+ if not hit:
++    if DEVICE_SERIAL:
++        sys.exit("Selected ST-LINK not found/openable; no device was reset")
+     print("ST-LINK not found")
+ lib.libusb_free_device_list(devs, 1)
+--- a/stlink_recover.sh
++++ b/stlink_recover.sh
+@@ -8,11 +8,21 @@
+ # Topology (verified 2026-07-23): the ST-LINK is on hub 2-1 (0bda:5411 USB2,
+ # ppps) port 3, with USB3 companion 2-2 port 3; uhubctl auto-pairs both faces.
+ set -u
+-U=${UHUBCTL:-/opt/homebrew/bin/uhubctl}
++if [[ "$(uname -s)" == Linux ]]; then
++  [[ -n "${BENCH_USB_HUB:-}" && -n "${BENCH_USB_PORTS:-}" ]] || {
++    echo "Linux power recovery requires reviewed BENCH_USB_HUB and BENCH_USB_PORTS; no hub action" >&2
++    exit 2
++  }
++  U=${UHUBCTL:-$HOME/oracova-bench/bin/uhubctl}
++  HUB=$BENCH_USB_HUB; PORT=$BENCH_USB_PORTS
++else
++  U=${UHUBCTL:-/opt/homebrew/bin/uhubctl}
++  HUB=${HUB:-2-1}; PORT=${PORT:-3}
++fi
+ PROBE="0483:3754:0043004F3235511137333439"
+-HUB=${HUB:-2-1}; PORT=${PORT:-3}; DELAY=${DELAY:-4}
++DELAY=${DELAY:-4}
+ echo "[stlink_recover] power-cycle hub $HUB port $PORT (off ${DELAY}s, on)"
+-$U -l "$HUB" -p "$PORT" -a cycle -d "$DELAY" >/dev/null 2>&1
++"$U" -l "$HUB" -p "$PORT" -a cycle -d "$DELAY" >/dev/null 2>&1
+ for i in $(seq 1 12); do
+   sleep 2
+   if probe-rs list 2>&1 | grep -q "$PROBE"; then

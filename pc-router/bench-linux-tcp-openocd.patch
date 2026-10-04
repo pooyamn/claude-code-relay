@@ -1,0 +1,38 @@
+--- a/bin/openocd
++++ b/bin/openocd
+@@ -2,4 +2,8 @@
+ # Wrapper, not a symlink: the oss-cad-suite openocd resolves its libexec
+ # RELATIVE TO ITSELF, so a symlink makes it look for /libexec/openocd.
+ # No generic OpenOCD fallback: the bench needs the reviewed TCP-DAP build.
+-exec "${BENCH_OPENOCD:-$HOME/oss-cad-suite/bin/openocd}" "$@"
++case "$(uname -s)" in
++  Linux) bench_openocd_default="$HOME/.local/share/oracova-openocd-tcp-d3ebb8d2/bin/openocd" ;;
++  *) bench_openocd_default="$HOME/oss-cad-suite/bin/openocd" ;;
++esac
++exec "${BENCH_OPENOCD:-$bench_openocd_default}" "$@"
+--- a/probe_gate.sh
++++ b/probe_gate.sh
+@@ -39,7 +39,13 @@
+ set -u
+ MODE=${1:-jtag}
+ [[ "$MODE" == "jtag" || "$MODE" == "swd" ]] || { echo "usage: $0 jtag|swd"; exit 2 }
+-OCD=${OCD:-$(find /tmp/ocd7 -name openocd -type f 2>/dev/null | head -1)}
++if [[ "$(uname -s)" == Linux ]]; then
++  OCD=${OCD:-$HOME/oracova-bench/bin/openocd}
++  DAPBENCH=${DAPBENCH:-./bin/dapbench}
++else
++  OCD=${OCD:-$(find /tmp/ocd7 -name openocd -type f 2>/dev/null | head -1)}
++  DAPBENCH=${DAPBENCH:-./dapbench}
++fi
+ PROBE="0483:3754:0043004F3235511137333439"   # ST-LINK V3 (post-V3J17)
+ # BOARD is the tooling-wide convention (net-config-plan par.7): env overrides,
+ # default = the factory-default address. Discovery resolves it when unknown:
+@@ -251,7 +257,7 @@
+     for spec in "8000000 0 $JTAG_8_NOCAP_FLOOR" "8000000 1 $JTAG_8_CAP_FLOOR" \
+                 "16000000 0 $JTAG_16_NOCAP_FLOOR" "16000000 1 $JTAG_16_CAP_FLOOR"; do
+       set -- ${=spec}
+-      kib=$(./dapbench $BOARD $1 8 20000000 255 $2 2>&1 | grep -o '[0-9]* KiB/s' | head -1 | cut -d' ' -f1)
++      kib=$("$DAPBENCH" $BOARD $1 8 20000000 255 $2 2>&1 | grep -o '[0-9]* KiB/s' | head -1 | cut -d' ' -f1)
+       local lbl="$(($1/1000000))MHz cap=$2"
+       [[ -n "$kib" ]] || { say "  JTAG $lbl: no rate"; return 1 }
+       if (( kib >= $3 )); then say "  JTAG $lbl: $kib KiB/s (floor $3) OK"
