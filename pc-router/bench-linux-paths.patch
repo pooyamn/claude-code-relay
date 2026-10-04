@@ -1,0 +1,85 @@
+--- a/daptls.py
++++ b/daptls.py
+@@ -1,11 +1,11 @@
+ """swd_bandwidth.py / rtt.py through the supervisor TLS DAP port (:4442).
+ 
+-The bench Python (LibreSSL 2.8) has no TLS 1.3, so the TLS client is
+-Homebrew OpenSSL 1.1.1 s_client in -quiet mode, bridged over its pipes as a
++The original Mac Python (LibreSSL 2.8) has no TLS 1.3. The TLS client is
++native OpenSSL s_client in -quiet mode, bridged over its pipes as a
+ socket-like object. Usage:  python3 daptls.py swd_bandwidth [args]  |  rtt
+ """
+ import os, sys, subprocess, select, time
+-OPENSSL = "/opt/homebrew/opt/openssl@1.1/bin/openssl"
++OPENSSL = os.environ.get("BENCH_OPENSSL", "/usr/bin/openssl" if sys.platform == "linux" else "/opt/homebrew/opt/openssl@1.1/bin/openssl")
+ PKI = os.path.expanduser("~/oracova-bench/pki/nucleo1")
+ BOARD = os.environ.get("BOARD", "192.168.77.90"); PORT = int(os.environ.get("PORT", "4442"))
+ class TlsBridge:
+--- a/tlsconsole.py
++++ b/tlsconsole.py
+@@ -3,7 +3,7 @@
+ corpus opens one connection per case. python3 tlsconsole.py check|record"""
+ import os, sys, time, subprocess, select
+ sys.path.insert(0, os.path.expanduser("~/oracova-bench/ctranscript"))
+-OPENSSL = "/opt/homebrew/opt/openssl@1.1/bin/openssl"
++OPENSSL = os.environ.get("BENCH_OPENSSL", "/usr/bin/openssl" if sys.platform == "linux" else "/opt/homebrew/opt/openssl@1.1/bin/openssl")
+ PKI = os.path.expanduser("~/oracova-bench/pki/nucleo1")
+ BOARD = os.environ.get("BOARD", "192.168.77.90"); PORT = int(os.environ.get("PORT", "4446"))
+ class TlsBridge:
+--- a/tlscmd.py
++++ b/tlscmd.py
+@@ -1,6 +1,6 @@
+ """Run console lines through the TLS console (:4446) and print the replies."""
+ import sys, os, time, select, subprocess
+-OPENSSL="/opt/homebrew/opt/openssl@1.1/bin/openssl"; PKI=os.path.expanduser("~/oracova-bench/pki/nucleo1")
++OPENSSL=os.environ.get("BENCH_OPENSSL", "/usr/bin/openssl" if sys.platform == "linux" else "/opt/homebrew/opt/openssl@1.1/bin/openssl"); PKI=os.path.expanduser("~/oracova-bench/pki/nucleo1")
+ p=subprocess.Popen([OPENSSL,"s_client","-connect","192.168.77.90:4446","-tls1_3","-cert",f"{PKI}/pouya.pem","-key",f"{PKI}/pouya.pem","-CAfile",f"{PKI}/device_ca.pem","-verify_return_error","-quiet","-no_ign_eof"],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,bufsize=0)
+ fd=p.stdout.fileno()
+ def rd(t):
+--- a/pl_lib.py
++++ b/pl_lib.py
+@@ -1,6 +1,6 @@
+-import socket, time, zlib, subprocess, sys
+-IP = "192.168.77.90"
+-UH = "/opt/homebrew/bin/uhubctl"
++import socket, time, zlib, subprocess, sys, os
++IP = os.environ.get("BOARD", "192.168.77.90")
++UH = os.environ.get("BENCH_UHUBCTL", "/usr/bin/uhubctl" if sys.platform == "linux" else "/opt/homebrew/bin/uhubctl")
+ KEY = "/tmp/oimgkeys/dev.pem"
+ 
+ def p(*a):
+@@ -47,7 +47,11 @@
+     return cmd(s, "net auth " + sign_nonce(n[0])).splitlines()[-1]
+ 
+ def power(state):
+-    return subprocess.run([UH, "-l", "2-1", "-p", "2,4", "-a", str(state)],
++    hub = os.environ.get("BENCH_USB_HUB")
++    ports = os.environ.get("BENCH_USB_PORTS")
++    if sys.platform == "linux" and (not hub or not ports):
++        raise RuntimeError("Set the reviewed PC BENCH_USB_HUB and BENCH_USB_PORTS before any power operation")
++    return subprocess.run([UH, "-l", hub or "2-1", "-p", ports or "2,4", "-a", str(state)],
+                           capture_output=True, text=True).returncode
+ 
+ def upload(path, cut_after_ms=None, cap=60):
+--- a/stamp.py
++++ b/stamp.py
+@@ -1,8 +1,8 @@
+ """tools/build-bench.sh stamp(): OIMG header + Ed25519 signature with the bench image key (stays on the bench)."""
+-import hashlib, struct, sys, zlib
++import hashlib, struct, sys, zlib, os
+ from cryptography.hazmat.primitives import serialization
+ src, dst, ty, pcb, sec = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5])
+-k = serialization.load_pem_private_key(open("/Users/oracova/oracova-bench/keys/dev.pem", "rb").read(), password=None)
++k = serialization.load_pem_private_key(open(os.path.join(os.environ.get("BENCH_KEYS_DIR", os.path.expanduser("~/oracova-bench/keys")), "dev.pem"), "rb").read(), password=None)
+ img = open(src, "rb").read(); HS = 0x400
+ h = bytearray(b"\xff" * HS)
+ h[0:4] = b"OIMG"; h[4] = 1; h[5] = ty
+--- a/bin/openocd
++++ b/bin/openocd
+@@ -1,4 +1,5 @@
+ #!/bin/sh
+ # Wrapper, not a symlink: the oss-cad-suite openocd resolves its libexec
+ # RELATIVE TO ITSELF, so a symlink makes it look for /libexec/openocd.
+-exec $HOME/oss-cad-suite/bin/openocd "$@"
++# No generic OpenOCD fallback: the bench needs the reviewed TCP-DAP build.
++exec "${BENCH_OPENOCD:-$HOME/oss-cad-suite/bin/openocd}" "$@"

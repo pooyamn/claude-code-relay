@@ -2006,3 +2006,76 @@ Full bench helpers/toolchains/network/hardware relocation, PKCS12 password
 recovery, native headless/boot/remote acceptance and clean-machine disaster
 restore remain required. Startup Ideas/KiCad/product-topic human choices and
 access gaps also remain. This progress does not authorize erasing the Mac.
+
+### Active bench payload and native startup checks October 4 at 2:19 AM PDT
+
+The physical bench working payload is no longer archive-only. A fresh pinned
+SSH inventory selected **1,451 regular files / 46,408,302 bytes / 74 directories**
+under `/Users/oracova/oracova-bench`, excluding the Darwin-only
+`xpack-openocd-0.12.0-7` installation retained in the protected original archive.
+Non-regular selected members, unsafe paths and incomplete directory ancestry
+are rejected. The inventory hash before and after transfer is identical:
+`5ed4e3eca8e7d159b83623d5d2412106e4ee2de8e788b32db71d3758d4b529b0`.
+
+An ordinary-owner, non-deleting `rsync --ignore-existing` copied **1,430 new
+files / 46,395,403 bytes** into `/Users/pouya/oracova-bench`; existing keys/PKI
+were excluded from copying. Every selected original file, including the 21
+previously restored identities, then matched the fresh source hash and size.
+Directories are 0700, imported files 0600; the existing key helper remains
+0700. The copy did not replace existing PC files or execute imported code.
+Generated inventories/receipts are private under
+`/Users/pouya/.migration/bench-payload-KLsM5kkS`, not Git. The reusable checker
+is `scripts/check_pc_bench_payload.py`, SHA
+`465d0d903d9f02826333017f4e9f4499450ff45b56950e1072ec2697ba12abf0`.
+
+Six narrowly scoped PC helper ports followed, with original matching versions
+retained in the private `pre-port` directory:
+
+- `daptls.py`, `tlsconsole.py`, `tlscmd.py`: Linux `/usr/bin/openssl`, with an
+  explicit `BENCH_OPENSSL` override. TLS 1.3 and CA/error verification remain.
+- `stamp.py`: the original local `~/oracova-bench/keys/dev.pem` identity, with
+  optional `BENCH_KEYS_DIR`; no signing operation was run.
+- `pl_lib.py`: native Linux hub-tool path/override and configurable board IP.
+  On Linux, power actions refuse to run until both `BENCH_USB_HUB` and
+  `BENCH_USB_PORTS` are explicitly supplied. Mac hub numbers are not reused.
+- `bin/openocd`: quote the exact tool/override path; no silent substitution of
+  generic distro OpenOCD for the required reviewed TCP-DAP build.
+
+The reproducible `pc-router/bench-linux-paths.patch` matches SHA
+`1a01fb3329c78a24914f445d71cef62deb7fc219cabbf7a6474b6f825ec93693`.
+Its dry run succeeds against all six original preimages. After these deliberate
+ports, 1,445 unchanged active files and all six retained original preimages
+were reverified; the active six modified helpers are **not** claimed source-
+identical. The original Darwin `dapbench` is also retained. Its original C
+source builds with GCC13.3, `-O2 -Wall -Wextra -Werror`, into the new private
+Linux ELF64 executable `bin/dapbench` (0700), SHA
+`79248e4086fe90f4b1796be87a86b0be5bc768842466e37d3a4fdeec3914437d`.
+The binary was not run: its default invocation contacts bench hardware.
+Sixteen focused checks passed, including all top-level Python syntax, TLS path
+declarations, preserved CA checks, mocked USB-power refusal/explicit mapping,
+the quoted wrapper with harmless printf, and ELF/original-binary preservation.
+No hardware, signing, enrollment, flashing or power operations were performed.
+
+Fresh exact-peer native RPC reports PC Linux Codex PID2141 **connected**.
+At `09:17:09Z`, the existing `Oracova-CodexWslRemote` supervisor again wrote
+`managed-daemon-connected` for that PID; Windows host PID19992 is actually alive,
+session1, non-elevated. Its installed runner matches source SHA
+`61ec885dd8ff716efc715e8e5f4e6107d26813ad500a09a64fe999bf7342f3ed`.
+The task is Interactive/Limited, enabled for owner sign-in and five-minute
+checks. The installed Windows Codex/Claude supervisors and their native
+processes also exist/alive, but their saved connection timestamps are not a new
+phone round trip. Router startup and availability guards are installed; no
+task, native daemon, live turn, pairing or service was restarted here. The
+router's Linux Remote snapshot was never refreshed; its initial unavailable
+value does not contradict the direct native connected observation. The
+[official Codex lifecycle commands](https://learn.chatgpt.com/docs/developer-commands)
+were checked before deciding not to create another managed daemon.
+
+This is working-payload preservation and limited Linux portability, **not**
+full bench acceptance. The TCP-DAP OpenOCD build, Linux hub tooling and actual
+USB mapping/relocation, board network/TLS/serial/flash/debug checks, standalone
+Claude phone/topic joining, real reboot and valid saved auto-login credential,
+independent outside-LAN recovery and daily encrypted clean-machine restore
+remain unverified. Original topic choices/access and final Mac writer/capture
+closure remain required. Weekly quota is still 15% available; migration stays
+active under the owner's 5%-remaining pause condition. The Mac is not erased.
