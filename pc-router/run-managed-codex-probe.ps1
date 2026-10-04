@@ -1,7 +1,8 @@
 param(
  [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-f]{32}$')][string]$RunId,
  [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-fA-F]{64}$')][string]$ExpectedSha256,
- [ValidateSet('probe','create-web')][string]$Mode='probe'
+ [ValidateSet('probe','create-web','create-base','create-marginal')][string]$Mode='probe',
+ [ValidatePattern('^[0-9a-fA-F]{64}$')][string]$ExpectedPolicySha256='653FD4D37637BEA5ED8C88BF063A1669D5A0DCA5E3B6BDD795189D151A2FD2EC'
 )
 # Stage only reviewed diagnostic bytes. Preserve live router/bindings/remotes.
 # SYSTEM owns the deterministic launcher; all native execution is limited pou.
@@ -22,7 +23,7 @@ $acl=Get-Acl -LiteralPath $root
 if(-not $acl.AreAccessRulesProtected -or $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $admin.Value -or
  (Get-Item -LiteralPath $root).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Protected literal code root required'}
 if((Get-Service KhadangRouter).Status.ToString() -ne 'Running' -or
- (Get-FileHash 'C:\ProgramData\KhadangRouter\config.json').Hash -ne '653FD4D37637BEA5ED8C88BF063A1669D5A0DCA5E3B6BDD795189D151A2FD2EC'){
+ (Get-FileHash 'C:\ProgramData\KhadangRouter\config.json').Hash -ne $ExpectedPolicySha256){
  throw 'Unchanged running production router required'
 }
 if((Test-Path -LiteralPath $release) -or (Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue)){
@@ -72,8 +73,8 @@ foreach($name in @('pc_native_stdio.py','relay_core/__init__.py','relay_core/con
 }
 $policy=Get-Content 'C:\ProgramData\KhadangRouter\config.json' -Raw|ConvertFrom-Json
 $policy.StateDirectory=Join-Path $release 'proof'
-$policy|Add-Member LinuxWorkspaceRoot '/Users/pouya/.openclaw/workspace'
-$policy|Add-Member LinuxCodex (@{PackageRoot=$release;WslSha256=(Get-FileHash 'C:\Windows\System32\wsl.exe').Hash;FileSha256=$files})
+$policy|Add-Member LinuxWorkspaceRoot '/Users/pouya/.openclaw/workspace' -Force
+$policy|Add-Member LinuxCodex (@{PackageRoot=$release;WslSha256=(Get-FileHash 'C:\Windows\System32\wsl.exe').Hash;FileSha256=$files}) -Force
 $config=Join-Path $release 'reviewed-policy.json'
 [IO.File]::WriteAllText($config,($policy|ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false));Protect $config $false
 $bin=Join-Path $release 'publish';$exe=Join-Path $bin 'ManagedCodexProbe.exe'
@@ -82,7 +83,7 @@ if(-not (Test-Path (Join-Path $bin 'coreclr.dll')) -or
  -not ($runtime.runtimeOptions.includedFrameworks|Where-Object name -eq 'Microsoft.NETCore.App')){throw 'Self-contained Windows runtime required'}
 & $exe --self-test
 if($LASTEXITCODE -ne 0){throw 'Fixed observation method guards failed'}
-$flag=if($Mode -eq 'create-web'){'--create-web'}else{'--run'}
+$flag=switch($Mode){'create-web'{'--create-web'}'create-base'{'--create-base'}'create-marginal'{'--create-marginal'}default{'--run'}}
 $action=New-ScheduledTaskAction -Execute $exe -Argument ($flag+' '+$RunId) -WorkingDirectory $bin
 $principal=New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
 $settings=New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 2) -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries

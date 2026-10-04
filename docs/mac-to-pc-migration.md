@@ -61,17 +61,16 @@ selected operational projects, firmware, keys, captures and tool installations
 now also have a protected, checksum-verified PC archive. That archive is not an
 activated bench environment or a final checkpoint.
 
-The protected Windows Khadang service currently routes one test forum and uses
-Codex. A candidate now supports full chat/topic addresses, an explicit
-whole-group route and distinct Windows Codex, Linux Codex and Claude paths
-inside the same router; it is not yet deployed. A working native Linux transport for
-Codex now passes isolated Windows-to-Linux native acceptance, including shared
-events and actual tool identity. A standalone Claude client now also passes
-authenticated native input and reply acceptance on the PC. Linux Codex's launch
-path is now wired into the router candidate. Its exact Windows-to-WSL launcher
-has passed live acceptance against the connected, separately paired PC managed
-daemon (October 3, 6:53 PM PDT), but has not been activated for topic routing.
-Live routing for both tools is still required for the new PC sessions.
+The protected Windows Khadang service now routes the existing PC LG topic plus
+Web, Base board and Marginal Requests in their original forums. The personal
+router supports full chat/topic addresses, an explicit whole-group route and
+distinct Windows Codex, Linux Codex and Claude paths. Linux Codex's exact
+Windows-to-WSL launcher passed acceptance against the connected, separately
+paired PC managed daemon and is now activated. Only Web has a genuine
+owner-message round trip verified so far; the new PCBA routes have exact native
+resume and confirmed connection notices. A standalone Claude client previously
+passed native input and reply acceptance, but live Claude topic routing remains
+pending and current Linux Claude subscription login needs renewal.
 Claude's pinned streaming control interface now also connects and disconnects
 authenticated native Remote Control on the PC through an explicit control
 request. A phone-message round trip and live Telegram steering remain unverified.
@@ -1274,3 +1273,83 @@ thread is actively working in new response 13609, with confirmed bounded edits
 and no verbose prefix, unknown operations or pending responses. Exact `↪ Test`
 formatting and legacy display compaction are fixture-verified; the latest live
 tail is already long enough to roll the echoed input out of view.
+
+### Base board and Marginal Requests routed, October 3 evening
+
+Original-topic routing cutovers are now **3 of 14**. Khadang retains Oracova
+PCBA chat `-1004395661179`, Base board topic **18** and Marginal Requests topic
+**427**. No topic was created. Both retain their selected Codex model
+`gpt-6-astra`; their replacement native IDs are
+`01a104cc-9a63-7901-8897-abf8aff3dfb3` and
+`01a104cc-d892-7c52-ba1e-e505edfb13d6`, respectively. The existing LG and Web
+bindings remain unchanged.
+
+Private project handoffs are saved in their workspaces and on the PC, with
+exact persisted native checkpoint readback. The one-shot creation tasks
+`9953fc55f092ce47256b668981d71d1d` and
+`e389c66ee495b155dac0e992d44c2233` finished with result 0 and were disabled.
+No model turn or Telegram polling was started by these creation tasks.
+Base board's handoff SHA-256 is
+`dde3218bb6bad93d10f1ee1c82e56230a6930eb0dc9cd6d4cee4249890ed2193`;
+Marginal Requests' is
+`95d990989cd907fb8c1a70354aa0634ad35b43229a7f4913a7d96604157efce7`.
+The handoffs include current work rather than assuming an old conversation's
+last commit is authoritative. In particular, the Base board PCB now includes
+the later second-SDRAM-clock routing commit; its older "PCB untouched" status
+is superseded.
+
+Source/PC comparisons cover all **20,196 Base board entries** and **11,444
+Marginal Requests entries**, including dirty and untracked render work.
+Base board matches exactly. Marginal differs only in `.git/index` stat-cache
+bytes; staged entries and flags independently match, and the original Mac index
+is archived without overwriting the PC index. Logical stage and flag digests are
+`fbf843de6066d916c8d1baa4eec20dc20c9471c624f70ce85b125878ce06d927` and
+`9873bea34447523486ad7032b342347d5055908358ba210c6faa87e97e5077c2`.
+
+The PC poller was stopped before the two Mac routes were retired. Jamshid's
+explicit bindings were removed and ingress for exactly topics 18/427 disabled
+to prevent default-agent fallback. Configuration validation and an exact
+structural comparison passed; the gateway hot-reloaded at
+`2026-10-03T19:55:20.152-07:00`. Old watchers `crw-9dab271b6c` and
+`crw-1b1cf84102` were stopped and their source native pointers moved to a private
+recovery directory. Eleven other original bindings and the shared Mac daemon
+remain intact.
+
+A late Base board source turn was explicitly **aborted**, not merely assumed
+idle from a stale bubble. Its journal records `turn_aborted` at
+`2026-10-04T02:53:34.724Z`, before any tool or assistant output; a final
+comparison still matched the PC. Two owner inputs received before PCBA policy
+admission remain recorded as denied updates 759322608/759322609. The latter
+canceled the old turn. Neither input was replayed or counted as new PC-route
+acceptance.
+
+This was a **policy-only deployment**, not a new router architecture or binary
+replacement. Policy SHA-256 is
+`7e77aca790fc5786c9737c93e67855ee5967c7d36fe364d1f3a41f83c874364a`;
+router SHA-256 remains
+`84ab5dea4b368980a0754fb64d23f2abbe0f63dcada6eafdb1f752e1a37e5690`.
+The matching production native/OS-boundary proof completed at
+`2026-10-04T02:56:16.7849994Z`, covering all three Linux workspaces, UID 1000
+execution, Windows native sandbox execution, and denied worker access to
+protected router code and credentials. Paired Linux daemon PID 2141,
+generation 229385, was not restarted. Recovery policy, consistent SQLite
+snapshot, service and startup-task preimages remain in
+`C:\ProgramData\KhadangRouter\release-0ca4ec73926349e6860824439a8f1a3a`.
+
+Live exact-thread resume receipts and connection notices **4793** (Base board)
+and **4794** (Marginal Requests) are confirmed in their original topics. The
+02:58:52Z readback shows Running service, enabled startup supervision, four
+bindings, zero uncertain operations and no held/pending responses. Both PC
+legacy pointers now reference the same new native IDs, with old values retained.
+Private Mac preimages and final Base board history were copied to the protected
+PC archive `pcba-topic-cutover-20261003-sftp.tar.gz`: **30,395,746 bytes**,
+SHA-256 `cd604c16966330f199fdb34ade587724fe0e9aae86cca42fb1374f0a13efbe3e`.
+Capture, SFTP, digest/ACL verification and archive reading all passed.
+
+Routing and connection notices are **not owner input/reply acceptance**. Both
+new PCBA routes still need genuine owner round trips, tools/steering/control/
+attachment checks and phone UI/restart acceptance. Fusion files and the Mac
+automation are preserved, but Windows Fusion import/save/render remains
+unqualified and required. Eleven other original topics, physical bench movement
+and Mac-independent recovery remain pending. Full migration is not complete;
+the Mac has not been erased.

@@ -7,8 +7,8 @@ using KhadangRouter;
 
 // Fixed, one-shot proof of the candidate's REAL SYSTEM -> limited Windows owner
 // -> UID 1000 connector to the already-running, paired native daemon. No bot
-// credential decryption, Telegram poll, prompt or daemon lifecycle. --create-web
-// is a separately selected, one-shot migration action: create a fresh thread
+// credential decryption, Telegram poll, prompt or daemon lifecycle. Creation
+// modes are separately selected, fixed one-shot migration actions: create a fresh thread
 // with the reviewed handoff, but never start a model or repeat a prior attempt.
 if (args.SequenceEqual(new[] { "--self-test" }))
 {
@@ -24,11 +24,19 @@ if (args.SequenceEqual(new[] { "--self-test" }))
         CheckpointPersisted(saved, "other-thread", "exact checkpoint") ||
         CheckpointPersisted(saved.Replace("\"user\"", "\"assistant\""), "test-thread", "exact checkpoint"))
         throw new InvalidOperationException("Exact raw checkpoint verification failed");
+    var web = Target("--create-web")!; var board = Target("--create-base")!; var marginal = Target("--create-marginal")!;
+    if (Target("--run") != null || Target("--unknown") != null || web.Topic != 8660 || web.Chat != -1003550185469 ||
+        board.Topic != 18 || marginal.Topic != 427 || board.Chat != -1004395661179 || marginal.Chat != board.Chat ||
+        board.Workspace != LinuxCodexRuntime.WorkspaceRoot + "/ai-hil/hardware/augur-1" ||
+        marginal.Workspace != LinuxCodexRuntime.WorkspaceRoot + "/marginal-requests" ||
+        new[] { web, board, marginal }.Select(t => t.SourceThread).Distinct().Count() != 3 ||
+        new[] { web, board, marginal }.Any(t => t.Model != "gpt-6-astra" || t.HandoffSha256.Length != 64))
+        throw new InvalidOperationException("Fixed source-topic creation targets differ");
     Console.WriteLine("Managed connector observation guards passed; no native activity.");
     return;
 }
 string? root = null;
-var createWeb = args.Length == 2 && args[0] == "--create-web";
+var target = args.Length == 2 ? Target(args[0]) : null;
 var report = new Dictionary<string, object?> { ["complete"] = false, ["modelsStarted"] = false,
     ["productionChanged"] = false, ["existingConversationsResumed"] = false, ["telegramPolling"] = false };
 try
@@ -36,7 +44,7 @@ try
     if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
     using var identity = WindowsIdentity.GetCurrent();
     if (Environment.MachineName != "DESKTOP-8SO9HDK" || !identity.IsSystem ||
-        Process.GetCurrentProcess().SessionId != 0 || args.Length != 2 || args[0] is not ("--run" or "--create-web") || !Guid.TryParseExact(args[1], "N", out var run))
+        Process.GetCurrentProcess().SessionId != 0 || args.Length != 2 || args[0] is not ("--run" or "--create-web" or "--create-base" or "--create-marginal") || !Guid.TryParseExact(args[1], "N", out var run))
         throw new InvalidDataException("Exact fixed SYSTEM diagnostic task required; native remains ordinary owner");
     root = LinuxCodexRuntime.ProtectedRoot + "\\codex-connector-" + run.ToString("N");
     var state = Path.Combine(root, "proof");
@@ -47,7 +55,7 @@ try
     var policy = RouterPolicy.Load(config);
     if (policy.StateDirectory != state || policy.LinuxCodex?.PackageRoot != root)
         throw new InvalidDataException("Policy does not match the fixed diagnostic release");
-    var binding = new Binding(policy.ChatId, 159, "Observation only", LinuxCodexRuntime.WorkspaceRoot + "/ai-hil/web", "observation-only", "codex", "linux");
+    var binding = new Binding(policy.ChatId, 159, "Observation only", target?.Workspace ?? LinuxCodexRuntime.WorkspaceRoot + "/ai-hil/web", "observation-only", "codex", "linux");
     using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(60));
     using var ledger = new Ledger(Path.Combine(state, "observation.db"));
     var connected = await LinuxCodexChannel.ConnectVerified(policy, [binding], ledger, stop.Token);
@@ -71,38 +79,38 @@ try
     report["routerSha256"] = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(typeof(Router).Assembly.Location)));
     report["policySha256"] = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(config)));
     if (ledger.Unknown != 0) throw new InvalidDataException("Unexpected uncertain observation outcome");
-    if (createWeb)
+    if (target != null)
     {
         // A pre-creation observation of zero cannot describe later mutations
         // if an exception prevents their final reconciliation.
         report["unknownEffects"] = null;
-        const string expectedHandoff = "d6fe808e29a4ea5854eada96de66c7469ed8e5028c736304f7c03ebe51bda1dd";
+        var expectedHandoff = target.HandoffSha256;
         var file = binding.Workspace + "/PC-MIGRATION-HANDOFF.md";
         var checkpoint = await rpc.Call("command/exec", new { command = new[] { "/usr/bin/cat", file },
             cwd = binding.Workspace, sandboxPolicy = new { type = "dangerFullAccess" }, timeoutMs = 10000 }, stop.Token);
         var handoff = checkpoint.GetProperty("stdout").GetString()!;
         if (checkpoint.GetProperty("exitCode").GetInt32() != 0 ||
             Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(handoff))).ToLowerInvariant() != expectedHandoff)
-            throw new InvalidDataException("Web handoff bytes differ from reviewed source; no new thread");
+            throw new InvalidDataException("Project handoff bytes differ from reviewed source; no new thread");
         var context = "[Migration checkpoint; not a request to start work.] Pouya approved a fresh PC session for this existing topic. " +
             "Load the following reviewed handoff. Do not replay previous actions or start a goal; wait for the next owner input. " +
             "Handoff SHA-256: " + expectedHandoff + "\n\n" + handoff;
-        var started = await rpc.Call("thread/start", new { cwd = binding.Workspace, model = "gpt-6-astra",
+        var started = await rpc.Call("thread/start", new { cwd = binding.Workspace, model = target.Model,
             approvalPolicy = policy.NativeApprovalPolicy, approvalsReviewer = "user", permissions = policy.NativePermissionProfile,
             allowProviderModelFallback = false }, stop.Token);
         var thread = started.GetProperty("thread").GetProperty("id").GetString()!;
-        if (!Guid.TryParseExact(thread, "D", out _) || thread == "01a0ee66-b1e1-75b1-8a15-eb2e5175f6dd" ||
-            started.GetProperty("cwd").GetString() != binding.Workspace || started.GetProperty("model").GetString() != "gpt-6-astra")
-            throw new InvalidDataException("Created native session does not match the explicit fresh Web migration");
+        if (!Guid.TryParseExact(thread, "D", out _) || thread == target.SourceThread ||
+            started.GetProperty("cwd").GetString() != binding.Workspace || started.GetProperty("model").GetString() != target.Model)
+            throw new InvalidDataException("Created native session does not match the explicit fresh project migration");
         // Save the new identity BEFORE the next effect. A partial attempt is
         // retained for reconciliation, never replaced with another fresh thread.
-        var migrated = new Binding(-1003550185469, 8660, "Web · PC", binding.Workspace, thread, "codex", "linux");
+        var migrated = new Binding(target.Chat, target.Topic, target.Name + " · PC", binding.Workspace, thread, "codex", "linux");
         File.WriteAllText(Path.Combine(state, "created-native-thread.json"), JsonSerializer.Serialize(new {
-            binding = migrated, model = "gpt-6-astra", handoffSha256 = expectedHandoff, at = DateTimeOffset.UtcNow }));
+            binding = migrated, model = target.Model, sourceThread = target.SourceThread, handoffSha256 = expectedHandoff, at = DateTimeOffset.UtcNow }));
         report["newPcBinding"] = migrated;
         await rpc.Call("thread/inject_items", new { threadId = thread, items = new[] { new { type = "message", role = "user",
             content = new[] { new { type = "input_text", text = context } } } } }, stop.Token);
-        await rpc.Call("thread/name/set", new { threadId = thread, name = "Web (topic 8660) · PC" }, stop.Token);
+        await rpc.Call("thread/name/set", new { threadId = thread, name = target.Name + " (topic " + target.Topic + ") · PC" }, stop.Token);
         var persisted = await rpc.Call("thread/read", new { threadId = thread, includeTurns = true }, stop.Token, effect: false);
         var storedThread = persisted.GetProperty("thread");
         var path = storedThread.GetProperty("path").GetString()!;
@@ -169,3 +177,14 @@ static bool CheckpointPersisted(string jsonl, string thread, string expected)
     }
     return identity && checkpoint;
 }
+static MigrationTarget? Target(string mode) => mode switch
+{
+    "--create-web" => new(-1003550185469, 8660, "Web", LinuxCodexRuntime.WorkspaceRoot + "/ai-hil/web", "gpt-6-astra",
+        "01a0ee66-b1e1-75b1-8a15-eb2e5175f6dd", "d6fe808e29a4ea5854eada96de66c7469ed8e5028c736304f7c03ebe51bda1dd"),
+    "--create-base" => new(-1004395661179, 18, "Base board", LinuxCodexRuntime.WorkspaceRoot + "/ai-hil/hardware/augur-1", "gpt-6-astra",
+        "01a091ea-58ec-7c20-b238-b3bef0af437b", "dde3218bb6bad93d10f1ee1c82e56230a6930eb0dc9cd6d4cee4249890ed2193"),
+    "--create-marginal" => new(-1004395661179, 427, "Marginal Requests", LinuxCodexRuntime.WorkspaceRoot + "/marginal-requests", "gpt-6-astra",
+        "01a0c4c2-ea71-7c10-9a39-6440ce5e4a02", "95d990989cd907fb8c1a70354aa0634ad35b43229a7f4913a7d96604157efce7"),
+    _ => null
+};
+sealed record MigrationTarget(long Chat, int Topic, string Name, string Workspace, string Model, string SourceThread, string HandoffSha256);
