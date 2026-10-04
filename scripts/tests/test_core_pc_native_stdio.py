@@ -236,6 +236,44 @@ class PcNativeStdioTests(unittest.TestCase):
             with mock.patch.object(adapter, 'BINARY', alias), self.assertRaises(OSError):
                 adapter.pinned_binary()
 
+    def test_only_source_or_exact_managed_package_can_be_pinned(self):
+        with mock.patch.object(adapter.os, 'open') as opened, self.assertRaises(Denied):
+            adapter.pinned_binary(Path('/tmp/other-native'))
+        opened.assert_not_called()
+
+    def test_source_peer_retains_exact_original_inode_pin(self):
+        source = SimpleNamespace(st_dev=1, st_ino=42)
+        with mock.patch.object(adapter.Path, 'stat', return_value=source), \
+                mock.patch.object(adapter, 'pinned_binary') as pinned:
+            path, metadata = adapter.peer_binary(Path('/proc/789'), source)
+        self.assertEqual(path, adapter.BINARY)
+        self.assertIs(metadata, source)
+        pinned.assert_not_called()
+
+    def test_managed_peer_needs_exact_path_and_matching_bytes(self):
+        source = SimpleNamespace(st_dev=1, st_ino=42)
+        managed = SimpleNamespace(st_dev=1, st_ino=43)
+        with mock.patch.object(adapter.Path, 'stat', return_value=managed), \
+                mock.patch.object(adapter.Path, 'lstat', return_value=managed), \
+                mock.patch.object(adapter, 'pinned_binary', return_value=managed) as pinned:
+            path, metadata = adapter.peer_binary(Path('/proc/789'), source)
+            self.assertEqual(path, adapter.MANAGED_BINARY)
+            self.assertIs(metadata, managed)
+            pinned.assert_called_once_with(adapter.MANAGED_BINARY)
+            pinned.side_effect = Denied('Changed package')
+            with self.assertRaises(Denied):
+                adapter.peer_binary(Path('/proc/789'), source)
+
+    def test_other_kernel_executable_is_not_accepted_as_managed(self):
+        source = SimpleNamespace(st_dev=1, st_ino=42)
+        managed = SimpleNamespace(st_dev=1, st_ino=43)
+        other = SimpleNamespace(st_dev=1, st_ino=44)
+        with mock.patch.object(adapter.Path, 'stat', return_value=other), \
+                mock.patch.object(adapter.Path, 'lstat', return_value=managed), \
+                mock.patch.object(adapter, 'pinned_binary') as pinned, self.assertRaises(Denied):
+            adapter.peer_binary(Path('/proc/789'), source)
+        pinned.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()

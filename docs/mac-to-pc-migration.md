@@ -992,3 +992,51 @@ PC routing or Mac retirement.
 Detailed historical implementation evidence remains in
 [deployment status](../pc-router/deployment-status.json) and the
 [deferred roadmap](agentic-pc-20-pr-roadmap.md).
+
+### Mac-style PC Codex daemon and exact Claude phone session
+
+The working Mac VM uses Codex 0.160.0's managed daemon with Remote Control and
+an owner-private Unix WebSocket. Its login/300-second launchd check starts only
+a missing daemon. The former PC Windows setup instead has separate stdio
+processes for Remote and Telegram; registering one does not share the other's
+live conversations.
+
+On October 3, the equivalent managed Unix daemon was installed in Ubuntu 24.04
+on the PC. `Oracova-CodexWslRemote` runs as the exact Interactive/Limited Windows
+owner, then Linux `pou` (UID 1000), at owner sign-in and with five-minute
+supervision. The control directories/socket have owner-private permissions.
+The observer verifies the kernel peer, generation, exact package inode and
+reviewed binary hash before native initialization and read-only status/account
+requests. It never resumes a conversation, sends a prompt or answers approvals.
+
+Native bootstrap initially enables package auto-updates. The newly installed
+daemon had no loaded conversations, so native `daemon update --from-cli --yes`
+selected and pinned the identical reviewed 0.160.0 CLI package. The automatic
+update marker is now absent; supervision uses `daemon start`, never bootstrap,
+update or restart. This changed only the newly installed WSL daemon, not the
+working Mac or existing Windows native processes. No inference was requested.
+
+The WSL daemon is running but its native phone transport reports `errored`.
+Both PC Windows and WSL profiles have the same OpenAI account fingerprint;
+the working Mac VM has a different one. Account identity was compared without
+exporting credential values. This explains why that PC account's host would
+not appear in the other account, but **does not establish the cause of the WSL
+connection error**. Pouya's account choice and a successful same-account phone
+round trip remain pending. No credential transplantation or fresh login was
+performed. WSL Telegram routing, boot/crash acceptance and original-topic
+cutovers remain unverified; the existing LG binding and protected router code,
+policy and credential are unchanged.
+
+All 27 native-connector/observer fixtures pass in an OS sandbox without network
+or owner credentials. Both deployment scripts parse on Windows and eight exact
+missing-socket classifier fixtures pass. Native absent-daemon `version` reports
+errno 2 rather than JSON `stopped`; only that exact measured absence permits
+startup. Other errors do not trigger a lifecycle retry.
+
+Pouya explicitly requires the existing **PC - Native Claude** phone conversation
+in Telegram, not a new conversation. Its existing Windows remote host and child
+remain running. The inspected SDK 0.3.288 `/bridge` API registers a worker and
+increments its epoch; a second worker attachment could supersede the working
+one. It is not a non-owning Telegram client. No worker attach, replacement
+conversation or inert Telegram topic was created. A non-owning client route to
+the exact live `cse_*` conversation is still required.

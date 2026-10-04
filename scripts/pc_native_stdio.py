@@ -23,6 +23,7 @@ from relay_core.native_ws import UnixWSChannel
 
 OWNER = Path('/Users/pouya')
 BINARY = OWNER / '.local/share/pc-migration-native/codex-0.160.0/package/bin/codex'
+MANAGED_BINARY = OWNER / '.codex/packages/app-server-daemon/releases/local-45a1f15dbce3c1e4ba0d0eb5d8026f1fc75a42f173fad82a6c7520861a9f0f28-x86_64-unknown-linux-musl/bin/codex'
 BINARY_SHA256 = '12eb3e81114588aca3b7998f4f19e8997b056aca08e57a7ca7c8a3ec8c652aad'
 SOCKET = OWNER / '.codex/app-server-control/app-server-control.sock'
 MAX_FRAME = 2_097_152
@@ -131,10 +132,13 @@ def _file_identity(metadata):
     return (*_identity(metadata), metadata.st_size, metadata.st_mtime_ns, metadata.st_ctime_ns)
 
 
-def pinned_binary():
+def pinned_binary(path=None):
     # Hash the SAME opened no-follow inode whose identity is later compared to
     # procfs. A hash-then-stat pathname race must not accept substituted bytes.
-    descriptor = os.open(BINARY, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
+    path = BINARY if path is None else path
+    if path not in (BINARY, MANAGED_BINARY):
+        raise Denied('Only the exact reviewed source or managed native package is permitted')
+    descriptor = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
     with os.fdopen(descriptor, 'rb') as source:
         metadata = os.fstat(source.fileno())
         if not stat.S_ISREG(metadata.st_mode):
@@ -144,9 +148,30 @@ def pinned_binary():
         for chunk in iter(lambda: source.read(65536), b''):
             hasher.update(chunk)
         if hasher.hexdigest() != BINARY_SHA256 or _file_identity(os.fstat(source.fileno())) != expected or \
-                _file_identity(BINARY.lstat()) != expected:
+                _file_identity(path.lstat()) != expected:
             raise Denied('Pinned Linux native executable changed')
     return metadata
+
+
+def peer_binary(process, source_metadata):
+    # Native bootstrap copies the pinned CLI to its versioned managed package.
+    # Verify that exact copy's bytes AND kernel executable inode, not a guessed
+    # PID/path, a current symlink, or any same-version binary found on disk.
+    executable = (process / 'exe').stat()
+    for path in (BINARY, MANAGED_BINARY):
+        if path == BINARY:
+            metadata = source_metadata
+        else:
+            try:
+                metadata = path.lstat()
+            except FileNotFoundError:
+                continue
+        if (executable.st_dev, executable.st_ino) != (metadata.st_dev, metadata.st_ino):
+            continue
+        if path != BINARY:
+            metadata = pinned_binary(path)
+        return path, metadata
+    raise Denied('Socket peer does not execute a reviewed pinned native package')
 
 
 def connect(value):
@@ -166,15 +191,18 @@ def connect(value):
             raise Denied('Native peer is not the ordinary PC owner')
         process = Path('/proc', str(peer.pid))
         generation = proc_stat((process / 'stat').read_text(), peer.pid)
+        executable_path, expected_peer_exe = peer_binary(process, expected_exe)
 
         def verify():
             verify_socket()
             if _file_identity(BINARY.lstat()) != _file_identity(expected_exe):
                 raise Denied('Pinned native file identity changed')
+            if _file_identity(executable_path.lstat()) != _file_identity(expected_peer_exe):
+                raise Denied('Pinned native peer file identity changed')
             if proc_stat((process / 'stat').read_text(), peer.pid) != generation:
                 raise Denied('Native peer generation changed')
             executable = (process / 'exe').stat()
-            if (executable.st_dev, executable.st_ino) != (expected_exe.st_dev, expected_exe.st_ino):
+            if (executable.st_dev, executable.st_ino) != (expected_peer_exe.st_dev, expected_peer_exe.st_ino):
                 raise Denied('Socket peer does not execute the pinned native binary')
             rows = [line for line in (process / 'status').read_text().splitlines() if line.startswith('Uid:')]
             if len(rows) != 1 or rows[0].split()[1:] != ['1000'] * 4:
