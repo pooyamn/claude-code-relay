@@ -1,5 +1,6 @@
 import importlib.util
 import copy
+import hashlib
 import sys
 import unittest
 from pathlib import Path
@@ -15,6 +16,9 @@ retire_spec.loader.exec_module(retire)
 additional_spec = importlib.util.spec_from_file_location('retire_additional', ROOT / 'retire_mac_additional_topics.py')
 additional = importlib.util.module_from_spec(additional_spec)
 additional_spec.loader.exec_module(additional)
+core_spec = importlib.util.spec_from_file_location('retire_core', ROOT / 'retire_mac_core_topics.py')
+core = importlib.util.module_from_spec(core_spec)
+core_spec.loader.exec_module(core)
 
 
 class EvidenceTests(unittest.TestCase):
@@ -22,6 +26,25 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(topic.PROJECTS['hardware-lite'][:2], (-1003550185469, 6333))
         self.assertEqual(topic.PROJECTS['ai-hil/demos/fpga/mpu6000-i9'][:2], (-1003550185469, 8653))
         self.assertEqual(topic.PROJECTS['schematic-pipeline-lab'][:2], (-1004395661179, 2697))
+        self.assertEqual(topic.PROJECTS['ai-hil'][:2], (-1003550185469, 1876))
+        self.assertEqual(topic.PROJECTS['ai-hil/.worktrees/supervisor-fw'][:2], (-1003550185469, 5786))
+
+    def test_retained_customer_handoff_is_read_in_its_original_location(self):
+        relative = topic.HANDOFFS['ai-hil']
+        value = topic.Evidence('/workspace', 'session', 'digest', 'marker', 'first\nlast\n', False, relative)
+        value.observe(self.frame(data={'file_path': '/workspace/' + relative}))
+        value.observe(self.result('read', '1 first\n2 last'))
+        value.observe(self.frame('Bash', 'bash', {'command': topic.handoff_command(relative)}))
+        value.observe(self.result('bash', '1000\ndigest  ' + relative + '\n'))
+        value.complete(self.complete())
+
+    def test_other_handoff_locations_or_shell_commands_are_refused(self):
+        for relative in ('../PC-MIGRATION-HANDOFF.md', 'other.md', 'x; whoami'):
+            with self.assertRaises(ValueError): topic.handoff_command(relative)
+        value = topic.Evidence('/workspace', 'session', 'digest', 'marker', 'first', False,
+                               topic.HANDOFFS['ai-hil'])
+        with self.assertRaises(ValueError): value.observe(self.frame())
+        with self.assertRaises(ValueError): value.observe(self.frame('Bash', 'bash', {'command': topic.COMMAND}))
 
     def evidence(self, continuity=False):
         return topic.Evidence('/workspace', 'session', 'digest', 'marker', 'first\nlast\n', continuity)
@@ -107,6 +130,28 @@ class SourceFenceTests(unittest.TestCase):
 class AdditionalSourceFenceTests(SourceFenceTests):
     module = additional
     chat = additional.CHAT
+
+
+class CoreSourceFenceTests(SourceFenceTests):
+    module = core
+    chat = core.CHAT
+
+    def test_active_controller_observer_is_pinned_to_exact_reviewed_source(self):
+        source = (ROOT.parent / 'pc-router/migrate-lab-topics.ps1').read_text()
+        digest = hashlib.sha256((ROOT / 'pc_router_switch_observer.py').read_bytes()).hexdigest().upper()
+        self.assertIn(".Hash -ne '" + digest + "'", source)
+
+    def test_idle_requires_positive_terminal_and_completed_native_turn(self):
+        done = [{'type': 'assistant', 'message': {'stop_reason': 'end_turn'}}]
+        core.idle_view('Last result\n❯ saved unsent draft\n', done)
+        for pane, rows in [
+            ('❯ draft\nesc to interrupt', done),
+            ('❯ draft\nDo you want to proceed?', done),
+            ('No native prompt', done),
+            ('❯ draft', [{'type': 'assistant', 'message': {'stop_reason': 'tool_use'}}]),
+            ('❯ draft', done + [{'type': 'user', 'message': {'content': 'new input'}}]),
+        ]:
+            with self.assertRaises(ValueError): core.idle_view(pane, rows)
 
 
 if __name__ == '__main__':

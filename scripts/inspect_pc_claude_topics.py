@@ -13,13 +13,18 @@ PROJECTS = {
     '6159472a-7878-42e4-b497-ffbb64a7e2d6': ('schematic-pipeline-lab', 2697, -1004395661179),
     '10ab0d8a-f31c-49ca-ab99-1a6152ae4ee2': ('mimic-fast-pcb', 3315, -1004395661179),
 }
-if sys.argv[1:] == ['--additional']:
+if sys.argv[1:] in (['--additional'], ['--core']):
     PROJECTS.update({
         '5fc53034-e240-43b5-a2c4-75ee1947aefa': ('hardware-lite', 6333, -1003550185469),
         'a32bd2ef-172a-4a51-95ba-1b9bce4f44eb': ('ai-hil/demos/fpga/mpu6000-i9', 8653, -1003550185469),
     })
+    if sys.argv[1:] == ['--core']:
+        PROJECTS.update({
+            '2c0bce31-f586-4d5e-9422-4be550763ed8': ('ai-hil', 1876, -1003550185469),
+            'dcf9169b-c044-4c39-9ba5-e27d2978722c': ('ai-hil/.worktrees/supervisor-fw', 5786, -1003550185469),
+        })
 elif sys.argv[1:]:
-    raise ValueError('Only the fixed additional migration batch is supported')
+    raise ValueError('Only the fixed selected migration batches are supported')
 if sys.platform != 'linux' or os.getuid() != 1000 or os.geteuid() != 1000:
     raise ValueError('Exact ordinary PC Linux owner required')
 results = []

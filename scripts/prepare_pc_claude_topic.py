@@ -27,8 +27,17 @@ PROJECTS = {
     'mimic-fast-pcb': (-1004395661179, 3315, 'f3d549789ff8bd2c405fd8f9a98de4a205c6d713a5df23d298308a31b325e61c'),
     'hardware-lite': (-1003550185469, 6333, 'f07f21030466a16ded5fc424a6295ae9e39a43c1afe2759280af609442e600e0'),
     'ai-hil/demos/fpga/mpu6000-i9': (-1003550185469, 8653, '83a2a46049dbf7dd1d8844f2183895fc73a24fbeb4222fd243858b87ec82f414'),
+    'ai-hil': (-1003550185469, 1876, 'fe086776c3cf03178a2a58647d7a6dc4b1821660fffc311f29b2374b26eb0ee5'),
+    'ai-hil/.worktrees/supervisor-fw': (-1003550185469, 5786, '721aca87aff4390cf6c42df4bf9166ad11f83316e2a57645e59cd73027d526aa'),
 }
 COMMAND = 'id -u && sha256sum -- PC-MIGRATION-HANDOFF.md'
+HANDOFFS = {'ai-hil': 'customers/PC-MIGRATION-HANDOFF.md'}
+
+
+def handoff_command(relative):
+    if relative not in ('PC-MIGRATION-HANDOFF.md', 'customers/PC-MIGRATION-HANDOFF.md'):
+        raise ValueError('Only the fixed retained handoff locations are supported')
+    return 'id -u && sha256sum -- ' + relative
 
 
 def durable(path, value):
@@ -44,9 +53,12 @@ def durable(path, value):
 
 
 class Evidence:
-    def __init__(self, workspace, session, digest, marker, text, continuity):
+    def __init__(self, workspace, session, digest, marker, text, continuity,
+                 handoff_relative='PC-MIGRATION-HANDOFF.md'):
         self.workspace, self.session, self.digest = workspace, session, digest
         self.marker, self.text, self.continuity = marker, text, continuity
+        self.handoff_relative = handoff_relative
+        self.command = handoff_command(handoff_relative)
         self.calls, self.results = {}, set()
 
     def observe(self, frame):
@@ -62,8 +74,8 @@ class Evidence:
                 name, data, key = block.get('name'), block.get('input', {}), block.get('id')
                 if self.continuity or name not in ('Read', 'Bash') or key in self.calls or name in self.calls.values():
                     raise ValueError('Unexpected or repeated migration tool')
-                if name == 'Bash' and data.get('command') != COMMAND or name == 'Read' and (
-                        data.get('file_path') != self.workspace + '/PC-MIGRATION-HANDOFF.md' or
+                if name == 'Bash' and data.get('command') != self.command or name == 'Read' and (
+                        data.get('file_path') != self.workspace + '/' + self.handoff_relative or
                         'offset' in data or 'limit' in data):
                     raise ValueError('Migration tool arguments differ')
                 self.calls[key] = name
@@ -74,7 +86,7 @@ class Evidence:
                 body = block.get('content', '')
                 text = body if isinstance(body, str) else '\n'.join(part.get('text', '') for part in body)
                 if self.calls[key] == 'Bash' and text.strip().replace('\r\n', '\n') != (
-                        '1000\n' + self.digest + '  PC-MIGRATION-HANDOFF.md'):
+                        '1000\n' + self.digest + '  ' + self.handoff_relative):
                     raise ValueError('Actual tool UID or handoff hash mismatch')
                 if self.calls[key] == 'Read' and not all(line in text for line in self.text.splitlines() if line):
                     raise ValueError('Handoff read did not contain the full checked file')
@@ -94,7 +106,9 @@ def run(project, session, mode):
     chat, topic, digest = PROJECTS[project]
     workspace = str(native.WORKSPACE_ROOT / project)
     verify_workspace = native.attest_workspaces([workspace])
-    handoff = Path(workspace) / 'PC-MIGRATION-HANDOFF.md'
+    handoff_relative = HANDOFFS.get(project, 'PC-MIGRATION-HANDOFF.md')
+    handoff = Path(workspace) / handoff_relative
+    command = handoff_command(handoff_relative)
     native.read_pinned(handoff, digest)
     text = handoff.read_text()
     marker = project.upper().replace('-', '_').replace('/', '_') + '_PC_HANDOFF_READY'
@@ -107,7 +121,7 @@ def run(project, session, mode):
                                  'chat': chat, 'handoffSha256': digest, 'at': time.time()})
     report = {'complete': False, 'session': session, 'project': project, 'workspace': workspace,
               'chat': chat, 'topic': topic, 'mode': mode, 'routingChanged': False,
-              'handoffSha256': digest, 'modelPromptsAttempted': 0, 'uncertain': False}
+              'handoffSha256': digest, 'handoffPath': str(handoff), 'modelPromptsAttempted': 0, 'uncertain': False}
     child, lease, selector = None, None, None
     try:
         if mode == 'fresh' and history.exists():
@@ -131,7 +145,7 @@ def run(project, session, mode):
                       '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}']
         prompt = ('Migration verification only. Do not change files, delegate, publish, or start project work. '
                   'Use Read without offset/limit to read all of ' + str(handoff) + '. '
-                  'Then use Bash with exactly: ' + COMMAND + '. '
+                  'Then use Bash with exactly: ' + command + '. '
                   'After checking UID 1000 and handoff SHA256 ' + digest + ', reply exactly ' + marker + '.') \
             if mode == 'fresh' else (
                 'Migration continuity verification only. Do not use tools or start project work. '
@@ -149,7 +163,7 @@ def run(project, session, mode):
             selector = selectors.DefaultSelector()
             selector.register(child.stdout, selectors.EVENT_READ)
             buffer, deadline, initialized, submitted, completed = bytearray(), time.monotonic() + 150, False, False, False
-            evidence = Evidence(workspace, session, digest, marker, text, mode == 'continuity')
+            evidence = Evidence(workspace, session, digest, marker, text, mode == 'continuity', handoff_relative)
             initialize = {'type': 'control_request', 'request_id': 'topic-migration-initialize',
                           'request': {'subtype': 'initialize', 'hooks': None}}
             child.stdin.write(json.dumps(initialize).encode() + b'\n'); child.stdin.flush()

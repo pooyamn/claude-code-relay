@@ -1872,3 +1872,67 @@ only the post-start fresh observation is used above. Human model-switch/next
 live goal-final receipts remain pending, not inferred from fixtures. Migration
 is still 9/13; the main goal remains active with the owner's 5%-remaining pause
 condition. This feature update does not complete or broaden retirement scope.
+
+### ai-hil and supervisor firmware cutover October 4 at 1:27 AM PDT
+
+Generation `e85f1d1280a04116b0988985527a6570` moves original Ai Dispatch
+topics **1876** (ai-hil outreach) and **5786** (supervisor firmware review)
+to prepared native Claude sessions `2c0bce31-f586-4d5e-9422-4be550763ed8`
+and `dcf9169b-c044-4c39-9ba5-e27d2978722c`. Their actual handoff reads,
+UID-1000 tool checks and independent same-ID context resumes had already
+passed; the four retained results were reviewed, not rerun. No new model
+prompts, replacement threads, binary update or project work were performed.
+
+Actual source panes and completed native histories proved idle before fencing.
+After ingress removal, graceful terminal shutdown changed one captured process
+identity, so the helper refused further signals. Explicit reconciliation found
+all four panes/watchers absent, no selected history or workspace producers,
+and exactly unchanged user/assistant conversation rows; only shutdown metadata
+was appended. Native pins were then retired recoverably. Final histories and
+private config/UI preimages are retained on the PC in
+`C:\ProgramData\OracovaMigration\e85f1d1280a04116b0988985527a6570\core-topics-final-sftp.tar.gz`
+(16,962,982 bytes; SHA-256
+`49546b5ebd8419f3f4f055ab417f67d8c79d186d354f1b42a23724f534d89b27`).
+The digest, archive readability and administrator/SYSTEM-only access matched.
+This scoped source fence is not a full-system consistent backup or restore test.
+
+The scoped outreach files matched by checksum. Supervisor source and PC HEAD
+both remain `816432b231da4f39ad636bd00b5bbea3c9aeee37`; the only worktree
+content difference found was the existing PC portability change to
+`firmware/supervisor-c/CMakeLists.txt`, which was preserved. No uncommitted
+owner work was overwritten or pushed from that project.
+
+A fresh no-model/no-polling installed OS/credential-denial proof finished at
+`08:25:06.0694189Z`. Production started at `08:25:51.1482759Z`; fresh status
+at `08:27:50.0147076Z` confirmed **12 routes, all seven Claude streams**, zero
+held/unknown states and unchanged Linux daemon PID **2141**. Windows native
+PID is **11252**. Exact controller turn `01a105f4-84f2-7551-9264-be181a4c82c3`,
+active goal and rolling bubble **13659** survived. Startup supervision is Ready.
+The first pre-start status read was rejected, not accepted as live evidence.
+The service-stop error was reconciled through actual SCM Stopped state and
+the same native turn; no force-kill or repeated native input was used.
+
+Router DLL remains `C22B67C902C7303DFFFB28684CC5CD9183410065FEF909D4C965BE13C3DA31CF`;
+current policy is `4DD5478914BB7B017D7E9AFF12BBCAEF486AF1DED9B2A13A588B2D0D02C1E923`.
+Seven fresh quiesced checkpoints and all previous policy/database/probe/task
+preimages are retained in the matching protected release/connector package.
+The executed v2 helper hash is
+`c76c03aa7df7f98adf1982e5f2d9e0f70e4a3af40c0a99ac1d09f8757a4cd5f2`;
+the committed helper additionally waits for observed shutdown after an SCM
+stop error. Twenty focused evidence/source-fence checks passed. The initial
+mistyped observer hash failed before touching production; a regression now
+checks the exact reviewed observer digest.
+
+The previous genuine goal final was also confirmed in Telegram: message
+**13658**, `08:07:55Z`, 329 UTF-16 units, no code-block entity and notifications
+enabled. The continuing live goal bubble remained separate. Human-issued
+cross-provider model-switch acceptance and new-topic owner input remain pending.
+
+Migration is **11/13 required originals plus LG**. Fresh Startup Ideas access
+still returns HTTP 400; KiCad retains OpenCode session
+`ses_fda86bd86ffeX9tdQh70Q6uZoX` without a selected backend marker, so the owner
+was asked which supported destination to use. Khadang still lacks Ai Dispatch
+Manage Topics permission for the separate requested Oracova product topic.
+Qwen remains excluded. Weekly quota is still 85% used / 15% remaining; the
+5%-remaining pause condition has not fired. Remote/boot/disaster recovery,
+bench restoration/relocation and final source retirement remain incomplete.
