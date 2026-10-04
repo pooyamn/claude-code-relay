@@ -90,6 +90,14 @@ The `cc-relay-commands` plugin registers `/newcc`, `/unbind`, `/ccstatus` as **p
 
 ### Native Telegram command menus
 
+For the current **PC Khadang router**, `cc model opus|sonnet|haiku` switches to
+Claude and `cc model cx` switches back to Codex, preserving both sessions and
+sending a handoff in the same workspace. Finish active work and pause any goal
+first. Goal final answers are separate normal messages while the rolling live
+bubble continues. [Current PC controls and limits](docs/native-telegram-commands.md#current-pc-khadang-model-switching--2026-10-04).
+
+The following describes the earlier Mac adapter:
+
 Repository preparation now supports direct `/model`, `/cancel` and `/help`,
 Claude `/clear`, `/compact`, `/unq`, and Codex `/goal` controls. Menus reflect the
 chat's bound session types; mixed forums show a labeled union because Telegram

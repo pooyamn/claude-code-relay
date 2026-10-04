@@ -58,11 +58,11 @@ public sealed class WindowsOwnerProcess : IDisposable
         var arguments = runtime.Arguments(workspaces);
         return StartCore(policy, windowsWorkspace, null, runtime, arguments);
     }
-    public static WindowsOwnerProcess StartLinuxClaude(RouterPolicy policy, string windowsWorkspace, Binding binding)
+    public static WindowsOwnerProcess StartLinuxClaude(RouterPolicy policy, string windowsWorkspace, Binding binding, bool snapshot = false)
     {
         policy.Validate(); policy.ValidateBindings([binding]);
         var runtime = policy.LinuxClaude ?? throw new InvalidDataException("Protected Linux Claude runtime required");
-        var arguments = runtime.Arguments(binding, policy.OwnerFullAccess);
+        var arguments = runtime.Arguments(binding, policy.OwnerFullAccess) + (snapshot ? " --snapshot" : "");
         return StartCore(policy, windowsWorkspace, null, linuxArguments: arguments, claude: runtime, binding: binding);
     }
     // One-shot acceptance only: an empty child-only credential home. Never copy

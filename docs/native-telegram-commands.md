@@ -1,5 +1,59 @@
 # Native Telegram command menus
 
+## Current PC Khadang model switching — 2026-10-04
+
+The protected PC router restores **only** the requested legacy model syntax:
+`cc model opus`, `cc model sonnet`, `cc model haiku` select native Claude;
+`cc model cx` returns to native Codex. Explicit native Claude/GPT catalog IDs
+are supported. `cc model` lists the current native catalog. Other legacy `cc`
+commands and the old button picker are not restored by this change.
+
+Cross-tool switches require an idle source with no pending approval/question,
+active Codex goal or uncertain delivery. Pause `/goal`, then finish or `/cancel`
+the running turn; goal pause alone does not stop it. No automatic interruption
+or pause is performed. Unsupported selectors never become model prompts.
+
+Both provider IDs are retained in protected per-topic slots. A first switch
+creates an exact reserved counterpart; subsequent switches resume its saved ID.
+The topic address and worktree never move. A bounded handoff carries recent
+owner requests, the last completed answer/progress, goal snapshot, Git HEAD,
+dirty/untracked file names and diff summary. This is not a full history clone.
+Pending approvals and authority for old external actions are not transferred.
+
+Codex receives the handoff through native `thread/inject_items`, without a paid
+work turn. Claude receives it through an acknowledged native send-now message:
+acknowledge readiness, then wait for the next owner request without doing project
+work. The topic binding and committed switch receipt change atomically only
+after handoff delivery is confirmed. Incomplete/unknown switches hold their
+exact destination for inspection; no replacement conversation or replay.
+Legacy Claude model changes relaunch the same ID with `--model`, rather than
+relying on a live setting that can retain the previous cached model.
+
+This paired launcher covers the nine activated **Linux** topic workspaces,
+including DUT and CC relay. Windows LG has no reviewed Claude launcher and
+refuses cross-tool switching. Existing native `/model` and other supported
+controls remain; the older Mac deployment sections below are historical.
+
+During an active Codex goal, authoritative `agentMessage` completions with
+`phase=final_answer` enter a separate durable, notifying final-answer outbox.
+They no longer wait for the goal or whole turn to end. Commentary/tools remain
+in the one rolling code-block bubble with Working timer/goal footer; final prose
+is a normal formatted message. Repeated item IDs, concurrent flushes and restart
+receipts cannot resend confirmed answers. Unknown acknowledgments hold instead
+of duplicating a message; explicit Telegram throttles can retry the rejected part.
+The native item/turn distinction follows the
+[official app-server lifecycle](https://learn.chatgpt.com/docs/app-server).
+
+Deployed generation `0bc81f90bf4e4494a07d2d36b979271e`: 924 PC Linux fixture
+checks, **927 actual Windows fixture checks**, and 25 Python bridge tests passed.
+A candidate-bound real Claude test delivered a fixed canary, verified tool UID
+1000, and resumed the same UUID in an independent native generation with its
+marker/context intact. Live routing was not changed by that canary. Fresh
+installed OS/credential checks followed; all ten routes/five Claude connections
+and the exact active controller turn/goal were observed after restart. An actual
+owner-issued cross-tool command and the next live goal-final notification remain
+to be observed; fixtures/native canaries are not claimed as those human receipts.
+
 ## Legacy tool-switch alias regression — 2026-10-03
 
 DUT topic 53 received `cc model opus` at 07:57:03; outbound message 4778

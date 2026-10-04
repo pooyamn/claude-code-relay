@@ -97,7 +97,7 @@ public sealed class LinuxCodexChannel : INativeChannel
         var runtime = policy.LinuxCodex ?? throw new InvalidDataException("Protected Linux Codex runtime is not configured");
         if (policy.CredentialFile != @"C:\ProgramData\KhadangRouter\khadang-token.dpapi")
             throw new InvalidDataException("Linux credential denial probe requires the exact protected PC credential");
-        var workspaces = bindings.Where(b => b.Backend == "codex" && b.Runtime == "linux")
+        var workspaces = bindings.Where(b => b.Runtime == "linux")
             .Select(b => b.Workspace).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
         LinuxCodexRuntime.ValidateWorkspaces(workspaces);
         var process = WindowsOwnerProcess.StartLinuxCodex(policy, windowsWorkspace, workspaces);

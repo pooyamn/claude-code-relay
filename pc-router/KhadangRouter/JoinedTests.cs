@@ -212,18 +212,16 @@ public static class JoinedTests
         public Task<JsonElement> Send(long chat, int topic, string text, CancellationToken stop)
         {
             Sends++; Last = text; FirstSent.TrySetResult();
-            if (native.NativeOriginOnly && text.Contains("NATIVE-FINAL") && text.Contains("Done (")) Completed.TrySetResult();
             return Task.FromResult(Json(new { message_id = 900 }));
         }
         public Task Edit(long chat, int message, string text, CancellationToken stop)
         {
             if (message != 900) throw new Exception("Wrong bubble receipt");
             Edits++; Last = text;
-            if (native.NativeOriginOnly ? text.Contains("NATIVE-FINAL") && text.Contains("Done (") :
-                native.BadSteerReceipt != null ? text.Contains("Held — input 101 not confirmed") : text.Contains("Done (")) Completed.TrySetResult();
+            if (native.BadSteerReceipt != null && text.Contains("Held — input 101 not confirmed")) Completed.TrySetResult();
             return Task.CompletedTask;
         }
         public Task<JsonElement> SendAnswer(long chat, int topic, AnswerPart part, CancellationToken stop)
-        { Answers++; return Task.FromResult(Json(new { message_id = 1000 + Answers })); }
+        { Answers++; if (Answers == (native.NativeOriginOnly ? 1 : 5)) Completed.TrySetResult(); return Task.FromResult(Json(new { message_id = 1000 + Answers })); }
     }
 }

@@ -11,7 +11,8 @@ public static class ActiveAttachmentTests
         void Check(bool condition, string name) { if (!condition) throw new Exception(name); checks++; }
         var flags = BindingFlags.NonPublic | BindingFlags.Instance;
         var type = typeof(Router).GetNestedType("Session", BindingFlags.NonPublic)!;
-        foreach (var scenario in new[] { "active", "completed", "completion-race", "new-turn-race", "held", "approval", "invalid" })
+        foreach (var scenario in new[] { "active", "completed", "completion-race", "new-turn-race", "held", "approval", "invalid",
+            "restore", "restore-completed", "restore-race", "restore-resume-race", "restore-mismatch" })
         {
             using var ledger = new Ledger(Path.Combine(root, "active-attach-" + scenario + ".db"));
             var binding = new Binding(policy.ChatId, 42, "Already running", policy.WorkspaceRoot + "\\lg-magic", "active-native");
@@ -22,10 +23,12 @@ public static class ActiveAttachmentTests
             var notify = typeof(Router).GetMethod("OnNative", flags)!;
             void Event(string method, object parameters) => notify.Invoke(router, new[] { (object)JsonSerializer.SerializeToElement(new { method, @params = parameters }) });
             native.DuringRead = () => {
-                if (scenario == "completion-race") Event("turn/completed", new { threadId = binding.ThreadId, turn = new { id = "existing", status = "completed" } });
+                if (scenario is "completion-race" or "restore-race" or "restore-resume-race") Event("turn/completed", new { threadId = binding.ThreadId, turn = new { id = "existing", status = "completed" } });
                 if (scenario == "new-turn-race") Event("turn/started", new { threadId = binding.ThreadId, turn = new { id = "newer" } });
             };
             if (scenario == "held") type.GetField("Held")!.SetValue(session, true);
+            if (scenario.StartsWith("restore"))
+            { type.GetField("RestoreTurn")!.SetValue(session, "existing"); type.GetProperty("Message")!.SetValue(session, 900); }
             try
             {
                 await (Task)typeof(Router).GetMethod("ResumeCodex", flags)!.Invoke(router, new[] { session, CancellationToken.None })!;
@@ -46,6 +49,9 @@ public static class ActiveAttachmentTests
             else if (scenario == "new-turn-race") Check(busy && turn == "newer", "Newer observed turn wins over stale attachment snapshot");
             else if (scenario is "completed" or "completion-race") Check(!busy && turn == null, "Completion cannot be resurrected by stale in-progress snapshot: " + scenario);
             else if (scenario is "held" or "approval") Check((bool)type.GetField("Held")!.GetValue(session)! && !busy, "Attachment never clears unknown receipts or pending native approval: " + scenario);
+            else if (scenario == "restore") Check(busy && turn == "existing" && (int?)type.GetProperty("Message")!.GetValue(session) == 900, "Restart attaches exact active turn and retains the existing live bubble");
+            else if (scenario is "restore-completed" or "restore-race" or "restore-resume-race") Check(!busy && turn == "existing" && (string?)type.GetField("Status")!.GetValue(session) == "Done", "Restart does not resurrect completion during snapshot: " + scenario);
+            else if (scenario == "restore-mismatch") Check((bool)type.GetField("Held")!.GetValue(session)!, "Saved turn mismatch is held, never silently attached to replacement work");
         }
         return checks;
     }
@@ -59,14 +65,16 @@ public static class ActiveAttachmentTests
         {
             Methods.Add(method); var args = JsonSerializer.SerializeToElement(parameters);
             if (args.GetProperty("threadId").GetString() != binding.ThreadId) throw new Exception("Wrong attachment thread");
-            if (method == "thread/resume") return Task.FromResult(JsonSerializer.SerializeToElement(new {
+            if (method == "thread/resume") {
+                if (scenario == "restore-resume-race") DuringRead?.Invoke();
+                return Task.FromResult(JsonSerializer.SerializeToElement(new {
                 cwd = binding.Workspace, approvalPolicy = policy.NativeApprovalPolicy, approvalsReviewer = "user", sandbox = new { type = policy.NativeSandboxType },
-                thread = new { id = binding.ThreadId, status = new { type = "active", activeFlags = scenario == "approval" ? new[] { "waitingOnApproval" } : Array.Empty<string>() } } }));
+                thread = new { id = binding.ThreadId, status = new { type = "active", activeFlags = scenario == "approval" ? new[] { "waitingOnApproval" } : Array.Empty<string>() } } })); }
             if (method == "thread/turns/list")
             {
                 if (effect || args.GetProperty("limit").GetInt32() != 1 || args.GetProperty("itemsView").GetString() != "notLoaded") throw new Exception("Unbounded/mutating attachment read");
                 DuringRead?.Invoke();
-                return Task.FromResult(JsonSerializer.SerializeToElement(new { data = scenario == "invalid" ? Array.Empty<object>() : new object[] { new { id = "existing", status = scenario == "completed" ? "completed" : "inProgress" } } }));
+                return Task.FromResult(JsonSerializer.SerializeToElement(new { data = scenario == "invalid" ? Array.Empty<object>() : new object[] { new { id = scenario == "restore-mismatch" ? "replacement" : "existing", status = scenario is "completed" or "restore-completed" ? "completed" : "inProgress" } } }));
             }
             throw new Exception("Unexpected attachment action");
         }

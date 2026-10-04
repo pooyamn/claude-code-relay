@@ -39,4 +39,6 @@ public interface IClaudeTopics
     // Must return an already-attested ordinary-owner stream for this exact
     // saved pin/runtime/workspace. The router never discovers a substitute.
     Task<IClaudeNative> Open(Binding binding, CancellationToken stop);
+    Task<IClaudeNative> OpenForSwitch(Binding source, Binding target, bool fresh, string? model, CancellationToken stop) =>
+        throw new NotSupportedException("This launcher has no reviewed owner tool-switch path");
 }

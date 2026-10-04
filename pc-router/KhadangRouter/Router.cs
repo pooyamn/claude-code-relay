@@ -28,14 +28,18 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         public string? ClaudeResultStatus;
         public readonly object Gate = new();
         public readonly SemaphoreSlim Dispatch = new(1, 1);
+        public readonly SemaphoreSlim Output = new(1, 1);
         public RollingBubble Bubble = new();
         public Stopwatch Elapsed = new();
         public TimeSpan Carried;
         public string? Turn;
         public long NativeStateRevision;
+        public string? RestoreTurn;
         public NativeGoal Goal = new(binding.ThreadId);
         public ResponseMessage Response = new();
         public readonly Queue<ResponseMessage> PendingBubbles = new();
+        public readonly Queue<FinalAnswerState> PendingAnswers = new();
+        public string LastAnswer = "";
         public int? Message { get => Response.Message; set => Response.Message = value; }
         public bool SendUnknown { get => Response.SendUnknown; set => Response.SendUnknown = value; }
         public string Status = "Ready";
@@ -54,6 +58,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         Dictionary<string, object> Answers);
     private readonly ConcurrentDictionary<string, Question> questions = new();
     private readonly SemaphoreSlim starts = new(1, 1);
+    private readonly ConcurrentDictionary<string, IClaudeNative> switchedClaude = new();
     private readonly NativeQuota quota = new();
     private readonly NativeRemote remote = nativeRemote ?? new();
     private readonly NativeQuota linuxQuota = new();
@@ -111,11 +116,15 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 session.Bubble.Append(saved.GetProperty("tail").GetString()!);
                 session.Message = saved.GetProperty("message").ValueKind == JsonValueKind.Number ? saved.GetProperty("message").GetInt32() : null;
                 session.SendUnknown = saved.GetProperty("sendUnknown").GetBoolean();
-                session.Held = saved.GetProperty("held").GetBoolean() || saved.GetProperty("busy").GetBoolean();
+                if (saved.GetProperty("busy").GetBoolean() && !saved.GetProperty("held").GetBoolean() &&
+                    saved.TryGetProperty("turn", out var previousTurn) && previousTurn.ValueKind == JsonValueKind.String)
+                    session.RestoreTurn = previousTurn.GetString();
+                session.Held = saved.GetProperty("held").GetBoolean() || saved.GetProperty("busy").GetBoolean() && session.RestoreTurn == null;
                 session.Status = session.Held ? "Held — reconcile interrupted turn" : saved.GetProperty("status").GetString()!;
                 session.Carried = TimeSpan.FromMilliseconds(saved.GetProperty("elapsedMs").GetDouble());
                 RestorePendingBubbles(session, saved);
                 RestoreAnswer(session.Response, saved);
+                if (saved.TryGetProperty("lastAnswer", out var lastAnswer)) session.LastAnswer = lastAnswer.GetString()!;
                 if (session.Response.Answer.Parts.Any(p => p.SendUnknown)) { session.Held = true; session.Status = "Held — final answer delivery unconfirmed"; }
                 session.Dirty = true;
             }
@@ -139,7 +148,16 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             }
         }
         if (sessions.Count == 0) await CreateLg(stop);
-        foreach (var session in sessions.Values.Where(s => s.Claude == null)) await ReadGoal(session, stop);
+        foreach (var session in sessions.Values.Where(s => s.Claude == null))
+        {
+            await ReadGoal(session, stop);
+            lock (session.Gate)
+                if (session.Busy && session.Goal.Value?.GetProperty("status").GetString() == "active" &&
+                    session.Response.Answer.Explicit && !session.Response.Answer.Completed)
+                {
+                    CompleteAnswer(session); session.PendingAnswers.Enqueue(session.Response.Answer); session.Response.Answer = new(); Touch(session);
+                }
+        }
         edits = Task.Run(() => EditLoop(stop), stop);
             await Menus(stop);
             if (canary && ledger.Get("native-canary") == null)
@@ -187,6 +205,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                     claude.Notification -= session.ClaudeHandler;
                 }
             await Task.WhenAll(ownedClaude.Distinct<IClaudeNative>(ReferenceEqualityComparer.Instance).Select(c => c.DisposeAsync().AsTask()));
+            await Task.WhenAll(switchedClaude.Values.Distinct<IClaudeNative>(ReferenceEqualityComparer.Instance).Select(c => c.DisposeAsync().AsTask()));
             try { await Task.WhenAll(handlers.Values.Append(edits)); } catch (OperationCanceledException) { }
         }
     }
@@ -266,6 +285,16 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 ledger.Finish(updateId, "unbound"); return;
             }
             target = session;
+            if (message.TryGetProperty("text", out var modelText) && modelText.ValueKind == JsonValueKind.String &&
+                !new[] { "photo", "document", "audio", "video", "voice", "animation", "sticker", "video_note", "media_group_id" }.Any(key => message.TryGetProperty(key, out _)) &&
+                ModelCommand.TryParse(modelText.GetString()!, policy.BotUsername, out var requestedModel))
+            {
+                await session.Dispatch.WaitAsync(stop);
+                try { RequireCurrent(session); await SwitchModel(session, requestedModel, stop,
+                    modelText.GetString()!.TrimStart().StartsWith("cc", StringComparison.OrdinalIgnoreCase) ||
+                    modelText.GetString()!.TrimStart().StartsWith("/cc", StringComparison.OrdinalIgnoreCase)); ledger.Finish(updateId, "control"); return; }
+                finally { session.Dispatch.Release(); }
+            }
             if (session.Claude != null) { await HandleClaude(updateId, message, session, stop); return; }
             IReadOnlyList<AttachmentReference> references;
             try { references = Attachments.References(message); }
@@ -289,7 +318,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                     await Control(session, text, stop); ledger.Finish(updateId, "control"); return;
                 }
                 await session.Dispatch.WaitAsync(stop);
-                try { await Control(session, text, stop); ledger.Finish(updateId, "control"); return; }
+                try { RequireCurrent(session); await Control(session, text, stop); ledger.Finish(updateId, "control"); return; }
                 finally { session.Dispatch.Release(); }
             }
             string? mediaTurn = null;
@@ -313,6 +342,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             await session.Dispatch.WaitAsync(stop);
             try
             {
+                RequireCurrent(session);
                 string? active;
                 lock (session.Gate)
                 {
@@ -580,6 +610,8 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             {
                 var started = parameters.GetProperty("turn").GetProperty("id").GetString();
                 if (started == session.Turn) return; // Duplicate start must not resurrect/rotate a completed response.
+                if (session.RestoreTurn != null && started != session.RestoreTurn)
+                { session.Held = true; session.Status = "Held — native work changed across restart"; session.RestoreTurn = null; Touch(session); return; }
                 if (!session.Busy) { BeginBubble(session); session.Elapsed.Restart(); session.Carried = TimeSpan.Zero; session.DeltaItems.Clear(); session.Items.Clear(); session.CompletedItems.Clear(); session.CompletedOrder.Clear(); }
                 session.Turn = started; session.Busy = true; session.Status = "Working";
             }
@@ -587,6 +619,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             {
                 var turn = parameters.GetProperty("turn");
                 if (turn.GetProperty("id").GetString() != session.Turn) return;
+                session.RestoreTurn = null;
                 session.Busy = false; session.Status = turn.GetProperty("status").GetString() switch {
                     "completed" => "Done", "interrupted" => "Stopped", _ => "Failed — inspect native session" };
                 session.Elapsed.Stop();
@@ -636,6 +669,14 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                     session.Bubble.Upsert("agent:" + item.GetProperty("id").GetString(), text);
                     var phase = item.TryGetProperty("phase", out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;
                     if (phase != "commentary") ConsiderAnswer(session, text, phase == "final_answer");
+                    // A goal can continue the same native turn after an actual
+                    // final answer. Deliver that answer now, not at goal end.
+                    if (phase == "final_answer" && session.Goal.Value?.GetProperty("status").GetString() == "active")
+                    {
+                        CompleteAnswer(session);
+                        session.PendingAnswers.Enqueue(session.Response.Answer);
+                        session.Response.Answer = new();
+                    }
                 }
                 else if (item.GetProperty("type").GetString() == "userMessage") session.Bubble.Append(NativeEventView.User(item));
                 else
@@ -711,8 +752,12 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             claudeState = session.Claude == null ? null : session.ClaudeState,
             tail = session.Bubble.Tail, message = session.Message, sendUnknown = session.SendUnknown, held = session.Held,
             pendingResponses = session.PendingBubbles.Select(r => new { text = r.Text, message = r.Message, lastRendered = r.LastRendered, sendUnknown = r.SendUnknown, finalAnswer = r.Answer }).ToArray(),
+            pendingAnswers = session.PendingAnswers.ToArray(),
+            completedItems = session.CompletedOrder.ToArray(),
             finalAnswer = session.Response.Answer,
+            lastAnswer = session.LastAnswer,
             busy = session.Busy, status = session.Status, elapsedMs = (session.Carried + session.Elapsed.Elapsed).TotalMilliseconds,
+            turn = session.Turn,
             goal = goal.Goal, goalKnown = goal.Known, goalObservedAt = goal.ObservedAt });
     }
     private void VerifyThread(JsonElement result, string cwd, string? id = null, string runtime = "windows")

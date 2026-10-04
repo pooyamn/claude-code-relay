@@ -20,6 +20,38 @@ WORKSPACE = str(bridge.WORKSPACE_ROOT / 'duts')
 
 
 class PcClaudeStdioTests(unittest.TestCase):
+    def test_fresh_start_requires_exact_protected_owner_manifest_and_unused_native_id(self):
+        value = {'schema': 'ccrelay.personal_claude_start.v1', 'session_id': SESSION, 'workspace': WORKSPACE,
+                 'source_writer': 'owner_switch', 'uncertain_actions': [], 'history': None, 'profile': str(bridge.OWNER / '.claude')}
+        path = '/mnt/c/ProgramData/OracovaNativeRemote/claude-connector-' + 'a' * 32 + '/handoff-' + SESSION + '.json'
+        with mock.patch.object(bridge, 'read_pinned', return_value=(None, value)), \
+                mock.patch.object(bridge.Path, 'exists', return_value=False), mock.patch.object(bridge.Path, 'is_symlink', return_value=False):
+            history, metadata = bridge.checked_handoff(path, 'a' * 64, WORKSPACE, SESSION)
+            self.assertTrue(str(history).endswith(SESSION + '.jsonl')); self.assertIsNone(metadata)
+        for key, bad in [('source_writer', 'agent'), ('profile', '/tmp/empty-home'), ('session_id', 'other'),
+                         ('history', {}), ('uncertain_actions', ['unconfirmed']), ('workspace', WORKSPACE + '-other')]:
+            with self.subTest(key=key), mock.patch.object(bridge, 'read_pinned', return_value=(None, {**value, key: bad})), self.assertRaises(Denied):
+                bridge.checked_handoff(path, 'a' * 64, WORKSPACE, SESSION)
+        for exists, link in [(True, False), (False, True)]:
+            with mock.patch.object(bridge, 'read_pinned', return_value=(None, value)), \
+                    mock.patch.object(bridge.Path, 'exists', return_value=exists), mock.patch.object(bridge.Path, 'is_symlink', return_value=link), self.assertRaises(Denied):
+                bridge.checked_handoff(path, 'a' * 64, WORKSPACE, SESSION)
+
+    def test_model_is_a_literal_not_an_additional_option_or_prompt(self):
+        for model in ('opus\n--continue', '--fork-session', 'opus;whoami', 'opus sonnet', 1):
+            with self.subTest(model=model), mock.patch.object(bridge, 'require_owner'), mock.patch.object(bridge.subprocess, 'Popen') as launch, self.assertRaises(Denied):
+                bridge.run(WORKSPACE, SESSION, '/unused', 'a' * 64, model=model)
+            launch.assert_not_called()
+
+    def test_fresh_id_appearing_after_the_lease_never_resumes_or_replaces_it(self):
+        lease = mock.Mock()
+        with mock.patch.object(bridge, 'require_owner'), mock.patch.object(bridge, 'attest_workspaces', return_value=mock.Mock()), \
+                mock.patch.object(bridge, 'checked_handoff', return_value=(Path('/synthetic-history'), None)), \
+                mock.patch.object(bridge, 'read_pinned', return_value=(None, None)), mock.patch.object(bridge, 'acquire_lease', return_value=lease), \
+                mock.patch.object(bridge.Path, 'exists', return_value=True), mock.patch.object(bridge.subprocess, 'Popen') as launch, self.assertRaises(Denied):
+            bridge.run(WORKSPACE, SESSION, '/synthetic-checkpoint', 'a' * 64, model='opus')
+        launch.assert_not_called(); lease.close.assert_called_once()
+
     def handoff(self):
         return {'schema': 'ccrelay.personal_claude_handoff.v1', 'session_id': SESSION, 'workspace': WORKSPACE,
                 'source_writer': 'quiesced', 'uncertain_actions': [], 'profile': str(bridge.OWNER / '.claude'),

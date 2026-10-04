@@ -23,6 +23,7 @@ public sealed class ClaudeNativeStream : IClaudeNative
     private readonly Task reader;
     private long sequence;
     private int initializationAttempts;
+    private int disposalStarted;
     private volatile bool disconnected, initialized, superseded;
     public event Action<JsonElement>? Notification;
     // Launcher metadata only, never owner or role authentication.
@@ -284,6 +285,8 @@ public sealed class ClaudeNativeStream : IClaudeNative
     }
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref disposalStarted, 1) != 0) return;
+        disconnected = true;
         stop.Cancel();
         try { await Task.WhenAll(reader, channel.DisposeAsync().AsTask()); }
         catch (OperationCanceledException) { }

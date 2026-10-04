@@ -8,7 +8,7 @@ namespace KhadangRouter;
 
 // Existing personal-owner launcher only; no company identities or broker.
 // Each checkpoint authorizes one exact topic/workspace/native conversation.
-public sealed record ClaudeCheckpoint(long Chat, int Topic, string Workspace, string Sha256);
+public sealed record ClaudeCheckpoint(long Chat, int Topic, string Workspace, string Sha256, string? Model = null);
 public sealed record LinuxClaudeRuntime(string PackageRoot, string WslSha256, Dictionary<string, string> FileSha256,
     Dictionary<string, ClaudeCheckpoint> Checkpoints)
 {
@@ -29,7 +29,7 @@ public sealed record LinuxClaudeRuntime(string PackageRoot, string WslSha256, Di
         {
             if (!Session(session) || checkpoint == null || checkpoint.Workspace == null || checkpoint.Chat >= 0 || checkpoint.Topic < 0 ||
                 !Digest(checkpoint.Sha256) || checkpoint.Sha256 != checkpoint.Sha256.ToLowerInvariant() ||
-                !addresses.Add(new(checkpoint.Chat, checkpoint.Topic)))
+                !addresses.Add(new(checkpoint.Chat, checkpoint.Topic)) || checkpoint.Model != null && !Regex.IsMatch(checkpoint.Model, @"\A[A-Za-z0-9][A-Za-z0-9._\[\]-]*\z"))
                 throw new InvalidDataException("Exact unique saved Claude checkpoints required");
             LinuxCodexRuntime.ValidateWorkspaces([checkpoint.Workspace]);
         }
@@ -52,7 +52,8 @@ public sealed record LinuxClaudeRuntime(string PackageRoot, string WslSha256, Di
         return "-d Ubuntu-24.04 -u pou --exec /usr/bin/python3 -I -B " + LinuxCodexRuntime.Quote(root + "/pc_claude_stdio.py") +
             " --workspace " + LinuxCodexRuntime.Quote(binding.Workspace) + " --session " + LinuxCodexRuntime.Quote(binding.ThreadId) +
             " --checkpoint " + LinuxCodexRuntime.Quote(root + "/handoff-" + binding.ThreadId + ".json") +
-            " --checkpoint-sha256 " + checkpoint.Sha256 + (ownerFullAccess ? " --owner-full-access" : "");
+            " --checkpoint-sha256 " + checkpoint.Sha256 + (ownerFullAccess ? " --owner-full-access" : "") +
+            (checkpoint.Model == null ? "" : " --model " + LinuxCodexRuntime.Quote(checkpoint.Model));
     }
     internal IDisposable OpenPinnedPackage(Binding binding)
     {
@@ -184,7 +185,7 @@ public sealed class LinuxClaudeChannel : INativeChannel
     public ValueTask DisposeAsync() => channel.DisposeAsync();
 }
 
-public sealed class LinuxClaudeTopics : IClaudeTopics
+public sealed partial class LinuxClaudeTopics : IClaudeTopics
 {
     private readonly Ledger ledger;
     private readonly LinuxClaudeRuntime? runtime;
@@ -196,17 +197,22 @@ public sealed class LinuxClaudeTopics : IClaudeTopics
     internal LinuxClaudeTopics(RouterPolicy policy, Ledger ledger, IReadOnlyList<Binding> bindings,
         Func<Binding, CancellationToken, Task<INativeChannel>> open)
     {
-        ValidateRegistry(policy, bindings); this.ledger = ledger; this.open = open; runtime = policy.LinuxClaude;
-        selected = bindings.Where(binding => binding.Backend == "claude").ToDictionary(binding => binding.Address);
+        ValidateRegistry(policy, bindings, ledger); this.ledger = ledger; this.open = open; runtime = policy.LinuxClaude; this.policy = policy;
+        selected = bindings.ToDictionary(binding => binding.Address);
     }
-    internal static void ValidateRegistry(RouterPolicy policy, IReadOnlyList<Binding> bindings)
+    internal static void ValidateRegistry(RouterPolicy policy, IReadOnlyList<Binding> bindings, Ledger? ledger = null)
     {
         policy.Validate(); policy.ValidateBindings(bindings);
         var claude = bindings.Where(binding => binding.Backend == "claude").ToArray();
         if (claude.Length == 0) return;
         var runtime = policy.LinuxClaude ?? throw new InvalidDataException("Claude bindings require the protected exact-handoff launcher");
-        if (runtime.Checkpoints.Count != claude.Length) throw new InvalidDataException("Claude checkpoint set differs from the whole selected registry");
-        foreach (var binding in claude) runtime.For(binding);
+        foreach (var checkpoint in runtime.Checkpoints.Values)
+            if (!bindings.Any(b => b.Chat == checkpoint.Chat && b.Topic == checkpoint.Topic && b.Workspace == checkpoint.Workspace))
+                throw new InvalidDataException("Claude checkpoint authorizes an unregistered topic/workspace");
+        foreach (var binding in claude)
+            if (runtime.Checkpoints.ContainsKey(binding.ThreadId)) runtime.For(binding);
+            else if (ledger?.Get(ModelCommand.Slot(binding.Address, "claude")) is not { } saved || JsonSerializer.Deserialize<Binding>(saved.GetRawText()) != binding)
+                throw new InvalidDataException("Claude binding has neither an exact reviewed checkpoint nor a protected owner-switch enrollment");
     }
     internal static void RequireAcceptance(JsonElement proof)
     {
@@ -218,6 +224,8 @@ public sealed class LinuxClaudeTopics : IClaudeTopics
     {
         if (!selected.TryGetValue(binding.Address, out var original) || binding != original)
             throw new InvalidDataException("Claude launcher cannot select a substitute binding");
+        if (!runtime!.Checkpoints.ContainsKey(binding.ThreadId) || ledger.Get(CheckpointKey(binding)) != null)
+            return await OpenForSwitch(binding, binding, false, null, stop);
         lock (attempted)
         {
             if (!attempted.Add(binding.ThreadId)) throw new InvalidOperationException("Claude launch already attempted; reconcile before any new generation");

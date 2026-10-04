@@ -27,8 +27,9 @@ is authorized until the exact target is resolved and verified copies exist.
 
 The original OpenClaw configuration contained 14 bindings: eight topics in Ai
 Dispatch, five in Oracova, and the standalone Startup Ideas group. Eight now
-route to the PC; six remain on the source, of which five are required and Qwen
-is excluded. Required migration progress is 8/13. Keep the included chat and
+route to the PC; CC relay has since joined them (nine now), leaving five on the
+source, of which four are required and Qwen is excluded. Required migration
+progress is 9/13. Keep the included chat and
 topic IDs unchanged. The existing PC LG topic remains intact.
 
 | Project | Chat | Topic |
@@ -1829,3 +1830,45 @@ originals are Startup Ideas, ai-hil 1876, supervisor-fw 5786 and KiCad 6004;
 Qwen remains excluded. The current migration goal is active. Independent
 remote/boot/disaster recovery, bench relocation and final source retirement
 remain pending; this fix does not authorize erasing the Mac.
+
+### Native model handoffs and clean goal replies October 4 at 1 AM PDT
+
+Generation `0bc81f90bf4e4494a07d2d36b979271e` restores the requested `cc model`
+syntax on paired Linux topics, with one retained native ID per provider, same
+workspace, an actual destination handoff and atomic topic/receipt commit.
+Unknown switches do not replay or create replacements. Claude model aliases
+relaunch the exact saved ID with the requested model. Windows LG cross-tool
+switches remain unsupported; no other legacy commands were restored.
+Authoritative goal finals now use a durable separate normal-message outbox
+while the single code-block live bubble continues. See the
+[current command behavior](native-telegram-commands.md#current-pc-khadang-model-switching--2026-10-04).
+
+924 PC Linux checks, 927 actual sealed Windows checks and 25 bridge tests passed.
+A real, private candidate-bound Claude canary at `07:55:48.1231051Z` proved
+native handoff delivery, tool UID 1000, idle completion and independent same-ID
+resume/context continuity (`d7b87381-1e8b-499f-980a-2ae089692997`). Its isolated
+journal did not change live bindings or fabricate Telegram owner updates.
+The connector changed, so native continuity was tested again, not merely
+carried forward from an older UI release.
+
+Fresh installed no-model/no-polling OS proof completed at
+`07:57:42.0933995Z`. Production restarted at `07:59:02.1388940Z`; fresh live
+status at `08:01:19.0036219Z` confirmed all ten unchanged routes, five Claude
+streams connected, zero holds/unknowns and the same Linux daemon PID 2141.
+Windows native PID is 20320 and router PID 26248. Controller 816 remains on
+the exact current native turn `01a105ca-712a-78a3-a009-9b5eb9090d75`, with active
+goal and rolling bubble 13651 preserved. Startup supervision is restored Ready.
+No goal, shared daemon, native task or Hamal wiring was reset.
+
+Installed DLL SHA-256:
+`C22B67C902C7303DFFFB28684CC5CD9183410065FEF909D4C965BE13C3DA31CF`;
+policy SHA-256:
+`E99D0BE6F9EDFA8B31D25AC2A672AA29BA3140CFAEF2D6A6B19C660D0FF2BA63`.
+Protected preimages include the previous binary, policy, SQLite backup, five
+quiesced native checkpoints, exact before/after active-turn observations,
+fresh OS/native test reports and `live-acceptance.json`. The first status read
+was older than startup and is explicitly retained as **not acceptance**;
+only the post-start fresh observation is used above. Human model-switch/next
+live goal-final receipts remain pending, not inferred from fixtures. Migration
+is still 9/13; the main goal remains active with the owner's 5%-remaining pause
+condition. This feature update does not complete or broaden retirement scope.

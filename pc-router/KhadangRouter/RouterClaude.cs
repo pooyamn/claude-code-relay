@@ -31,7 +31,7 @@ public sealed partial class Router
             else
             {
                 await session.Dispatch.WaitAsync(stop);
-                try { await ClaudeControl(session, body, stop); }
+                try { RequireCurrent(session); await ClaudeControl(session, body, stop); }
                 finally { session.Dispatch.Release(); }
             }
             ledger.Finish(updateId, "control"); return;
@@ -57,6 +57,7 @@ public sealed partial class Router
         await session.Dispatch.WaitAsync(stop);
         try
         {
+            RequireCurrent(session);
             bool active;
             lock (session.Gate)
             {

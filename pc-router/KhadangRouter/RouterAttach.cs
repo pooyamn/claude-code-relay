@@ -7,17 +7,26 @@ public sealed partial class Router
     private async Task ResumeCodex(Session session, CancellationToken stop)
     {
         var binding = session.Binding;
+        long resumeRevision;
+        // Adopt ONLY the durable exact ID before reads, so an observed
+        // completion during recovery closes it rather than being discarded.
+        lock (session.Gate) {
+            if (session.RestoreTurn != null && !session.Held && !session.SendUnknown && ledger.Unknown == 0)
+            { session.Turn = session.RestoreTurn; session.Busy = true; session.Status = "Working"; }
+            resumeRevision = session.NativeStateRevision;
+        }
         // Exclude transport history, not native context. Large controller
         // histories must not be sent through the bounded transport frame.
         var resumed = await session.Native.Call("thread/resume", new { threadId = binding.ThreadId, cwd = binding.Workspace,
             excludeTurns = true, approvalPolicy = policy.NativeApprovalPolicy, approvalsReviewer = "user",
             permissions = policy.NativePermissionProfile }, stop);
         VerifyThread(resumed, binding.Workspace, binding.ThreadId, binding.Runtime);
-        if (!resumed.GetProperty("thread").TryGetProperty("status", out var status) ||
-            status.GetProperty("type").GetString() != "active") return;
+        if (!resumed.GetProperty("thread").TryGetProperty("status", out var status)) return;
+        if (status.GetProperty("type").GetString() != "active" && session.RestoreTurn == null) return;
         long revision;
         lock (session.Gate)
         {
+            if (session.NativeStateRevision != resumeRevision) { session.RestoreTurn = null; return; }
             // A confirmed active snapshot is not authority to clear an older
             // unknown delivery/interrupted receipt or pending approval.
             if (session.Held || session.SendUnknown || ledger.Unknown != 0) return;
@@ -35,10 +44,19 @@ public sealed partial class Router
         if (string.IsNullOrWhiteSpace(id) || id.Length > 200 || id.Any(char.IsControl)) throw new InvalidDataException("Invalid native active-turn identity");
         lock (session.Gate)
         {
-            if (session.NativeStateRevision != revision || session.Held || session.SendUnknown) return;
-            if (turn.GetProperty("status").GetString() != "inProgress") return; // Completed while attaching.
-            if (session.Turn == id && session.Busy) return;
-            BeginBubble(session); session.Turn = id; session.Busy = true; session.Status = "Working";
+            if (session.NativeStateRevision != revision || session.Held || session.SendUnknown) { session.RestoreTurn = null; return; }
+            if (session.RestoreTurn != null && id != session.RestoreTurn)
+            { session.Held = true; session.Status = "Held — native work changed across restart"; Touch(session); return; }
+            if (turn.GetProperty("status").GetString() != "inProgress")
+            {
+                if (session.RestoreTurn != null && turn.GetProperty("status").GetString() is "completed" or "interrupted")
+                { session.Turn = id; session.Busy = false; session.Status = turn.GetProperty("status").GetString() == "completed" ? "Done" : "Stopped";
+                  if (session.Status == "Done") CompleteAnswer(session); session.RestoreTurn = null; Touch(session); }
+                return;
+            }
+            if (session.Turn == id && session.Busy && session.RestoreTurn == null) return;
+            if (session.RestoreTurn == null) BeginBubble(session);
+            session.RestoreTurn = null; session.Turn = id; session.Busy = true; session.Status = "Working";
             session.Elapsed.Restart(); session.Carried = TimeSpan.Zero;
             if (turn.TryGetProperty("startedAt", out var started) && started.TryGetInt64(out var seconds))
                 session.Carried = TimeSpan.FromSeconds(Math.Max(0, DateTimeOffset.UtcNow.ToUnixTimeSeconds() - seconds));

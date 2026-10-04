@@ -213,8 +213,10 @@ public static class MixedRoutingTests
                 claude.Emit(new { type = "result", session_id = Pin, subtype = "success" });
                 claude.Emit(new { type = "system", session_id = Pin, subtype = "session_state_changed", state = "idle" });
                 await Wait(() => bot.Edits.TryGetValue(bindings[2].Address, out var t) && t.Contains("Done (") && t.Contains("PHONE-OWNER") && t.Contains("⏳ Read"), stop.Token);
+                await Wait(() => bot.Sends >= 3, stop.Token); // The editor visits independent sessions; one topic's terminal edit is not all-topic delivery.
                 Check(bot.Sends >= 3 && bot.MaxPolls == 1 && bot.Edits.Values.All(t => t.Length <= 3900 && !t.Contains("FOREIGN-SOURCE") && !t.Contains("SUBAGENT-PRIVATE") && !t.Contains("PRIVATE-THINKING")),
-                    "Each new native response gets a bounded bubble without foreign events, subagent text or thinking");
+                    "Each new native response gets a bounded bubble without foreign events, subagent text or thinking; sends=" + bot.Sends + ", polls=" + bot.MaxPolls +
+                    ", invalid=" + bot.Edits.Values.Count(t => t.Length > 3900 || t.Contains("FOREIGN-SOURCE") || t.Contains("SUBAGENT-PRIVATE") || t.Contains("PRIVATE-THINKING")));
                 Check(!bot.Menus[bindings[2].Chat].EnumerateArray().Any(c => c.GetProperty("command").GetString() == "goal") &&
                     bot.Menus[bindings[0].Chat].EnumerateArray().Any(c => c.GetProperty("command").GetString() == "goal"), "Claude-only chat menu does not advertise Codex goals");
                 var next = Guid.NewGuid().ToString("D");
@@ -346,7 +348,7 @@ public static class MixedRoutingTests
         }
         public Task<JsonElement> Send(long chat, int topic, string text, CancellationToken stop)
         {
-            Sends++; var index = Array.FindIndex(bindings, b => b.Chat == chat && b.Topic == topic);
+            Interlocked.Increment(ref Sends); var index = Array.FindIndex(bindings, b => b.Chat == chat && b.Topic == topic);
             if (index < 0) throw new Exception("Wrong mixed-topic send destination");
             Edits[bindings[index].Address] = text; return Task.FromResult(Json(new { message_id = 9000 + index }));
         }

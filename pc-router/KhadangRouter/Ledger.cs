@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace KhadangRouter;
 
-// The OS supplies SQLite: winsqlite3 on Windows, system sqlite3 for Mac tests.
+// The OS supplies SQLite: winsqlite3 on Windows, system sqlite3 for tests.
 // No copied Python runtime, user site-packages or third-party native DLL search.
 public sealed class Ledger : IDisposable
 {
@@ -12,7 +12,8 @@ public sealed class Ledger : IDisposable
     static Ledger()
     {
         NativeLibrary.SetDllImportResolver(typeof(Ledger).Assembly, (name, _, _) => name != "router_sqlite" ? IntPtr.Zero :
-            NativeLibrary.Load(OperatingSystem.IsWindows() ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "winsqlite3.dll") : "/usr/lib/libsqlite3.dylib"));
+            NativeLibrary.Load(OperatingSystem.IsWindows() ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "winsqlite3.dll") :
+                OperatingSystem.IsLinux() ? "libsqlite3.so.0" : "/usr/lib/libsqlite3.dylib"));
     }
     public Ledger(string path)
     {
@@ -73,6 +74,18 @@ public sealed class Ledger : IDisposable
         }
     }
     public List<Binding> Bindings() => Rows("SELECT payload FROM bindings").Select(row => JsonSerializer.Deserialize<Binding>(row[0]!)!).ToList();
+    internal void ReplaceBinding(Binding expected, Binding replacement, Action? committed = null)
+    {
+        if (expected.Address != replacement.Address || expected.Workspace != replacement.Workspace || expected.Runtime != replacement.Runtime)
+            throw new InvalidDataException("A tool switch cannot move the topic or workspace");
+        Transaction(() => {
+            var rows = Rows("SELECT payload FROM bindings WHERE chat=? AND topic=?", expected.Chat, expected.Topic);
+            if (rows.Count != 1 || JsonSerializer.Deserialize<Binding>(rows[0][0]!) != expected)
+                throw new InvalidDataException("Topic changed during tool switch");
+            Exec("UPDATE bindings SET payload=? WHERE chat=? AND topic=?", JsonSerializer.Serialize(replacement), expected.Chat, expected.Topic);
+            committed?.Invoke();
+        });
+    }
     public void Put(string key, object value) => Exec("INSERT INTO meta VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", key, JsonSerializer.Serialize(value));
     public JsonElement? Get(string key)
     {

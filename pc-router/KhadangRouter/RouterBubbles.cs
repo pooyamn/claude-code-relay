@@ -26,6 +26,22 @@ public sealed partial class Router
 
     private static void RestorePendingBubbles(Session session, JsonElement saved)
     {
+        if (saved.TryGetProperty("completedItems", out var items))
+            foreach (var item in items.EnumerateArray())
+            {
+                var id = item.GetString()!;
+                if (session.CompletedOrder.Count >= 2048 || string.IsNullOrEmpty(id)) throw new InvalidDataException("Invalid completed-item receipt");
+                session.CompletedItems.Add(id); session.CompletedOrder.Enqueue(id);
+            }
+        if (saved.TryGetProperty("pendingAnswers", out var answers))
+            foreach (var value in answers.EnumerateArray())
+            {
+                if (session.PendingAnswers.Count >= 256) throw new InvalidDataException("Pending answer outbox exceeds bound");
+                var answer = JsonSerializer.Deserialize<FinalAnswerState>(value.GetRawText())!; answer.Validate();
+                if (!answer.Completed) throw new InvalidDataException("Pending answer lacks a final boundary");
+                session.PendingAnswers.Enqueue(answer);
+                if (answer.Parts.Any(p => p.SendUnknown)) { session.Held = true; session.Status = "Held — final answer delivery unconfirmed"; }
+            }
         if (!saved.TryGetProperty("pendingResponses", out var pending)) return;
         foreach (var receipt in pending.EnumerateArray())
         {
@@ -50,7 +66,10 @@ public sealed partial class Router
     }
     private void CompleteAnswer(Session session)
     {
-        try { session.Response.Answer.Complete(); }
+        try {
+            session.Response.Answer.Complete();
+            if (session.Response.Answer.Candidate.Length != 0) session.LastAnswer = RollingBubble.SafeTail(session.Response.Answer.Candidate, 12000);
+        }
         catch (InvalidDataException)
         {
             session.Held = true;
@@ -66,6 +85,15 @@ public sealed partial class Router
 
     private async Task FlushBubble(Session session, CancellationToken stop)
     {
+        await session.Output.WaitAsync(stop);
+        try { await FlushBubbleCore(session, stop); }
+        finally { session.Output.Release(); }
+    }
+    private async Task FlushBubbleCore(Session session, CancellationToken stop)
+    {
+        // Completed goal answers have a separate durable outbox. Native work
+        // and frequent progress edits must not starve their notification.
+        if (!await FlushGoalAnswers(session, stop)) return;
         ResponseMessage response = null!; string text = ""; int? message; long revision = 0;
         while (true)
         {
@@ -146,6 +174,44 @@ public sealed partial class Router
             response.LastRendered = text;
             if (ReferenceEquals(response, session.Response)) session.Dirty = revision != session.Revision;
             Persist(session);
+        }
+    }
+
+    private async Task<bool> FlushGoalAnswers(Session session, CancellationToken stop)
+    {
+        while (true)
+        {
+            FinalAnswerState answer;
+            lock (session.Gate)
+            {
+                while (session.PendingAnswers.TryPeek(out var delivered) && delivered.Delivered) session.PendingAnswers.Dequeue();
+                if (!session.PendingAnswers.TryPeek(out answer!)) { Persist(session); return true; }
+                if (session.SendUnknown || answer.Parts.Any(p => p.SendUnknown)) return false;
+            }
+            foreach (var part in answer.Parts)
+            {
+                lock (session.Gate)
+                {
+                    if (part.Message != null) continue;
+                    part.SendUnknown = true; Persist(session);
+                }
+                try
+                {
+                    var sent = await telegram.SendAnswer(session.Binding.Chat, session.Binding.Topic, part.Part, stop);
+                    lock (session.Gate) { part.Message = sent.GetProperty("message_id").GetInt32(); part.SendUnknown = false; Persist(session); }
+                }
+                catch (TelegramFailure failure)
+                {
+                    lock (session.Gate)
+                    {
+                        if (failure.Code == 429) part.SendUnknown = false;
+                        else { session.Held = true; session.Status = "Held — final answer delivery unconfirmed"; }
+                        Persist(session);
+                    }
+                    if (failure.Code == 429) await Task.Delay(TimeSpan.FromSeconds(Math.Clamp(failure.RetryAfter, 1, 60)), stop);
+                    return false;
+                }
+            }
         }
     }
 }

@@ -19,11 +19,11 @@ try
             using var ledger = new Ledger(Path.Combine(policy.StateDirectory, "router.db"));
             var bindings = ledger.Bindings();
             policy.ValidateBindings(bindings);
-            var needsLinuxCodex = bindings.Any(b => b.Backend == "codex" && b.Runtime == "linux");
+            var needsLinuxCodex = bindings.Any(b => b.Runtime == "linux");
             if (needsLinuxCodex && policy.LinuxCodex == null)
                 throw new InvalidDataException("Linux native bindings require the protected ordinary-owner connector");
-            LinuxClaudeTopics.ValidateRegistry(policy, bindings); // Fail the whole registry before any native launch.
-            var needsClaude = bindings.Any(binding => binding.Backend == "claude");
+            LinuxClaudeTopics.ValidateRegistry(policy, bindings, ledger); // Fail the whole registry before any native launch.
+            var needsClaude = policy.LinuxClaude != null;
             using var telegram = new Telegram(WindowsService.Credential(policy.CredentialFile), ledger);
             var me = await telegram.Call("getMe", new { }, stop);
             if (me.GetProperty("username").GetString() != policy.BotUsername || me.GetProperty("id").GetInt64() != policy.BotId)

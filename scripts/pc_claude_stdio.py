@@ -3,7 +3,8 @@
 
 This is runtime glue, not a company broker or a diagnostic profile. The Windows
 parent must separately prove its limited owner token and protected code/policy.
-Never create/fork a conversation, copy credentials, reconnect or replay input.
+Resume only the exact saved ID, or create the exact ID in a protected explicit
+owner-switch manifest. Never fork, copy credentials, reconnect or replay input.
 """
 import argparse
 import ctypes
@@ -107,6 +108,15 @@ def checked_handoff(path, digest, workspace, session):
             r'/mnt/c/ProgramData/OracovaNativeRemote/claude-connector-[a-f0-9]{32}/handoff-' + re.escape(session) + r'\.json', path):
         raise Denied('Exact protected Windows handoff path required')
     _, value = read_pinned(path, digest, load_json=True)
+    if value.get('schema') == 'ccrelay.personal_claude_start.v1':
+        exact(value, {'schema', 'session_id', 'workspace', 'source_writer', 'uncertain_actions', 'history', 'profile'})
+        if value != {'schema': 'ccrelay.personal_claude_start.v1', 'session_id': session, 'workspace': workspace,
+                     'source_writer': 'owner_switch', 'uncertain_actions': [], 'history': None, 'profile': str(OWNER / '.claude')}:
+            raise Denied('Exact protected owner-switch start receipt required')
+        transcript = OWNER / '.claude/projects' / re.sub(r'[/\.]', '-', workspace) / (session + '.jsonl')
+        if transcript.exists() or transcript.is_symlink():
+            raise Denied('Fresh Claude ID already has history; never replace or fall back')
+        return transcript, None
     transcript = validate_handoff(value, workspace, session)
     # No provider token is read or copied. Inspect actual native state only.
     for candidate in reversed([transcript, *transcript.parents]):
@@ -245,9 +255,11 @@ def stop_owned(child):
             child.wait(timeout=5)
 
 
-def run(workspace, session, checkpoint, checkpoint_sha256, owner_full_access=False):
+def run(workspace, session, checkpoint, checkpoint_sha256, owner_full_access=False, model=None):
     require_owner()
     session_id(session)
+    if model is not None and (type(model) is not str or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._\[\]-]*', model)):
+        raise Denied('Literal native model required')
     os.umask(0o077)
     verify_workspace = attest_workspaces([workspace])
     transcript, history = checked_handoff(checkpoint, checkpoint_sha256, workspace, session)
@@ -260,10 +272,14 @@ def run(workspace, session, checkpoint, checkpoint_sha256, owner_full_access=Fal
         # Recheck after obtaining the exclusive lease, immediately before
         # native resume. No startup recovery is allowed to choose a fresh ID.
         verify_workspace()
-        if _file_identity(transcript.lstat()) != _file_identity(history):
+        if history is not None and _file_identity(transcript.lstat()) != _file_identity(history) or history is None and (transcript.exists() or transcript.is_symlink()):
             raise Denied('Native history changed before exact resume')
         parent = os.getpid()
-        child = subprocess.Popen(launch_arguments(session, owner_full_access), cwd=workspace, env=launch_environment(),
+        arguments = launch_arguments(session, owner_full_access)
+        if history is None:
+            arguments[arguments.index('--resume=' + session)] = '--session-id=' + session
+        if model is not None: arguments += ['--model', model]
+        child = subprocess.Popen(arguments, cwd=workspace, env=launch_environment(),
                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                  start_new_session=True, pass_fds=(lease.fileno(),), preexec_fn=lambda: child_guard(parent))
         generation, verify_native = native_observation(child, image, lease)
@@ -347,6 +363,59 @@ def forward(selector, child, read_fd, write_fd, ready, verify_workspace, verify_
         verify_workspace()
 
 
+def snapshot(workspace, session, checkpoint, checkpoint_sha256):
+    """Bounded metadata only, under the same exclusive native-writer lease.
+
+    A protected old checkpoint authenticates the saved scope, not today's
+    evolving history hash. The privileged parent pins the new exact bytes
+    before another explicit owner-requested launch. No model or auth read.
+    """
+    require_owner(); session_id(session)
+    verify = attest_workspaces([workspace]); verify()
+    if not re.fullmatch(r'/mnt/c/ProgramData/OracovaNativeRemote/claude-connector-[a-f0-9]{32}/handoff-' + re.escape(session) + r'\.json', checkpoint):
+        raise Denied('Exact protected checkpoint required')
+    _, value = read_pinned(checkpoint, checkpoint_sha256, load_json=True)
+    exact(value, {'schema', 'session_id', 'workspace', 'source_writer', 'uncertain_actions', 'history', 'profile'})
+    if value['session_id'] != session or value['workspace'] != workspace or value['profile'] != str(OWNER / '.claude') or value['uncertain_actions'] != []:
+        raise Denied('Saved checkpoint scope differs')
+    if value['schema'] == 'ccrelay.personal_claude_handoff.v1':
+        validate_handoff(value, workspace, session)
+    elif value['schema'] != 'ccrelay.personal_claude_start.v1' or value['source_writer'] != 'owner_switch' or value['history'] is not None:
+        raise Denied('Unknown checkpoint mode')
+    lease = acquire_lease(session)
+    try:
+        history = OWNER / '.claude/projects' / re.sub(r'[/\.]', '-', workspace) / (session + '.jsonl')
+        observation = None
+        if history.exists():
+            for candidate in reversed([history, *history.parents]):
+                metadata = candidate.lstat()
+                expected_uid = 1000 if candidate == OWNER or OWNER in candidate.parents else 0
+                if stat.S_ISLNK(metadata.st_mode) or metadata.st_uid != expected_uid or metadata.st_mode & 0o022 or \
+                        candidate != history and not stat.S_ISDIR(metadata.st_mode):
+                    raise Denied('Literal ordinary-owner native transcript path required')
+            metadata = history.lstat()
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != 1000 or metadata.st_mode & 0o022 or metadata.st_nlink != 1 or metadata.st_size <= 0:
+                raise Denied('Literal private native history required')
+            hasher = hashlib.sha256()
+            descriptor = os.open(history, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
+            with os.fdopen(descriptor, 'rb') as source:
+                before = os.fstat(source.fileno())
+                if _file_identity(before) != _file_identity(metadata): raise Denied('Native history identity changed before checkpoint')
+                for body in iter(lambda: source.read(65536), b''): hasher.update(body)
+                if _file_identity(before) != _file_identity(os.fstat(source.fileno())) or _file_identity(before) != _file_identity(history.lstat()):
+                    raise Denied('Native history changed during checkpoint')
+            observation = {'path': str(history), 'bytes': before.st_size, 'sha256': hasher.hexdigest()}
+        elif history.is_symlink() or value['schema'] != 'ccrelay.personal_claude_start.v1':
+            raise Denied('Saved native history missing; no fresh-session fallback')
+        verify()
+        print(json.dumps({'type': 'ccrelay_claude_snapshot', 'uid': 1000, 'session_id': session, 'workspace': workspace,
+                          'history': observation, 'source_writer': 'quiesced', 'model_inference': False}), flush=True)
+    finally: lease.close()
+    # Keep the verified Windows owner process available for post-read token
+    # attestation. The history lease is released; no input is executed.
+    sys.stdin.buffer.read(1)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--workspace', required=True)
@@ -354,9 +423,14 @@ if __name__ == '__main__':
     parser.add_argument('--checkpoint', required=True)
     parser.add_argument('--checkpoint-sha256', required=True)
     parser.add_argument('--owner-full-access', action='store_true')
+    parser.add_argument('--snapshot', action='store_true')
+    parser.add_argument('--model')
     arguments = parser.parse_args()
     try:
-        run(arguments.workspace, arguments.session, arguments.checkpoint, arguments.checkpoint_sha256, arguments.owner_full_access)
+        if arguments.snapshot:
+            snapshot(arguments.workspace, arguments.session, arguments.checkpoint, arguments.checkpoint_sha256)
+        else:
+            run(arguments.workspace, arguments.session, arguments.checkpoint, arguments.checkpoint_sha256, arguments.owner_full_access, arguments.model)
     except BaseException as error:
         # Never mirror native args, profile, transcript, payloads or tokens.
         print('PC Claude stream stopped: ' + type(error).__name__, file=sys.stderr)
