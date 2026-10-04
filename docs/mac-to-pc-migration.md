@@ -1388,5 +1388,72 @@ production policy has no DUT binding, and its generic probe deliberately does
 not consume a real Claude checkpoint. Candidate-bound native launch,
 tool-owner and continuity checks must pass before source ingress is retired
 and the original topic is admitted on Khadang. DUT therefore remains on
-Jamshid for now; original-topic cutovers remain **3 of 14**, with existing PC
+Jamshid at that observation; original-topic cutovers were **3 of 14**, with existing PC
 LG, Web, Base board and Marginal Requests unchanged.
+
+### DUT connected to Khadang, October 3 at 8:59 PM PDT
+
+The next Linux subscription login completed successfully at
+`2026-10-04T03:19:47.0999143Z`, under the exact limited owner, using the same Max
+account as the Windows login. The prior attempt expired without a submitted
+code and was stopped/disabled. Windows authentication was not copied or changed;
+no authorization codes, login URLs or tokens are recorded here.
+
+Retained DUT native UUID `7dc840b0-402f-451e-bc79-dadfb706d363` passed two
+separate actual native checks, not just fixtures. Run
+`1340c3563eb7f0867d3799727670d29b` read the entire handoff and ran exactly
+`id -u && sha256sum -- PC-MIGRATION-HANDOFF.md`: native tool UID 1000 and the
+expected handoff hash matched. Run `f0584b2695ee26a7911032a40add5d6b` resumed
+that same conversation and retrieved the earlier readiness marker without
+being supplied its answer. Both ended idle, without uncertain effects or
+project edits, and their one-shot tasks were disabled. Five Windows evidence
+fixtures also passed before each native check; those are separate evidence.
+
+The first launcher check failed before model input because the Windows owner
+was signed into a disconnected RDP session while the physical console was
+empty. `WindowsOwnerProcess` and startup supervision select only the active
+physical console. After independently verifying the exact owner SID/session,
+`tscon 1 /dest:console` transferred that existing session to the console.
+This is explicitly a **temporary workaround**, not a headless-recovery fix.
+Disconnected-owner token selection and startup remain outstanding.
+
+A repeated complete content check again matched **131,411 entries, zero
+differences**. Jamshid's exact DUT binding was removed, topic 53 explicitly
+disabled against default fallback, and the actual gateway hot reload was
+observed at `2026-10-04T03:57:14.195Z`. Its ten other bindings and all unrelated
+configuration were preserved. Only `crw-87dfb2a5b8` and `cr-87dfb2a5b8` were
+stopped; no shared native daemon was restarted. Source and PC legacy pointers
+were respectively retired recoverably and updated to the retained PC UUID.
+
+The PC staged only the DUT binding plus its exact protected Linux Claude
+runtime. The four prior routes and all preexisting metadata, updates and
+operations were preserved. Fresh native OS/credential/code checks passed at
+`2026-10-04T03:57:37.7900477Z`; their matching proof was composed with the two
+actual, pinned native acceptance reports. Production started at
+`2026-10-04T03:58:46.2400038Z`. Same-topic connection message **4806** was
+confirmed, and genuine owner update **759322620**, message **4807**, was
+accepted into DUT. The service reported its exact Claude process connected,
+with idle/unheld bubbles and zero unknown or pending effects. Startup
+supervision was re-enabled. Original-topic routing is now **4 of 14**.
+
+Deployment facts:
+
+- Policy SHA-256: `0A697FF22F479A1125C0ADEF9DA699D197F57FF71B20DAA7D202A1BCCD70FEA7`.
+- Router SHA-256: `84AB5DEA4B368980A0754FB64D23F2ABBE0F63DCADA6EAFDB1F752E1A37E5690`.
+- Rollback/preimage directory: `C:\ProgramData\KhadangRouter\release-39d50c0e1b8b48af8cfe546426dedb4b`.
+- Preserved preexisting-ledger content digest: `8DD8260F41CABA9B9ABAA4C0C4719468D6866AAA28484A67A30AF876295BC913`.
+- Private source preimage archive on PC: `dut-topic-cutover-20261003-sftp.tar.gz`,
+  **22,218,438 bytes**, SHA-256
+  `53f9024023db38f0b792dbaf1ac16f9d812135a3d6422586fd8a70372cb41620`.
+  Independent PC hash, protected Administrator/System-only file ACL and actual
+  Windows archive reader passed. This is a local recovery copy, not a completed
+  encrypted off-machine disaster-recovery system.
+
+Pouya then reported DUT missing from the Claude app and requested Mac-like
+Remote Control behavior, **Claude only**. The active streaming adapter currently
+reports bridge state but does not enable Remote Control. The earlier native
+`remote_control` control-request acceptance already established the applicable
+version-pinned mechanism. Same-process app enrollment and phone/Telegram
+continuity are the next change; Telegram routing success does not establish
+those. Full migration, ten remaining original routes, bench relocation and
+Mac-independent recovery remain incomplete. The Mac has not been erased.
