@@ -28,7 +28,8 @@ credentials, settings and irreplaceable data. Skip new bulk backups of vendor
 apps, installers and caches that can simply be downloaded again. Existing mixed
 archives are not blanket deletion targets; preserve any custom content first.
 The owner explicitly authorized continuing below the previous 5% weekly quota
-pause threshold. This does not expand credential, deletion or wipe authority.
+pause threshold; the active goal now pauses at **1% remaining weekly usage**.
+This does not expand credential, deletion or wipe authority.
 
 Owner approved guarded Claude checkpoint recovery on October 4. Enable it only
 in protected PC policy. Renew exact history hashes under the native writer lease
@@ -43,15 +44,17 @@ Existing native hosts and VPNs are outside this router-only deployment.
 
 The original OpenClaw configuration contained 14 bindings: eight topics in Ai
 Dispatch, five in Oracova, and the standalone Startup Ideas group. As of the
-October4 readback, eleven included originals plus the existing PC LG topic
-are registered on the PC (twelve total). Required routing migration progress is11/13;
-Startup Ideas and KiCad remain pending. The three source bindings also include
+October4 23:29Z readback, twelve included originals plus the existing PC LG topic
+are registered on the PC (thirteen total). Required routing migration progress is12/13;
+Startup Ideas remains pending. The two source bindings also include
 Qwen, which is explicitly excluded. Keep the included chat and topic IDs
 unchanged; the existing PC LG topic remains intact. Connected routing is not
 the broader hardware, phone, source preservation or recovery acceptance.
 Guarded recovery is deployed and fresh router operation was verified on
-October 4 at 23:11:40Z: twelve unchanged bindings, seven connected idle Claude
-topics and no uncertain native/send actions. Native hosts were not restarted.
+October 4 at 23:29:06Z: thirteen bindings (twelve previous bindings unchanged),
+seven connected Claude topics and no uncertain native/send actions. The managed
+Linux host stayed unchanged; the router-owned Windows stdio child was recreated
+normally by service restart, not mistaken for an independent remote host.
 This clears the consumed-checkpoint startup blocker, not the remaining phone,
 hardware, unregistered-topic or full disaster-recovery acceptance gates. The
 Web topic's existing interrupted-work hold remains intact pending reconciliation.
@@ -3509,3 +3512,61 @@ outside-LAN power recovery and independent encrypted restore remain open. The
 previous5% quota pause instruction was revoked by the owner; product goal
 bookkeeping still reports paused and was not silently changed through a side
 channel. Nothing was erased; the Mac is still not erasure-ready.
+
+### KiCad topic6004 cutover to native PC Codex, October4 23:29Z
+
+Pouya selected Codex for the remaining KiCad topic. The existing Ai Dispatch
+address `-1003550185469:6004` is now bound to native Linux Codex thread
+`01a1093b-fcd5-73a3-b248-83872cccab11` in the prepared KiCad research workspace.
+The fixed one-shot managed creation path verified the ordinary tool owner and
+existing paired PC daemon, created one fresh conversation, persisted the exact
+reviewed project handoff and independently read it back. It started no model
+turn or goal. Its handoff SHA256 is
+`7838378f68d3d79857b5889ff9d0c3d34cb78b11476d7d4802b6ca594d642bef`.
+A separate project routing receipt records the new native ID without rewriting
+the immutable creation checkpoint. Native readback confirmed idle/goal-null.
+
+Before PC activation, the original source topic's exact binding was removed,
+the topic explicitly disabled and its old OpenCode pointer retired into private
+recovery storage. The final source assistant turn completed; no queued inputs,
+child sessions, unfinished tool parts, project producer, topic terminal or old
+OpenCode listener existed. Source native history, ingress/pointer preimages and
+a final worktree manifest were retained. Of9509 manifest entries,9506 matched
+PC bytes/links exactly; the only three differences were Git index stat caches.
+All three repository HEAD and staged-entry hashes matched, and original source
+index bytes were also retained separately. No working PC index was overwritten.
+Four targeted retirement fixtures passed; no other source routes or shared
+native/gateway process changed. Two source bindings remain: Startup Ideas and
+the explicitly excluded Qwen topic.
+
+Enrollment was registry-only: installed router code, protected policy and
+accepted OS proof remain unchanged. A consistent standalone SQLite preimage
+was retained, the new binding was inserted transactionally, and all12 previous
+binding payloads plus unrelated ledger content were verified unchanged. During
+the brief router restart, its exact active controller turn was retained and
+reattached without a new prompt; Web's unrelated interrupted-work hold stayed
+intact. Fresh protected readback at23:29:06Z verified Running,13 bindings/native
+attachments, seven connected Claude streams, KiCad Ready/not busy/not held,
+no uncertain native actions, unchanged native-input receipt counts and the
+restored startup watchdog. Managed Linux daemon PID455 stayed unchanged. The
+Windows `nativePid` field denotes the router-owned stdio child, which normally
+changes on service start; it is not an independently supervised host PID.
+
+Protected native creation evidence:
+`C:\ProgramData\OracovaNativeRemote\codex-connector-7f2e3d3bfa76474e9a0657261ce5a7bf\proof`.
+Protected enrollment/state evidence:
+`C:\ProgramData\KhadangRouter\release-7f2e3d3bfa76474e9a0657261ce5a7bf`.
+Source private history/configuration/preimages:
+`C:\ProgramData\OracovaMigration\kicad-cutover-7f2e3d3bfa76474e9a0657261ce5a7bf`.
+Initial archive-separator and PowerShell5 text-encoding preflight failures were
+retained and corrected before their respective effects; no native creation or
+registry insertion was repeated. Native creation guards passed on Windows;
+full router tests were not rerun for this registry-only change.
+
+Required routing is now12/13 included originals, plus LG. KiCad's real owner
+phone input/steering/tool/attachment/goal checks and supervised P6 demo remain
+unqualified. Startup Ideas access, protected Mac/database data, physical bench,
+off-network power recovery and independent encrypted restore remain open.
+The product goal is active again, with an explicit1% weekly pause point;
+read-only native quota at23:23:09Z showed3% remaining. The Mac is not ready
+for erasure, and nothing was wiped.

@@ -25,12 +25,15 @@ if (args.SequenceEqual(new[] { "--self-test" }))
         CheckpointPersisted(saved.Replace("\"user\"", "\"assistant\""), "test-thread", "exact checkpoint"))
         throw new InvalidOperationException("Exact raw checkpoint verification failed");
     var web = Target("--create-web")!; var board = Target("--create-base")!; var marginal = Target("--create-marginal")!;
+    var kicad = Target("--create-kicad")!;
     if (Target("--run") != null || Target("--unknown") != null || web.Topic != 8660 || web.Chat != -1003550185469 ||
         board.Topic != 18 || marginal.Topic != 427 || board.Chat != -1004395661179 || marginal.Chat != board.Chat ||
         board.Workspace != LinuxCodexRuntime.WorkspaceRoot + "/ai-hil/hardware/augur-1" ||
         marginal.Workspace != LinuxCodexRuntime.WorkspaceRoot + "/marginal-requests" ||
         new[] { web, board, marginal }.Select(t => t.SourceThread).Distinct().Count() != 3 ||
-        new[] { web, board, marginal }.Any(t => t.Model != "gpt-6-astra" || t.HandoffSha256.Length != 64))
+        new[] { web, board, marginal, kicad }.Any(t => t.Model != "gpt-6-astra" || t.HandoffSha256.Length != 64) ||
+        kicad.Chat != web.Chat || kicad.Topic != 6004 || kicad.Workspace != LinuxCodexRuntime.WorkspaceRoot + "/kicad-copilot-research" ||
+        kicad.SourceThread != "ses_fda86bd86ffeX9tdQh70Q6uZoX")
         throw new InvalidOperationException("Fixed source-topic creation targets differ");
     Console.WriteLine("Managed connector observation guards passed; no native activity.");
     return;
@@ -44,7 +47,7 @@ try
     if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
     using var identity = WindowsIdentity.GetCurrent();
     if (Environment.MachineName != "DESKTOP-8SO9HDK" || !identity.IsSystem ||
-        Process.GetCurrentProcess().SessionId != 0 || args.Length != 2 || args[0] is not ("--run" or "--create-web" or "--create-base" or "--create-marginal") || !Guid.TryParseExact(args[1], "N", out var run))
+        Process.GetCurrentProcess().SessionId != 0 || args.Length != 2 || args[0] is not ("--run" or "--create-web" or "--create-base" or "--create-marginal" or "--create-kicad") || !Guid.TryParseExact(args[1], "N", out var run))
         throw new InvalidDataException("Exact fixed SYSTEM diagnostic task required; native remains ordinary owner");
     root = LinuxCodexRuntime.ProtectedRoot + "\\codex-connector-" + run.ToString("N");
     var state = Path.Combine(root, "proof");
@@ -185,6 +188,8 @@ static MigrationTarget? Target(string mode) => mode switch
         "01a091ea-58ec-7c20-b238-b3bef0af437b", "dde3218bb6bad93d10f1ee1c82e56230a6930eb0dc9cd6d4cee4249890ed2193"),
     "--create-marginal" => new(-1004395661179, 427, "Marginal Requests", LinuxCodexRuntime.WorkspaceRoot + "/marginal-requests", "gpt-6-astra",
         "01a0c4c2-ea71-7c10-9a39-6440ce5e4a02", "95d990989cd907fb8c1a70354aa0634ad35b43229a7f4913a7d96604157efce7"),
+    "--create-kicad" => new(-1003550185469, 6004, "KiCad research", LinuxCodexRuntime.WorkspaceRoot + "/kicad-copilot-research", "gpt-6-astra",
+        "ses_fda86bd86ffeX9tdQh70Q6uZoX", "7838378f68d3d79857b5889ff9d0c3d34cb78b11476d7d4802b6ca594d642bef"),
     _ => null
 };
 sealed record MigrationTarget(long Chat, int Topic, string Name, string Workspace, string Model, string SourceThread, string HandoffSha256);

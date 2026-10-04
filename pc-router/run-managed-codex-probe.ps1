@@ -1,7 +1,7 @@
 param(
  [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-f]{32}$')][string]$RunId,
  [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-fA-F]{64}$')][string]$ExpectedSha256,
- [ValidateSet('probe','create-web','create-base','create-marginal')][string]$Mode='probe',
+ [ValidateSet('probe','create-web','create-base','create-marginal','create-kicad')][string]$Mode='probe',
  [ValidatePattern('^[0-9a-fA-F]{64}$')][string]$ExpectedPolicySha256='653FD4D37637BEA5ED8C88BF063A1669D5A0DCA5E3B6BDD795189D151A2FD2EC'
 )
 # Stage only reviewed diagnostic bytes. Preserve live router/bindings/remotes.
@@ -83,7 +83,7 @@ if(-not (Test-Path (Join-Path $bin 'coreclr.dll')) -or
  -not ($runtime.runtimeOptions.includedFrameworks|Where-Object name -eq 'Microsoft.NETCore.App')){throw 'Self-contained Windows runtime required'}
 & $exe --self-test
 if($LASTEXITCODE -ne 0){throw 'Fixed observation method guards failed'}
-$flag=switch($Mode){'create-web'{'--create-web'}'create-base'{'--create-base'}'create-marginal'{'--create-marginal'}default{'--run'}}
+$flag=switch($Mode){'create-web'{'--create-web'}'create-base'{'--create-base'}'create-marginal'{'--create-marginal'}'create-kicad'{'--create-kicad'}default{'--run'}}
 $action=New-ScheduledTaskAction -Execute $exe -Argument ($flag+' '+$RunId) -WorkingDirectory $bin
 $principal=New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
 $settings=New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 2) -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
