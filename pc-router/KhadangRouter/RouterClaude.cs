@@ -89,7 +89,7 @@ public sealed partial class Router
                     throw new InvalidDataException("Claude input receipt identity mismatch");
                 lock (session.Gate)
                 {
-                    session.Bubble.Append("\n↪ Owner input consumed by this Claude session (priority: now; not proof of completion).\n"); Touch(session);
+                    Touch(session);
                 }
                 if (!active) lastStart = DateTimeOffset.UtcNow;
                 ledger.Finish(updateId, "accepted");
@@ -209,6 +209,7 @@ public sealed partial class Router
     private void StartClaudeWork(Session session)
     {
         session.ClaudeWorkRevision++; session.ClaudeHasDelta = false; session.ClaudeResultStatus = null;
+        session.ClaudeMessageId = ""; session.ClaudeTools.Clear();
         BeginBubble(session); session.Elapsed.Restart(); session.Carried = TimeSpan.Zero;
         session.DeltaItems.Clear(); session.CompletedItems.Clear(); session.CompletedOrder.Clear();
         session.Busy = true; session.Status = "Working"; Touch(session);
@@ -227,6 +228,8 @@ public sealed partial class Router
             session.Busy = false; session.Elapsed.Stop(); session.ClaudeWorkRevision++;
             session.Status = session.Held ? "Held — reconcile native receipts" : session.ClaudeResultStatus == null ? "Ready" :
                 session.ClaudeResultStatus == "success" ? "Done" : "Failed — inspect native Claude session";
+            if (session.ClaudeResultStatus == "success") CompleteAnswer(session);
+            session.Bubble.Remove("question:");
             foreach (var entry in claudeRequests.Where(p => p.Value.Pin == session.Binding.ThreadId)) claudeRequests.TryRemove(entry.Key, out _);
         }
         Touch(session);
@@ -280,35 +283,70 @@ public sealed partial class Router
                 {
                     // App-origin input is display only; never another dispatch.
                     if (frame.TryGetProperty("uuid", out var userId) && !RememberClaudeDisplay(session, userId.GetString()!)) return;
-                    session.Bubble.Append("\n↪ " + ClaudeInput.Preview(frame.GetProperty("message").GetProperty("content")) + "\n");
+                    var content = frame.GetProperty("message").GetProperty("content");
+                    if (content.ValueKind == JsonValueKind.Array)
+                        foreach (var block in content.EnumerateArray())
+                            if (block.TryGetProperty("type", out var blockType) && blockType.GetString() == "tool_result" &&
+                                block.TryGetProperty("tool_use_id", out var toolId) && session.ClaudeTools.TryGetValue(toolId.GetString()!, out var tool))
+                                session.Bubble.Upsert("tool:" + toolId.GetString(), NativeEventView.ClaudeTool(tool,
+                                    block.TryGetProperty("is_error", out var failed) && failed.ValueKind == JsonValueKind.True ? "failed" : "completed"));
+                    var preview = ClaudeInput.Preview(content);
+                    if (preview.Length > 0) session.Bubble.Append("\n↪ " + preview + "\n");
                 }
                 else if (kind == "stream_event")
                 {
                     var e = frame.GetProperty("event");
-                    if (e.GetProperty("type").GetString() == "message_start") session.ClaudeHasDelta = false;
+                    if (e.GetProperty("type").GetString() == "message_start")
+                    {
+                        session.ClaudeHasDelta = false;
+                        session.ClaudeMessageId = e.TryGetProperty("message", out var message) && message.TryGetProperty("id", out var messageId) ? messageId.GetString()! :
+                            "stream-" + ++session.ClaudeMessageSequence;
+                    }
+                    var index = e.TryGetProperty("index", out var blockIndex) && blockIndex.TryGetInt32(out var number) ? number : 0;
                     if (e.GetProperty("type").GetString() == "content_block_delta" && e.TryGetProperty("delta", out var delta) &&
                         delta.TryGetProperty("type", out var deltaType) && deltaType.GetString() == "text_delta" &&
                         delta.TryGetProperty("text", out var text) && text.ValueKind == JsonValueKind.String)
-                    { session.ClaudeHasDelta = true; session.Bubble.Append(text.GetString()!); }
+                    { session.ClaudeHasDelta = true; session.Bubble.Upsert("agent:" + session.ClaudeMessageId + ":" + index, text.GetString()!, delta: true); }
                     if (e.GetProperty("type").GetString() == "content_block_start" && e.TryGetProperty("content_block", out var block) &&
                         block.GetProperty("type").GetString() == "tool_use")
-                        session.Bubble.Append("\nTool: " + NativeGoal.Literal(block.GetProperty("name").GetString()!) + "\n");
+                        DisplayClaudeTool(session, block);
                 }
                 else if (kind == "assistant")
                 {
                     if (frame.TryGetProperty("uuid", out var uuid) && !RememberClaudeDisplay(session, uuid.GetString()!)) return;
-                    foreach (var block in frame.GetProperty("message").GetProperty("content").EnumerateArray())
+                    var message = frame.GetProperty("message");
+                    var messageId = message.TryGetProperty("id", out var nativeId) ? nativeId.GetString()! : session.ClaudeMessageId;
+                    if (messageId.Length == 0) messageId = frame.TryGetProperty("uuid", out var frameId) ? frameId.GetString()! : "assistant-" + ++session.ClaudeMessageSequence;
+                    var content = message.GetProperty("content").EnumerateArray().ToArray();
+                    var answer = new List<string>(); int index = 0;
+                    foreach (var block in content)
                     {
-                        if (block.GetProperty("type").GetString() == "text" && !session.ClaudeHasDelta) session.Bubble.Append(block.GetProperty("text").GetString()!);
-                        else if (block.GetProperty("type").GetString() == "tool_use") session.Bubble.Append("\nTool: " + NativeGoal.Literal(block.GetProperty("name").GetString()!) + "\n");
+                        if (block.GetProperty("type").GetString() == "text")
+                        {
+                            var text = block.GetProperty("text").GetString()!;
+                            session.Bubble.Upsert("agent:" + messageId + ":" + index, text); answer.Add(text);
+                        }
+                        else if (block.GetProperty("type").GetString() == "tool_use") DisplayClaudeTool(session, block);
+                        index++;
                     }
+                    if (!content.Any(b => b.GetProperty("type").GetString() == "tool_use")) ConsiderAnswer(session, string.Join("\n\n", answer));
                 }
-                else if (kind == "tool_progress") session.Bubble.Append("\nRunning tool: " + NativeGoal.Literal(frame.GetProperty("tool_name").GetString()!) + "\n");
+                else if (kind == "tool_progress")
+                {
+                    var id = frame.TryGetProperty("tool_use_id", out var toolId) ? toolId.GetString()! : frame.GetProperty("tool_name").GetString()!;
+                    if (!session.ClaudeTools.ContainsKey(id)) session.Bubble.Upsert("tool:" + id, "⏳ " + NativeGoal.Literal(frame.GetProperty("tool_name").GetString()!));
+                }
                 else if (kind == "result")
                 {
                     ledger.Put("claude/result/" + session.Binding.ThreadId, frame);
                     session.ClaudeResultStatus = frame.GetProperty("subtype").GetString();
-                    session.Bubble.Append("\nClaude result received; waiting for native idle.\n");
+                    if (session.ClaudeResultStatus == "success" && frame.TryGetProperty("result", out var result) && result.ValueKind == JsonValueKind.String)
+                        ConsiderAnswer(session, result.GetString()!, authoritative: true);
+                    if (!session.Busy && session.ClaudeState == "idle")
+                    {
+                        session.Status = session.Held ? "Held — reconcile native receipts" : session.ClaudeResultStatus == "success" ? "Done" : "Failed — inspect native Claude session";
+                        if (session.ClaudeResultStatus == "success") CompleteAnswer(session);
+                    }
                     // A result can precede held results/background completion.
                     // Do not clear Busy, pending approvals or elapsed time here.
                 }
@@ -319,6 +357,13 @@ public sealed partial class Router
                 session.Held = true; session.Status = "Held — malformed native Claude evidence"; Touch(session);
             }
         }
+    }
+    private static void DisplayClaudeTool(Session session, JsonElement block)
+    {
+        var id = block.GetProperty("id").GetString()!;
+        if (session.ClaudeTools.Count >= 128 && !session.ClaudeTools.ContainsKey(id)) session.ClaudeTools.Clear();
+        session.ClaudeTools[id] = block.Clone();
+        session.Bubble.Upsert("tool:" + id, NativeEventView.ClaudeTool(block));
     }
     private static bool RememberClaudeDisplay(Session session, string id)
     {
@@ -343,7 +388,7 @@ public sealed partial class Router
         var nonce = Guid.NewGuid().ToString("N")[..12];
         claudeRequests[nonce] = new(id, session.Binding.Address, session.Binding.ThreadId, session.ClaudeWorkRevision,
             request.Clone(), isQuestion, reviewable, new());
-        session.Bubble.Append("\nClaude " + (isQuestion ? "question" : "approval") + ": " + NativeGoal.Literal(tool ?? "") + "\n" +
+        session.Bubble.Upsert("question:" + nonce, "\nClaude " + (isQuestion ? "question" : "approval") + ": " + NativeGoal.Literal(tool ?? "") + "\n" +
             (reviewable ? detail + "\n" + (isQuestion ? "/answer " + nonce + " <question-number> <answer>\n" : "/approve " + nonce + "\n") :
                 "Full request requires the native PC review surface; no approval of redacted/truncated input.\n") + "/deny " + nonce + "\n");
     }

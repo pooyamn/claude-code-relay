@@ -9,4 +9,5 @@ internal sealed class ResponseMessage
     public string LastRendered = "";
     public bool SendUnknown;
     public string Text = ""; // Frozen final text for an earlier response.
+    public FinalAnswerState Answer = new();
 }

@@ -212,7 +212,7 @@ public static class MixedRoutingTests
                     message = new { content = new[] { new { type = "thinking", thinking = "PRIVATE-THINKING" } } } });
                 claude.Emit(new { type = "result", session_id = Pin, subtype = "success" });
                 claude.Emit(new { type = "system", session_id = Pin, subtype = "session_state_changed", state = "idle" });
-                await Wait(() => bot.Edits.TryGetValue(bindings[2].Address, out var t) && t.Contains("Done (") && t.Contains("PHONE-OWNER") && t.Contains("Running tool: Read"), stop.Token);
+                await Wait(() => bot.Edits.TryGetValue(bindings[2].Address, out var t) && t.Contains("Done (") && t.Contains("PHONE-OWNER") && t.Contains("⏳ Read"), stop.Token);
                 Check(bot.Sends >= 3 && bot.MaxPolls == 1 && bot.Edits.Values.All(t => t.Length <= 3900 && !t.Contains("FOREIGN-SOURCE") && !t.Contains("SUBAGENT-PRIVATE") && !t.Contains("PRIVATE-THINKING")),
                     "Each new native response gets a bounded bubble without foreign events, subagent text or thinking");
                 Check(!bot.Menus[bindings[2].Chat].EnumerateArray().Any(c => c.GetProperty("command").GetString() == "goal") &&
@@ -352,5 +352,10 @@ public static class MixedRoutingTests
         }
         public Task Edit(long chat, int message, string text, CancellationToken stop)
         { var index = message >= 9000 ? message - 9000 : message - 900; if (bindings[index].Chat != chat) throw new Exception("Wrong mixed-topic chat"); Edits[bindings[index].Address] = text; return Task.CompletedTask; }
+        public Task<JsonElement> SendAnswer(long chat, int topic, AnswerPart part, CancellationToken stop)
+        {
+            if (!bindings.Any(b => b.Chat == chat && b.Topic == topic)) throw new Exception("Wrong mixed final destination");
+            return Task.FromResult(Json(new { message_id = 10000 + topic }));
+        }
     }
 }

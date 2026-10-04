@@ -162,7 +162,7 @@ public static class AttachmentTests
         private void Observe(string text)
         {
             Last = text;
-            if ((text.Contains("steered") || text.Contains("held:")) && (text.Contains("PC session:") || text.Contains("Interrupt requested"))) Completed.TrySetResult();
+            if ((native.Steers > 0 || text.Contains("held:")) && (text.Contains("PC session:") || text.Contains("Interrupt requested"))) Completed.TrySetResult();
         }
         public Task Download(AttachmentReference file, Stream target, CancellationToken stop) => target.WriteAsync(new byte[] { 1, 2, 3 }, stop).AsTask();
     }

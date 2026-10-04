@@ -152,26 +152,73 @@ public sealed record Binding(long Chat, int Topic, string Name, string Workspace
 public sealed class RollingBubble
 {
     private readonly object gate = new();
-    private string tail = "";
-    public string Tail { get { lock (gate) return tail; } }
+    private sealed record Entry(string? Id, string Text);
+    private readonly List<Entry> entries = [];
+    public string Tail { get { lock (gate) return Body(); } }
+    private string Body() => string.Join("\n\n", entries.Select(e => e.Text));
     public void Append(string text)
     {
         lock (gate)
         {
-            tail += text;
-            // Do not retain an unbounded duplicate of the native transcript.
-            if (tail.Length > 7000) tail = SafeTail(tail, 7000);
+            if (string.IsNullOrEmpty(text)) return;
+            entries.Add(new(null, NativeGoal.Redact(text))); Trim();
         }
+    }
+    public void Upsert(string id, string text, bool delta = false)
+    {
+        lock (gate)
+        {
+            var index = entries.FindIndex(e => e.Id == id);
+            var value = NativeGoal.Redact(delta && index >= 0 ? entries[index].Text + text : text);
+            if (index < 0) entries.Add(new(id, value)); else entries[index] = new(id, value);
+            Trim();
+        }
+    }
+    public void Remove(string prefix)
+    {
+        lock (gate) entries.RemoveAll(e => e.Id?.StartsWith(prefix, StringComparison.Ordinal) ?? false);
+    }
+    private void Trim()
+    {
+        while (entries.Count > 1 && Body().Length > 7000)
+        {
+            var index = entries.FindIndex(e => !(e.Id?.StartsWith("question:", StringComparison.Ordinal) ?? false));
+            if (index < 0) index = 0;
+            entries.RemoveAt(index);
+        }
+        if (entries.Count == 1 && entries[0].Text.Length > 7000)
+            entries[0] = entries[0] with { Text = LineTail(entries[0].Text, 7000) };
     }
     public string Render(TimeSpan elapsed, string? goal = null, string state = "Working")
     {
         lock (gate)
         {
-            var footer = "\n\n" + state + " (" + (int)elapsed.TotalMinutes + "m " + elapsed.Seconds + "s)";
+            var duration = elapsed.TotalHours >= 1 ? (int)elapsed.TotalHours + "h " + elapsed.Minutes + "m " + elapsed.Seconds + "s" :
+                elapsed.TotalMinutes >= 1 ? elapsed.Minutes + "m " + elapsed.Seconds + "s" : elapsed.Seconds + "s";
+            var footer = "\n\n" + state + " (" + duration + ")";
             if (!string.IsNullOrWhiteSpace(goal)) footer += "\nGoal: " + SafeTail(goal, 160);
             var available = 3900 - footer.Length;
-            return SafeTail(tail.Length == 0 ? "Connected to the PC session." : NativeEventView.CompactLegacyBubble(tail.Trim()), available) + footer;
+            var body = NativeEventView.CompactLegacyBubble(Body().Trim());
+            var pending = string.Join("\n\n", entries.Where(e => e.Id?.StartsWith("question:", StringComparison.Ordinal) ?? false).Select(e => e.Text));
+            if (pending.Length > 0)
+            {
+                var activity = string.Join("\n\n", entries.Where(e => !(e.Id?.StartsWith("question:", StringComparison.Ordinal) ?? false)).Select(e => e.Text)).Trim();
+                // Pending owner action remains visible even as later tools roll.
+                var question = LineTail(pending, Math.Min(1800, available));
+                body = LineTail(activity, Math.Max(0, available - question.Length - 2)) + "\n\n" + question;
+            }
+            return LineTail(body.Length == 0 ? "Connected to the PC session." : body, available) + footer;
         }
+    }
+    public static string LineTail(string text, int length)
+    {
+        if (length <= 0) return "";
+        if (text.Length <= length) return text;
+        if (length < 3) return SafeTail(text, length);
+        var tail = SafeTail(text, length - 2);
+        var newline = tail.IndexOf('\n');
+        if (newline >= 0 && newline < tail.Length / 2) tail = tail[(newline + 1)..];
+        return "…\n" + tail;
     }
     public static string SafeTail(string text, int length)
     {

@@ -73,6 +73,7 @@ public static class RoutingTests
             Check(bindings.All(b => native.Starts[b.ThreadId].GetProperty("input").GetRawText().Contains("START-" + b.ThreadId) &&
                 native.Steers[b.ThreadId].GetProperty("input").GetRawText().Contains("STEER-" + b.ThreadId)), "Owner input never leaks into the other forum's matching topic number");
             Check(bot.Sends == bindings.Length && bindings.All(b => bot.Edits.ContainsKey(b.Address)), "Every new response gets its own topic-addressed bubble");
+            Check(bindings.All(b => bot.Finals.TryGetValue(b.Address, out var final) && final == "FINAL-" + b.ThreadId), "Separate final answers retain each exact forum/group destination");
             Check(bindings.All(b => bot.Edits[b.Address].Length <= 3900 && bot.Edits[b.Address].Contains("FINAL-" + b.ThreadId) && bot.Edits[b.Address].Contains("APP-" + b.ThreadId) &&
                 bindings.Where(other => other != b).All(other => !bot.Edits[b.Address].Contains(other.ThreadId))), "Native app input, tools, final text and footer stay in the correct chat's rolling bubble");
             Check(bot.Menus.Keys.Order().SequenceEqual(bindings.Select(b => b.Chat).Order()) && bot.MenuReadbacks == 3, "Owner menus registered/read back per activated chat; inaccessible unbound chat untouched");
@@ -165,6 +166,7 @@ public static class RoutingTests
         private int polls;
         public int Sends, MenuReadbacks, CrossChatRepliesBeforeCorrect;
         public ConcurrentDictionary<TopicAddress, string> Edits = new();
+        public ConcurrentDictionary<TopicAddress, string> Finals = new();
         public Dictionary<long, JsonElement> Menus = new();
         public TaskCompletionSource Completed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private object Update(int id, Binding binding, string text, bool foreign = false)
@@ -214,10 +216,19 @@ public static class RoutingTests
             if (message is not (900 or 901)) throw new Exception("Unknown routing bubble ID"); Observe(chat, text);
             return Task.CompletedTask;
         }
+        public Task<JsonElement> SendAnswer(long chat, int topic, AnswerPart part, CancellationToken stop)
+        {
+            Finals[new(chat, topic)] = part.Text; Complete();
+            return Task.FromResult(Json(new { message_id = 902 }));
+        }
         private void Observe(long chat, string text)
         {
             var binding = bindings.Single(b => b.Chat == chat); Edits[binding.Address] = text;
-            if (bindings.All(b => Edits.TryGetValue(b.Address, out var tail) && tail.Contains("FINAL-" + b.ThreadId) && tail.Contains("Done ("))) Completed.TrySetResult();
+            Complete();
+        }
+        private void Complete()
+        {
+            if (Finals.Count == bindings.Length && bindings.All(b => Edits.TryGetValue(b.Address, out var tail) && tail.Contains("FINAL-" + b.ThreadId) && tail.Contains("Done ("))) Completed.TrySetResult();
         }
     }
 }

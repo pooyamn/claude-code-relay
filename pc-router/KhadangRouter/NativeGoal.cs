@@ -95,6 +95,10 @@ public sealed class NativeGoal(string threadId)
         foreach (var rune in text.EnumerateRunes())
             clean.Append(Rune.GetUnicodeCategory(rune) is UnicodeCategory.Control or UnicodeCategory.Format ? " " : rune.ToString());
         text = Regex.Replace(clean.ToString(), @"\s+", " ").Trim();
+        return Redact(text);
+    }
+    public static string Redact(string text)
+    {
         text = Regex.Replace(text, @"\b(?:bot\d+:[A-Za-z0-9_-]+|sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9_]+)\b", "[REDACTED]");
         text = Regex.Replace(text, @"(?i)(Bearer\s+)\S+", "$1[REDACTED]");
         return Regex.Replace(text, "(?i)([\\w-]*(?:token|password|secret|api[_-]?key)[\\w-]*\\s*[=:]\\s*)(?:\"[^\"]*\"|'[^']*'|[^\\s,;]+)", "$1[REDACTED]");

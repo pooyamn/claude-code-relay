@@ -22,7 +22,7 @@ public static class JoinedTests
         Check(native.LastProfile == ":danger-full-access" && native.LastApproval == "never", "Owner full-access profile survives exact resume");
         Check(native.SteerTurn == "turn-1" && native.LastInput!.Contains("second owner message") && !native.LastInput.Contains("Telegram owner"), "Steering expectedTurnId and plain input preserved without audit header");
         Check(native.Called.All(m => !m.Contains("queue", StringComparison.OrdinalIgnoreCase)), "No queue fallback");
-        Check(bot.Sends == 1 && bot.Edits >= 1, "One rolling text message, final edit in place");
+        Check(bot.Sends == 1 && bot.Answers == 5 && bot.Edits >= 1, "One rolling progress message; complete long final answer split separately");
         Check(bot.Last!.Length <= 3900 && bot.Last.Contains("Done (") && bot.Last.Contains("FINAL-OK"), "Bounded final tail/footer survives tool output");
         Check(!bot.Last.Contains("STALE-EVENT"), "Stale-turn output cannot enter current bubble");
         Check(ledger.Pending().Count == 0 && ledger.Unknown == 0, "Joined ledger acknowledges once without uncertain effects");
@@ -40,9 +40,9 @@ public static class JoinedTests
             try { await appBot.Completed.Task.WaitAsync(TimeSpan.FromSeconds(12)); }
             finally { appStop.Cancel(); try { await appRun; } catch (OperationCanceledException) { } }
             Check(appNative.Started == 0 && appNative.Steered == 0, "Native-origin events cause no router model start or steering");
-            Check(appBot.Sends == 1 && appBot.Edits >= 1, "Native-origin response creates one new bubble and preserves the earlier response");
+            Check(appBot.Sends == 1 && appBot.Answers == 1 && appBot.Edits >= 1, "Native-origin response gets one progress bubble plus final, preserving earlier response");
             Check(appBot.Last!.Contains("↪ Have you updated the source? Pushed?") && !appBot.Last.Contains("Native input:"), "Native user input appears with compact Telegram prefix");
-            Check(appBot.Last.Contains("MCP fixture/inspect") && appBot.Last.Contains("exit 0") && appBot.Last.Contains("TOOL-OUTPUT"), "Tool names, completion and output stay in same bubble");
+            Check(appBot.Last.Contains("MCP fixture/inspect") && appBot.Last.Contains("exit 0") && !appBot.Last.Contains("TOOL-OUTPUT"), "Tool actions/results stay visible; raw output remains private in native history");
             Check(!appBot.Last.Contains("FOREIGN-INPUT") && !appBot.Last.Contains("STALE-INPUT") && !appBot.Last.Contains("PRIVATE-"), "Foreign/stale events and private attachment/tool fields are not reflected");
             Check(appBot.Last.Split("Have you updated the source? Pushed?").Length == 2, "Repeated completed input item is displayed once");
             Check(appBot.Last.Length <= 3900 && appBot.Last.Contains("Done (") && appLedger.Unknown == 0, "Native-origin terminal footer and receipts remain bounded/durable");
@@ -157,6 +157,7 @@ public static class JoinedTests
                     if (BadSteerReceipt != null) return Task.FromResult(BadSteerReceipt switch { "missing" => Json(new { }), "foreign" => Json(new { turnId = "wrong" }), _ => Json(new { turnId = 1 }) });
                     Event("item/agentMessage/delta", new { threadId = "exact-native-id", turnId = "turn-1", itemId = "agent", delta = new string('x', 18000) + " FINAL-OK" });
                     Event("item/agentMessage/delta", new { threadId = "exact-native-id", turnId = "old-turn", itemId = "old", delta = "STALE-EVENT" });
+                    Event("item/completed", new { threadId = "exact-native-id", turnId = "turn-1", item = new { id = "agent", type = "agentMessage", phase = "final_answer", text = "FIRST" + new string('x', 18000) + " FINAL-OK" } });
                     Event("turn/completed", new { threadId = "exact-native-id", turn = new { id = "turn-1", status = "completed" } });
                     return Task.FromResult(Json(new { turnId = "turn-1" }));
                 default: throw new InvalidOperationException("Unexpected fake native method " + method);
@@ -169,6 +170,7 @@ public static class JoinedTests
         private int polls;
         private JsonElement menus;
         public int Sends, Edits, CreatedTopics;
+        public int Answers;
         public bool RemoteMenuVerified;
         public string? Last;
         public TaskCompletionSource FirstSent { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -221,5 +223,7 @@ public static class JoinedTests
                 native.BadSteerReceipt != null ? text.Contains("Held — input 101 not confirmed") : text.Contains("Done (")) Completed.TrySetResult();
             return Task.CompletedTask;
         }
+        public Task<JsonElement> SendAnswer(long chat, int topic, AnswerPart part, CancellationToken stop)
+        { Answers++; return Task.FromResult(Json(new { message_id = 1000 + Answers })); }
     }
 }

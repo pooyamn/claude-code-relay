@@ -142,6 +142,19 @@ public sealed class Telegram : IBot, IDisposable
         try { await Call("editMessageText", BubbleEditParameters(chat, message, text), stop, effect: true); }
         finally { outbound.Release(); }
     }
+    internal static Dictionary<string, object> AnswerParameters(long chat, int topic, AnswerPart part)
+    {
+        var parameters = SendParameters(chat, topic, part.Text);
+        parameters.Remove("disable_notification"); // Final answer, not silent progress.
+        parameters["entities"] = part.Entities;
+        return parameters;
+    }
+    public async Task<JsonElement> SendAnswer(long chat, int topic, AnswerPart part, CancellationToken stop)
+    {
+        await outbound.WaitAsync(stop);
+        try { return await Call("sendMessage", AnswerParameters(chat, topic, part), stop, effect: true); }
+        finally { outbound.Release(); }
+    }
     public static string DownloadPath(JsonElement result, AttachmentReference file)
     {
         if (result.ValueKind != JsonValueKind.Object) throw new AttachmentFailure("Malformed Telegram file metadata");

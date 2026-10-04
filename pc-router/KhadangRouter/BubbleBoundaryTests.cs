@@ -30,6 +30,7 @@ public static class BubbleBoundaryTests
         void Finish(string turn, string text)
         {
             Event("item/agentMessage/delta", new { threadId = binding.ThreadId, turnId = turn, itemId = turn, delta = text });
+            Event("item/completed", new { threadId = binding.ThreadId, turnId = turn, item = new { id = turn, type = "agentMessage", phase = "final_answer", text } });
             Event("turn/completed", new { threadId = binding.ThreadId, turn = new { id = turn, status = "completed" } });
         }
         Task Flush() => (Task)flush.Invoke(router, new[] { session, CancellationToken.None })!;
@@ -38,27 +39,27 @@ public static class BubbleBoundaryTests
         await Flush(); // The first send receipt arrives after the second turn.
         await Flush(); // First message receives its final text, not second's.
         await Flush(); // Second response gets a distinct message.
-        Check(bot.Sends == 2 && bot.Messages.Keys.SequenceEqual(new[] { 901, 902 }), "Separate response IDs despite a late first send receipt");
+        Check(bot.Sends == 4 && bot.BubbleSends == 2 && bot.Answers == 2, "Progress plus separate final for each response despite a late first send receipt");
         Check(bot.Messages[901].Contains("FIRST-FINAL") && !bot.Messages[901].Contains("SECOND-FINAL") && bot.Messages[901].Contains("Done ("), "First final response survives editor/turn rollover race");
-        Check(bot.Messages[902].Contains("SECOND-FINAL") && !bot.Messages[902].Contains("FIRST-FINAL"), "Second response cannot overwrite first message");
+        Check(bot.Messages[902] == "FIRST-FINAL" && bot.Messages[903].Contains("SECOND-FINAL") && bot.Messages[904] == "SECOND-FINAL", "Final answers are separate normal messages, after their own frozen progress");
         var before = bot.Sends;
         Start("second"); await Flush();
         Check(bot.Sends == before && ledger.Get("bubble/" + binding.ThreadId)!.Value.GetProperty("status").GetString() == "Done", "Duplicate completed-turn start does not resurrect or rotate bubble");
         Start("third"); Finish("third", "THIRD-FINAL"); Start("fourth"); Finish("fourth", "FOURTH-FINAL");
         await Flush(); await Flush();
-        Check(bot.Sends == 4 && bot.Messages[903].Contains("THIRD-FINAL") && bot.Messages[904].Contains("FOURTH-FINAL"), "Two turns completed between editor ticks both retain a new final message");
+        Check(bot.Sends == 8 && bot.Messages[906] == "THIRD-FINAL" && bot.Messages[908] == "FOURTH-FINAL", "Two turns completed between editor ticks both deliver progress and full final");
         Check(bot.Messages.Values.All(t => t.Length <= 3900), "Every per-response bubble stays within Telegram bounds");
-        Check(bot.BubbleSends == bot.Sends && bot.BubbleEdits > 0, "Real rolling editor uses formatted send and amend paths");
+        Check(bot.BubbleSends == 4 && bot.Answers == 4 && bot.BubbleEdits > 0, "Separate formatted progress and normal-answer transport paths");
         var response = (ResponseMessage)sessionType.GetField("Response")!.GetValue(session)!;
         response.LastRendered = ""; // Restart restores the message receipt, not this in-memory rendering cache.
         sessionType.GetField("Dirty")!.SetValue(session, true);
         var edits = bot.BubbleEdits;
         await Flush();
-        Check(bot.Sends == 4 && bot.BubbleEdits == edits + 1 && response.Message == 904,
+        Check(bot.Sends == 8 && bot.BubbleEdits == edits + 1 && response.Message == 907,
             "Restart restyles a retained bubble in place without a new message or model action");
         Start("unknown"); bot.UnknownSend = true; await Flush();
         Finish("unknown", "UNKNOWN-FINAL"); Start("after-unknown"); Finish("after-unknown", "NOT-REPLAYED"); await Flush();
-        Check(bot.Sends == 5 && !bot.Messages.Values.Any(t => t.Contains("NOT-REPLAYED")), "Uncertain send is not replayed or bypassed by a later response");
+        Check(bot.Sends == 9 && !bot.Messages.Values.Any(t => t.Contains("NOT-REPLAYED")), "Uncertain send is not replayed or bypassed by a later response");
         var saved = ledger.Get("bubble/" + binding.ThreadId)!.Value;
         Check(saved.GetProperty("pendingResponses").EnumerateArray().Any(p => p.GetProperty("sendUnknown").GetBoolean()), "Earlier uncertain response is durably retained across rollover");
         var restored = constructor.Invoke(constructor.GetParameters().Length == 1 ? new object[] { binding } : new object[] { binding, native });
@@ -77,7 +78,7 @@ public static class BubbleBoundaryTests
     private sealed class FixtureBot : IBot
     {
         public int Sends;
-        public int BubbleSends, BubbleEdits;
+        public int BubbleSends, BubbleEdits, Answers;
         public bool UnknownSend;
         public Action? BeforeSend;
         public readonly Dictionary<int, string> Messages = new();
@@ -95,5 +96,7 @@ public static class BubbleBoundaryTests
         { BubbleSends++; return Send(chat, topic, text, stop); }
         public Task EditBubble(long chat, int message, string text, CancellationToken stop)
         { BubbleEdits++; return Edit(chat, message, text, stop); }
+        public Task<JsonElement> SendAnswer(long chat, int topic, AnswerPart part, CancellationToken stop)
+        { Answers++; return Send(chat, topic, part.Text, stop); }
     }
 }

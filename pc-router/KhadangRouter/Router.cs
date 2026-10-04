@@ -22,6 +22,9 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         public string? ClaudeRemoteState;
         public string? ClaudeRemoteUrl;
         public bool ClaudeHasDelta;
+        public string ClaudeMessageId = "";
+        public int ClaudeMessageSequence;
+        public readonly Dictionary<string, JsonElement> ClaudeTools = new();
         public string? ClaudeResultStatus;
         public readonly object Gate = new();
         public readonly SemaphoreSlim Dispatch = new(1, 1);
@@ -116,6 +119,8 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 session.Status = session.Held ? "Held — reconcile interrupted turn" : saved.GetProperty("status").GetString()!;
                 session.Carried = TimeSpan.FromMilliseconds(saved.GetProperty("elapsedMs").GetDouble());
                 RestorePendingBubbles(session, saved);
+                RestoreAnswer(session.Response, saved);
+                if (session.Response.Answer.Parts.Any(p => p.SendUnknown)) { session.Held = true; session.Status = "Held — final answer delivery unconfirmed"; }
                 session.Dirty = true;
             }
             sessions[binding.Address] = session;
@@ -326,7 +331,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 {
                     var receipt = await session.Native.Call("turn/steer", new { threadId = session.Binding.ThreadId, expectedTurnId = active, input }, stop);
                     NativeEventView.VerifySteer(receipt, active);
-                    lock (session.Gate) { session.Bubble.Append("\n↪ New owner message steered into this turn.\n"); Touch(session); }
+                    lock (session.Gate) Touch(session);
                 }
                 else
                 {
@@ -568,7 +573,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                     questions[nonce] = new Question(requestId.Clone(), session.Binding.Address, session.Binding.ThreadId,
                         parameters.GetProperty("turnId").GetString()!, qs.Clone(), new Dictionary<string, object>());
                     foreach (var question in qs.EnumerateArray())
-                        session.Bubble.Append("\nQuestion " + question.GetProperty("id").GetString() + ": " + question.GetProperty("question").GetString() +
+                        session.Bubble.Upsert("question:" + nonce + ":" + question.GetProperty("id").GetString(), "\nQuestion " + question.GetProperty("id").GetString() + ": " + question.GetProperty("question").GetString() +
                             (question.TryGetProperty("options", out var options) && options.ValueKind == JsonValueKind.Array ?
                                 "\nOptions: " + string.Join(" / ", options.EnumerateArray().Select(o => o.GetProperty("label").GetString())) : "") +
                             "\n/answer " + nonce + " " + question.GetProperty("id").GetString() + " <your answer>\n");
@@ -589,6 +594,8 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 session.Busy = false; session.Status = turn.GetProperty("status").GetString() switch {
                     "completed" => "Done", "interrupted" => "Stopped", _ => "Failed — inspect native session" };
                 session.Elapsed.Stop();
+                if (turn.GetProperty("status").GetString() == "completed") CompleteAnswer(session);
+                session.Bubble.Remove("question:");
                 if (turn.TryGetProperty("error", out var failure) && failure.ValueKind == JsonValueKind.Object)
                     session.Bubble.Append("\nNative turn failed: " + failure.GetProperty("message").GetString() + "\n");
                 foreach (var entry in approvals.Where(p => p.Value.Thread == session.Binding.ThreadId && p.Value.Turn == session.Turn)) approvals.TryRemove(entry.Key, out _);
@@ -596,19 +603,25 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             }
             else if (method == "item/agentMessage/delta")
             {
-                if (parameters.TryGetProperty("itemId", out var itemId)) session.DeltaItems.Add(itemId.GetString()!);
-                session.Bubble.Append(parameters.GetProperty("delta").GetString()!);
+                if (parameters.TryGetProperty("itemId", out var itemId))
+                {
+                    session.DeltaItems.Add(itemId.GetString()!);
+                    session.Bubble.Upsert("agent:" + itemId.GetString(), parameters.GetProperty("delta").GetString()!, delta: true);
+                }
+                else session.Bubble.Append(parameters.GetProperty("delta").GetString()!);
             }
-            else if (method == "item/commandExecution/outputDelta") session.Bubble.Append(parameters.GetProperty("delta").GetString()!);
+            else if (method == "item/commandExecution/outputDelta") return; // Raw output stays in native history, never the phone bubble.
             else if (method == "item/started")
             {
                 var item = parameters.GetProperty("item");
                 if (item.TryGetProperty("id", out var itemId))
                 {
+                    if (session.CompletedItems.Contains(itemId.GetString()!)) return;
                     if (session.Items.Count > 30) session.Items.Clear();
                     session.Items[itemId.GetString()!] = item.Clone();
                 }
-                session.Bubble.Append(NativeEventView.Tool(item, completed: false));
+                var label = NativeEventView.Tool(item, completed: false);
+                if (label.Length > 0 && item.TryGetProperty("id", out var toolId)) session.Bubble.Upsert("tool:" + toolId.GetString(), label);
             }
             else if (method == "item/completed")
             {
@@ -621,10 +634,26 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                     // Bounded display deduplication, not action-delivery authority.
                     if (session.CompletedOrder.Count > 2048) session.CompletedItems.Remove(session.CompletedOrder.Dequeue());
                 }
-                if (item.GetProperty("type").GetString() == "agentMessage" && !session.DeltaItems.Contains(item.GetProperty("id").GetString()!))
-                    session.Bubble.Append(item.GetProperty("text").GetString()!);
+                if (item.GetProperty("type").GetString() == "agentMessage")
+                {
+                    var text = item.GetProperty("text").GetString()!;
+                    session.Bubble.Upsert("agent:" + item.GetProperty("id").GetString(), text);
+                    var phase = item.TryGetProperty("phase", out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;
+                    if (phase != "commentary") ConsiderAnswer(session, text, phase == "final_answer");
+                }
                 else if (item.GetProperty("type").GetString() == "userMessage") session.Bubble.Append(NativeEventView.User(item));
-                else session.Bubble.Append(NativeEventView.Tool(item, completed: true));
+                else
+                {
+                    var displayItem = item;
+                    if (item.TryGetProperty("id", out var displayId) && session.Items.TryGetValue(displayId.GetString()!, out var started))
+                    {
+                        var fields = started.EnumerateObject().ToDictionary(p => p.Name, p => p.Value.Clone());
+                        foreach (var field in item.EnumerateObject()) fields[field.Name] = field.Value.Clone();
+                        displayItem = JsonSerializer.SerializeToElement(fields);
+                    }
+                    var label = NativeEventView.Tool(displayItem, completed: true);
+                    if (label.Length > 0 && item.TryGetProperty("id", out var toolId)) session.Bubble.Upsert("tool:" + toolId.GetString(), label);
+                }
             }
             else if (method is "thread/goal/updated" or "thread/goal/cleared")
             {
@@ -685,7 +714,8 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             backend = session.Binding.Backend, runtime = session.Binding.Runtime,
             claudeState = session.Claude == null ? null : session.ClaudeState,
             tail = session.Bubble.Tail, message = session.Message, sendUnknown = session.SendUnknown, held = session.Held,
-            pendingResponses = session.PendingBubbles.Select(r => new { text = r.Text, message = r.Message, lastRendered = r.LastRendered, sendUnknown = r.SendUnknown }).ToArray(),
+            pendingResponses = session.PendingBubbles.Select(r => new { text = r.Text, message = r.Message, lastRendered = r.LastRendered, sendUnknown = r.SendUnknown, finalAnswer = r.Answer }).ToArray(),
+            finalAnswer = session.Response.Answer,
             busy = session.Busy, status = session.Status, elapsedMs = (session.Carried + session.Elapsed.Elapsed).TotalMilliseconds,
             goal = goal.Goal, goalKnown = goal.Known, goalObservedAt = goal.ObservedAt });
     }
