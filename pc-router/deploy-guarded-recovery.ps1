@@ -27,6 +27,11 @@ foreach($name in @('Protect','Save','Inspect')){
  $f=$ast.Find({param($n)$n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name},$true)
  if(-not $f){throw 'Maintenance helper missing'};. ([ScriptBlock]::Create($f.Extent.Text))
 }
+$receiptTokens=$null;$receiptErrors=$null
+$receiptAst=[Management.Automation.Language.Parser]::ParseFile("$native\inspect-state.ps1",[ref]$receiptTokens,[ref]$receiptErrors)
+$receiptDefinition=$receiptAst.Find({param($n)$n -is [Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq 'Add-Type' -and $n.Extent.Text -like '*class RouterReceipts*'},$true)
+if($receiptErrors.Count -or -not $receiptDefinition){throw 'Read-only protected receipt definition missing'}
+if(-not ('RouterReceipts' -as [type])){& ([ScriptBlock]::Create($receiptDefinition.Extent.Text))}
 function Stopped { if((Get-Service KhadangRouter).Status.ToString() -ne 'Stopped' -or (Get-ScheduledTask Oracova-KhadangStartup).State.ToString() -ne 'Disabled'){throw 'Stopped fenced router required'} }
 function Original {
  if((Get-FileHash "$root\bin\KhadangRouter.dll").Hash -ne $oldCode -or (Get-FileHash "$root\config.json").Hash -ne $oldPolicy){throw 'Production changed; preserve it'}
@@ -118,10 +123,12 @@ if($Phase -eq 'activate'){
  Start-Service KhadangRouter;@{phase='activation-started';sessionIdsChanged=$false}|ConvertTo-Json -Compress;return
 }
 $s=Inspect;$p=Get-Content "$root\config.json" -Raw|ConvertFrom-Json;Scope $p $s
-$before=Get-Content "$release\prior-bindings.json" -Raw|ConvertFrom-Json
+$before=Get-Content "$release\prior-bindings.json" -Raw -Encoding UTF8|ConvertFrom-Json
 if($s.service -ne 'Running' -or @($s.status.nativeSessions).Count -ne 12 -or @($s.status.nativeSessions|Where-Object {$_.binding.Backend -eq 'claude' -and -not $_.claudeConnected}).Count -or
  (($before|Sort-Object Chat,Topic|ConvertTo-Json -Depth 20 -Compress) -cne ($s.bindings|Sort-Object Chat,Topic|ConvertTo-Json -Depth 20 -Compress))){throw 'Live exact sessions not yet verified; inspect without replay'}
-$recoveries=@($s.metadata|Where-Object key -like 'claude/recovery/*')
+$accepted=Get-Content "$release\accepted.json" -Raw|ConvertFrom-Json
+if([DateTimeOffset]$s.status.at -le [DateTimeOffset]$accepted.at){throw 'Fresh current-process status required'}
+$recoveries=@([RouterReceipts]::Read("SELECT key,value FROM meta WHERE key LIKE 'claude/recovery/%'")|ForEach-Object {[PSCustomObject]@{key=$_[0];value=($_[1]|ConvertFrom-Json)}})
 if($recoveries.Count -ne 7 -or @($recoveries|Where-Object {$_.value.state -ne 'connected'}).Count){throw 'Seven actual guarded recovery receipts required'}
 $claudeBubbles=@($s.metadata|Where-Object {$_.key -like 'bubble/*' -and $_.value.backend -eq 'claude'})
 if($claudeBubbles.Count -ne 7 -or @($claudeBubbles|Where-Object {$_.value.held -or $_.value.busy -or $_.value.claudeState -ne 'idle'}).Count){throw 'Seven recovered idle Claude topics required; preserve other held topics'}

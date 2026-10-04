@@ -49,10 +49,12 @@ Startup Ideas and KiCad remain pending. The three source bindings also include
 Qwen, which is explicitly excluded. Keep the included chat and topic IDs
 unchanged; the existing PC LG topic remains intact. Connected routing is not
 the broader hardware, phone, source preservation or recovery acceptance.
-Current post-reboot operation is not accepted: Khadang is stopped at the
-consumed-Claude-checkpoint guard. Stored bindings and pre-boot status do not
-establish live topic delivery. Guarded automatic recovery is now owner-approved
-and being implemented; fresh live verification is required for acceptance.
+Guarded recovery is deployed and fresh router operation was verified on
+October 4 at 23:11:40Z: twelve unchanged bindings, seven connected idle Claude
+topics and no uncertain native/send actions. Native hosts were not restarted.
+This clears the consumed-checkpoint startup blocker, not the remaining phone,
+hardware, unregistered-topic or full disaster-recovery acceptance gates. The
+Web topic's existing interrupted-work hold remains intact pending reconciliation.
 
 System-service inspection on October4 additionally found a live PostgreSQL16
 server on the physical bench Mac. Its protected data directory is not part of
@@ -3460,3 +3462,50 @@ system cohorts, final deltas, checked project/topic activation, guarded-router
 approval, physical bench/outside-LAN power recovery and clean-machine restore
 remain open. Nothing was erased; the Mac is not erasure-ready and the full goal
 remains active. Read-only weekly quota was6% at22:26:54Z, above the5% pause gate.
+
+### October 4 — approved guarded router recovery deployed
+
+The owner approved guarded checkpoint renewal and clarified that most PC
+sessions are already online. This was a router-only repair, not another
+migration: all twelve existing bindings, seven Claude session IDs, workspaces,
+selected models and Remote Control mappings were preserved. Native hosts and
+VPN services were not restarted. No downloadable vendor app backups were added.
+
+Protected policy now opts into renewal only for quiescent histories with a
+completed assistant turn, balanced tool/queue records, no competing writer and
+no unresolved action/approval/reset/delivery. Failed native launch attempts stay
+durably stopped. No native user input, permission answer or external task is
+replayed, and there is no new-session fallback. Only an independently recovered
+idle disconnected Claude topic can shed its stale connection hold; Web's
+unrelated interrupted-work hold remains intact.
+
+Validation: 1110 Linux router checks, 1113 Windows router checks and 46 Python
+connector/transport/remote/wire checks passed without models or credentials.
+Fresh production OS/credential/code-denial proof was obtained before activation.
+Prior native tool-owner/continuity evidence was explicitly reused for the
+unchanged native executable/input path, not presented as new recovery evidence.
+Actual recovery was then verified live, including a clean stop followed by the
+normal SYSTEM startup watchdog. At23:13:40Z: twelve unchanged routes, seven
+connected idle Claude topics, seven fresh recovery receipts, no uncertain native
+or initial-send actions, unchanged native-input operation counts, unchanged
+Linux native host PID455 and startup task result0. The existing single uncertain
+display edit remains in the presentation audit; it was not erased or confirmed.
+
+Protected release/evidence:
+`C:\ProgramData\KhadangRouter\release-247113a6af3c4079b3ae303d596dfba4`,
+including original config/code/state, fresh OS proof, `live-verified.json` and
+`restart-verified.json`. Installed router DLL SHA256:
+`b1fa6ad0895f63e33035606a018f7609e252c42d7b26cab8e062ed3fa66270d7`.
+Policy SHA256:
+`7b6fa30311045122def25f07642eef507deb50aefdfea7f78d2bf0162e4d6d0b`.
+Connector SHA256:
+`5ddef12af59dc5f487d69985d3c0985cb26e70cfb87e8926a64d42294116f25b`.
+The supervisor is enabled with its existing schedule and Manual service policy.
+
+This closes guarded-router recovery approval/deployment, not the full migration.
+Genuine owner phone round trips, Web reconciliation, the two unregistered
+included topics, protected Mac/database data, physical bench qualification,
+outside-LAN power recovery and independent encrypted restore remain open. The
+previous5% quota pause instruction was revoked by the owner; product goal
+bookkeeping still reports paused and was not silently changed through a side
+channel. Nothing was erased; the Mac is still not erasure-ready.
