@@ -1936,3 +1936,73 @@ Manage Topics permission for the separate requested Oracova product topic.
 Qwen remains excluded. Weekly quota is still 85% used / 15% remaining; the
 5%-remaining pause condition has not fired. Remote/boot/disaster recovery,
 bench restoration/relocation and final source retirement remain incomplete.
+
+### Mac-independent Git and original bench identities October 4 at 1:48 AM PDT
+
+Fresh ordinary-owner Windows `gh` 2.102.0 inspection found the existing
+`pooyamn` GitHub login already valid, using the native **keyring**, with no
+inline OAuth token in `hosts.yml`. No token was exported, copied, regenerated
+or printed. The earlier HTTP-401 clone record is historical, not current auth
+state. User Git configurations were absent in both Windows and WSL; native
+`gh auth setup-git --hostname github.com` configured Windows Git, and WSL Git
+now delegates to that same installed Windows CLI. The first WSL helper string
+lost its path quotes in INI parsing; a private credential-fill check caught
+the failure before acceptance, and the quoted value was corrected. See the
+[GitHub CLI setup command](https://cli.github.com/manual/gh_auth_setup-git).
+
+Both credential-fill checks now return `pooyamn` and a nonempty credential
+without displaying the secret. Both Windows and WSL Git read private
+`pooyamn/oracova` HEAD `c60533d220365424fff2a13ca1ca88d39cbc9c38` successfully.
+Normal personal Git push authentication also succeeds without temporary
+credential overrides, Mac SSH, helper delegation or a stored token file.
+This is personal account access, not reviewer/CTO/company publication authority.
+Current nonsecret user config hashes: WSL
+`392f427dd9add385ea9f1a6d01a95b0067dc9fd3abfe70c702107c359c68eeea`;
+Windows `df28c92fb34320ef6921c42ed978afdf6e9395384c90ea2342f16842093de882`.
+
+Bench identity restore generation `722ba84a20f34aa3975d556a91d7ce94` completed
+at `08:43:31Z`. The existing protected physical-bench archive again matched
+SHA-256 `48542d3b8f5ecbd74537ea3be82234667f1d6a42366473172ccab8398f44da2a`
+and 2,629,314,560 bytes. All **21 files / 12,899 bytes** under
+`oracova-bench/keys` and `pki/nucleo1` matched a fresh physical-bench inventory,
+including the original image/operator/policy keys, operator-key bundles,
+device CA private key, device key and operator PEM/PKCS12 identity.
+Only fixed individually hashed regular members were read; no arbitrary tar
+paths, links, hooks or services were extracted/executed. Duplicate, wrong
+content/size, missing and non-regular selected members are covered by four
+passing fixture checks. The reviewed administrator-sealed restore script hash
+is `569d926f53f6577639c3f8d31dc85490c1cd682536f13cf85008d8b27536311d`.
+
+The active PC destination is **`/Users/pouya/oracova-bench`**, owned by ordinary
+Linux UID1000. Directories are 0700, identity files 0600 and the preserved
+`oimgkey.py` helper 0700. Existing destinations were not overwritten; private
+key material was never displayed or committed. Eight private keys parse, six
+certificate files parse, and the device issuer CA public key matches its
+private key. The original `pouya.p12` does not accept an empty password; its
+password is not recovered. The matching preserved operator PEM private key
+is usable, but this is not a claim that the encrypted PKCS12 is unlocked.
+No keys were generated, enrollment changed, signatures produced or hardware
+commands executed. Private result:
+`/Users/pouya/.migration/bench-identity-722ba84a20f34aa3975d556a91d7ce94/result.json`.
+
+Legacy tools' `/tmp/oimgkeys` path now links to the private persistent key
+directory. Root-owned `/etc/tmpfiles.d/oracova-bench-identity.conf` adds only
+a non-replacing `L` rule; no existing configuration was overwritten and no
+cleanup/replacement rule was added. The installed config matches
+`69148fddc8c1fa3cae4a5d06672499da26a7d59fc7d31c8c3b80f6f33b85b42e`.
+Creation passed on the live WSL installation and in an empty alternate-root
+fixture; link-target hashes match the originals. Standard systemd tmpfiles
+setup is already active/successful. This config is eligible for boot-time
+recreation, but a real Windows/WSL reboot has **not** been performed or accepted.
+The pinned [systemd 255 specification](https://github.com/systemd/systemd/blob/v255/man/tmpfiles.d.xml)
+describes this non-replacing symlink behavior.
+
+At `08:47:58.2243245Z`, the router still had twelve routes, seven connected
+Claude streams, zero holds/unknowns, Linux PID2141 and Windows PID11252; no
+router, daemon, subscription or VPN/LG service was restarted for this work.
+The restore used the reviewed administrator bootstrap to read the protected
+archive, then private ordinary-owner storage; it is not company-role isolation.
+Full bench helpers/toolchains/network/hardware relocation, PKCS12 password
+recovery, native headless/boot/remote acceptance and clean-machine disaster
+restore remain required. Startup Ideas/KiCad/product-topic human choices and
+access gaps also remain. This progress does not authorize erasing the Mac.
