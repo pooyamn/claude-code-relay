@@ -2262,3 +2262,95 @@ Bench/tool changes were committed and pushed as `4313273`. Full-source/archive
 refresh, remaining topic choices/access, actual hardware/Fusion qualification,
 off-machine disaster restore and headless/outside-LAN recovery remain open.
 This is migration progress, not permission to erase the Mac or a completion claim.
+
+### Full-source coverage audit and disk-free capture, October 4
+
+The earlier seeds preserve **selected operational data**, not the entire Mac.
+The physical machine has three local account IDs: Pouya501, postgres502 and
+Oracova503. The Oracova SSH identity can enumerate its own home and selected
+projects in Pouya's home, but cannot enumerate Pouya's Documents, Desktop,
+Downloads, Library, Pictures, Music or Movies (`EACCES`). SSH as Pouya with the
+existing migration key was rejected. An owner question requests authorized
+access; no permissions, keys, passwords or TCC settings were changed.
+
+The physical Pouya home reports about298GiB of accessible allocated data,
+including about250GiB in `.lume`. Those figures omit inaccessible descendants.
+The VM store has **not** been captured as a consistent powered-down VM image.
+System/app folders, inaccessible personal data and the other account are not
+certified by the existing operational archives. None may be inferred empty
+from a failed directory enumeration.
+
+The Mac VM reports only939MiB available on its data volume. New capture uses
+`pc-router/capture-mac-stream.ps1`, not another source-local temporary archive.
+The reviewed PC administrator launches the ordinary WSL owner's existing
+pinned SSH connection; the remote ordinary Mac identity streams tar/gzip bytes
+and a digest directly to new SYSTEM/Administrators-only PC storage. No new Mac
+archive, source file deletion, credential transfer, extraction, model, native
+restart, task replay, firewall or scheduler change is involved. Whole-home
+selection is admitted only by the explicit Oracova-account profile; arbitrary
+hosts, source roots, members and overwrite destinations are not accepted.
+
+The receiver has explicit20GiB/15-minute bounds and preserves failed attempts.
+It checks source producer status and diagnostics, matching streamed byte count
+and SHA256, an independent PC file hash, ACLs and a WSL GNU tar reader. Later
+helpers retain bounded source diagnostics only in protected private logs, never
+the public result. A warning/producer failure is not relabeled as a full backup.
+The source writers remain live: these are **recovery seeds**, not a coordinated
+final snapshot, portable Keychain/login recovery, encryption-at-rest package,
+daily off-machine backup or clean-machine restore acceptance.
+
+Accepted new archives under `C:\ProgramData\OracovaMigration`:
+
+| Profile | Run directory | Bytes |
+| --- | --- | --- |
+| VM Documents and Downloads | `7a7a38a27c024a21a9d360bd0f287657` | 1123348480 |
+| Entire physical Oracova bench home, including Library | `831934f092504d6a91e5c3ae2dd988f3` | 2769418240 |
+| VM code/src/test2/toolchains, media, applications, root working files and retained Trash | `f42ef1b7680f4a2bbfa58820fe51fcd1` | 2004654080 |
+
+The respective SHA256 values are
+`62ac5402bb061d81280e7c4d93b8c1b31f51a8836579ea2d9c736930d61a6e29`
+and `f579571d709eb4a990e38d8e8c8906babeb8830af36dc486b2b7aaf8b3390a4a`.
+The extra-work archive SHA256 is
+`2823e651948a653b04bfeb2c9baee1a1594f5b12b537c3f4be6b11af57769f2c1`.
+All three producer/transport/reader statuses are0; source/PC digests match, source
+diagnostics are empty and target ACLs are protected. Actual ordinary Linux
+UID1000 opens of all three archives were denied before reading any byte.
+Final reviewed helper SHA256
+`d546083c4c468df81d6b20a3c9bf26d7938993436a4183bd7834a919f2ed6290`,
+sealed in `stream-helper-a83e69c68b3a4bcbbce4aa863038a5190` under the same
+protected parent; all18 actual Windows fixtures passed. They include binary
+bytes/hashing, byte bounds, overwrite refusal, explicit source selection, ACLs
+and a real Windows-to-WSL literal-argument round trip, without any Mac/model
+access in the fixture itself. Source archive acceptance is separate from tests.
+
+Retained failures, not accepted backups:
+
+- `d1d136cfb3bd4cda96baa1b2b7aabf18`: first VM attempt exited127 before any
+  payload; quoted WSL option parsing was fixed and an actual Windows-to-WSL
+  literal-argument fixture added. The old zero-byte run was not overwritten.
+- `26e0e3edc680444f84695b80c6b4734b`: physical Pouya project subset,
+  900075520bytes, digest
+  `fd77168d7a2901177445e90c0297ecffb59741487450daa1be58c14de4a4125cf`.
+  The transferred bytes match and the archive lists, but the source producer
+  exited1. Keep it as partial recovery evidence; do not count these projects as
+  fully backed up. This early helper retained a diagnostic digest, not its text.
+- `156ddf55eefb4b14bc6a2ef3ae84499b`: VM Library,
+  2748528640bytes, digest
+  `3fd7c3f9a6aa8c4bd64810562ec750049eab27557557e9cf5354870de1e533f3`.
+  Producer/transport exited1; a142-byte protected diagnostic identifies a
+  permission-denied source, not a socket, changed file or missing-file warning.
+  Streamed/independent PC digests, ACL and reader passed; retain the recoverable
+  bytes without falsely certifying full Library/Keychain coverage. The full
+  bounded diagnostic is retained privately; no source permission was changed.
+
+Read-only router inspection at11:35:28Z remained Running with12 bindings,
+all7 Claude streams connected, native PIDs2141/19956, held0, global unknown0
+and retained presentation unknown1. Normal participant199200674 remains
+enrolled; no runtime policy, topic wiring or native process changed during
+these transfers. Latest measured weekly quota remains14% available, above the
+owner's5% pause threshold; the goal stays active and incomplete.
+
+Final source fences/current SQLite snapshots,
+whole-source coverage, physical-account access and VM-image consistency,
+off-machine encryption/key recovery/restore, outstanding routes, real hardware
+and boot/outside-LAN acceptance remain required. The Mac is not ready to erase.

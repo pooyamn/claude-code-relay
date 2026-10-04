@@ -4,6 +4,73 @@
   "pc_address": "10.0.0.35",
   "owner_user": "pou",
   "bot": "TheKhadangBot",
+  "mac_source_coverage_20261004": {
+    "mode": "selected-live-source-recovery-seeds",
+    "whole_mac_backup_verified": false,
+    "source_vm_free_mib_observed": 937,
+    "new_source_temporary_archives_created": false,
+    "source_data_deleted": false,
+    "source_permissions_changed": false,
+    "helper": "pc-router/capture-mac-stream.ps1",
+    "helper_sha256": "d546083c4c468df81d6b20a3c9bf26d7938993436a4183bd7834a919f2ed6290",
+    "sealed_helper_directory": "C:\\ProgramData\\OracovaMigration\\stream-helper-a83e69c68b3a4bcbbce4aa863038a5190",
+    "windows_stream_fixture_checks_passed": 18,
+    "model_or_router_native_restart_performed": false,
+    "source_writers_fenced": false,
+    "consistent_final_snapshot": false,
+    "encrypted_off_machine_restore_verified": false,
+    "post_transfer_router_observed_at": "2026-10-04T11:38:03.0519525Z",
+    "post_transfer_router_running": true,
+    "post_transfer_routes": 12,
+    "post_transfer_connected_claude_streams": 7,
+    "post_transfer_native_pids": [2141, 19956],
+    "post_transfer_held_sessions": 0,
+    "post_transfer_global_unknown": 0,
+    "post_transfer_retained_presentation_unknown": 1,
+    "administrator_ssh_closed_cleanly": true,
+    "physical_pouya_personal_folders": "EACCES under the Oracova identity; existing migration key rejected for Pouya SSH. Owner access requested; do not infer empty or preserved.",
+    "physical_vm_store": "Approximately 250GiB .lume store observed; consistent VM-image capture not performed.",
+    "accepted_archives": [
+      {
+        "profile": "vm-personal",
+        "run": "7a7a38a27c024a21a9d360bd0f287657",
+        "bytes": 1123348480,
+        "sha256": "62ac5402bb061d81280e7c4d93b8c1b31f51a8836579ea2d9c736930d61a6e29",
+        "producer_transport_reader_exit": [0, 0, 0],
+        "source_and_independent_pc_hash_matched": true,
+        "admin_system_only": true,
+        "ordinary_linux_uid1000_open_denied_without_read": true
+      },
+      {
+        "profile": "physical-bench-home",
+        "run": "831934f092504d6a91e5c3ae2dd988f3",
+        "bytes": 2769418240,
+        "sha256": "f579571d709eb4a990e38d8e8c8906babeb8830af36dc486b2b7aaf8b3390a4a",
+        "producer_transport_reader_exit": [0, 0, 0],
+        "source_and_independent_pc_hash_matched": true,
+        "admin_system_only": true,
+        "ordinary_linux_uid1000_open_denied_without_read": true
+      },
+      {
+        "profile": "vm-extra-work",
+        "run": "f42ef1b7680f4a2bbfa58820fe51fcd1",
+        "bytes": 2004654080,
+        "sha256": "2823e651948a653b04bfeb2c9baee1a1594f5b12b537c3f4be6b11af57769f2c1",
+        "producer_transport_reader_exit": [0, 0, 0],
+        "source_and_independent_pc_hash_matched": true,
+        "admin_system_only": true,
+        "ordinary_linux_uid1000_open_denied_without_read": true
+      }
+    ],
+    "retained_unaccepted_attempts": [
+      {"run": "d1d136cfb3bd4cda96baa1b2b7aabf18", "bytes": 0, "transport_exit": 127, "reason": "WSL option quoting; fixed and native literal-argv fixture added, old attempt not overwritten"},
+      {"run": "26e0e3edc680444f84695b80c6b4734b", "profile": "physical-projects", "bytes": 900075520, "producer_exit": 1, "sha256": "fd77168d7a2901177445e90c0297ecffb59741487450daa1be58c14de4a4125cf", "reader_exit": 0, "full_project_coverage_verified": false},
+      {"run": "156ddf55eefb4b14bc6a2ef3ae84499b", "profile": "vm-library", "bytes": 2748528640, "producer_exit": 1, "sha256": "3fd7c3f9a6aa8c4bd64810562ec750049eab27557557e9cf5354870de1e533f3", "reader_exit": 0, "warning_bytes": 142, "warning_kind": "permission-denied", "full_library_or_keychain_coverage_verified": false}
+    ],
+    "mac_ready_to_erase": false,
+    "weekly_quota_remaining_percent": 14,
+    "owner_pause_threshold_remaining_percent": 5
+  },
   "mac_retirement": {
     "known_plaintext_token_file_removed": "/Users/pouya/.config/ccrelay/env-test",
     "stopped": ["ccrelayd-test", "crw-cf42f7e432", "crw-5429404fde"],
