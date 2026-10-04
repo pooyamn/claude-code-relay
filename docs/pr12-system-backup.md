@@ -79,6 +79,28 @@ dynamic folder tuples; named source fields fix the mechanism, and the regression
 now tests actual dynamic-folder discovery and collector binding. Fixture success
 and a published inventory are not PR 12 acceptance.
 
+### Selected Windows API exports (2026-10-04)
+
+The read-only settings exporter now closes part of the inventory's API-export
+gap: service definitions/dependencies/configuration, task XML, firewall/update
+policy, non-password Winlogon values, owner WSL registration, power state,
+network/adapter settings and optional-feature state. All12 selected sections,
+10 operational services and86 task XML documents were observed in private run
+`d3c991de39074d399c7e959eaa7c5a15`. Independent file hash/size/schema/ACL and XML
+validation passed; ordinary Linux UID1000 open was denied without reading data.
+All23 actual Windows fixtures passed, including absence of a next-run timestamp
+for event/one-shot tasks. The initial partial export remains unchanged; its
+missing task section was diagnosed and corrected only in a separate new run.
+Full hashes, private paths and limits are in
+[the migration evidence](mac-to-pc-migration.md#protected-windows-recovery-settings-export-october-4-at-637-am-pdt).
+
+These mutable observations do not certify a full registry, boot/driver image,
+source-writer fence, final files/SQLite/action-ledger cohort or portable
+task/service/LSA/DPAPI credentials. `DefaultPassword` is excluded; no credential
+API, service/task mutation, restore or model turn was performed. Encryption,
+off-machine key/storage custody and a clean-machine restore are still pending.
+PR12 acceptance is unchanged.
+
 After this inventory, the router source was added at
 `C:\Users\pou\workspaces\claude-code-relay`, branch
 `codex/agentic-pc-preparation`, commit

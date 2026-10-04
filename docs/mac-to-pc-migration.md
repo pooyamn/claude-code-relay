@@ -2486,3 +2486,76 @@ Final12:57:22Z readback retained the same state and independently confirmed the
 Windows native PID alive. Administrator SSH was closed cleanly. Native weekly
 quota remained13% available, above the owner's5% pause threshold; the migration
 goal remains active and incomplete.
+
+### Protected Windows recovery-settings export, October 4 at 6:37 AM PDT
+
+`pc-router/export-pc-recovery-settings.ps1` now exports selected live Windows
+settings without changing services, tasks, registry values, firewall, power,
+login policy or native sessions. It reads service definitions/dependencies and
+their registry configuration, scheduled-task XML, firewall/update policy,
+non-password Winlogon values, owner WSL registration, power settings/capabilities,
+network/adapter settings and Windows optional-feature state. These are read-only
+API observations, not a full-machine or writer-fenced backup.
+[Service properties](https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-service),
+[scheduled-task XML export](https://learn.microsoft.com/en-us/powershell/module/scheduledtasks/export-scheduledtask).
+
+All12 selected sections were observed in new run
+`d3c991de39074d399c7e959eaa7c5a15`, finished `2026-10-04T13:35:54.9390347Z`.
+Private artifact:
+`C:\ProgramData\OracovaMigration\d3c991de39074d399c7e959eaa7c5a15\settings.private.json`.
+It contains2343247 UTF-8 bytes, SHA256
+`00f9cdc8ed3820bc7c25331a7388a9fe82c903726b706b25b1755178069c7cd0`.
+Independent saved-file hash, size, schema, section states and protected ACL
+readback passed. Ten operational service definitions and86 selected task XML
+documents were retained; all86 XML roots were independently parsed with DTDs
+prohibited and external resolution disabled. The four required router/native
+recovery tasks are present.81 tasks have no next-run timestamp; those absences
+remain null, not invented dates or missing task exports.
+
+Both the new directory and file are Administrator-owned, inheritance-protected,
+with only SYSTEM/Administrators grants. Actual ordinary Linux UID1000 file open
+was denied before reading any bytes. Service command lines, task actions,
+network addresses and registry data remain private and must not be published.
+Winlogon export is an explicit non-secret allowlist; `DefaultPassword` is
+excluded. No LSA, DPAPI or Credential Manager API was invoked. Task/service
+password portability is not established by this artifact.
+
+The corrected exporter SHA256 is
+`e170acabb3c29e3f3345849e119343a0ade6bcba79582893b95e640bb08290dd`;
+fixture source SHA256 is
+`795171228d9495e2295ece24893c5ab6e62ab4c03170257a47e25b38260c4a6a`.
+The exact same bytes were sealed in
+`C:\ProgramData\OracovaMigration\recovery-helper-41d27284915549a1968fdf269ff82885`.
+All23 actual Windows fixtures passed, covering null/date/offset handling,
+invalid timestamp rejection, private errors/data, password exclusion, real
+read-only native commands, registry absence, binary values, ACLs, byte/hash
+readback and no overwrite or false full-backup claim. Fixtures did not execute
+production discovery or contact models/network.
+
+The first run `5b4efafaee124d6db5d4249e1a767445` remains unchanged as an11/12
+partial settings observation. Its task section was explicitly unavailable:
+the initial exporter called `.ToString()` on absent next-run timestamps.
+That was an exporter error, not a missing recovery task. After diagnosis and
+regression tests, a distinct new run captured the corrected observations;
+neither the partial artifact nor its old receipt was overwritten/reclassified.
+The earlier sealed helper `recovery-helper-00411ef1ad74483ab1601983f78969a5`
+and its19-fixture result are also retained.
+
+Observed `AutoAdminLogon` remains0. The existing saved-credential mismatch and
+owner's replacement choice remain unresolved; no credential or login policy
+was changed. Router readback `13:38:05.5450775Z` remained Running,12 routes,
+seven Claude streams, native PIDs2141/19956, global unknown0 and retained
+presentation unknown1. Windows native19956 was independently alive; participant
+199200674 remained enrolled for normal conversation/attachments, with owner
+110123423 unchanged. Eight VPN/proxy/tunnel/state/SSH/LG services remained
+Running/Auto. Cdrive free space was731640889344 bytes.
+
+The artifact truthfully remains `fullSystemBackup:false`, `writersFrozen:false`,
+`encrypted:false`, `restoreActivated:false`. Registry name/byte/link/ACL closure,
+driver packages, BIOS/UEFI/BitLocker, Linux/WSL disk consistency, portable
+credentials, final file/database/action-ledger capture, encrypted off-machine
+custody and a clean-machine restore are not established. Protected Mac personal
+data and final deltas still need source access. The Mac is not ready to erase.
+Administrator maintenance SSH closed cleanly at13:41:09Z with exit0; no export
+or test process remains pending. Native weekly quota is13% available, above the
+owner's5% pause threshold. The migration goal remains active and incomplete.
