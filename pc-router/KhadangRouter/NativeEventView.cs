@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace KhadangRouter;
 
@@ -26,13 +27,21 @@ public static class NativeEventView
         {
             if (++inspected > 32) { parts.Add("[additional input retained in native history]"); break; }
             var type = Field(part, "type");
-            if (type == "text") parts.Add(Field(part, "text", 800));
+            if (type == "text") parts.Add(CompactLegacyInput(Field(part, "text", 800)));
             else if (type is "image" or "localImage" or "file") attachments++;
         }
         if (attachments != 0) parts.Add("[" + attachments + " attachment(s); inspect in native client]");
         var text = RollingBubble.SafeTail(string.Join(" ", parts.Where(p => p.Length > 0)), 1200);
-        return text.Length == 0 ? "" : "\n↪ Native input: " + text + "\n";
+        return text.Length == 0 ? "" : "\n↪ " + text + "\n";
     }
+
+    // Display compatibility only: leave native history and durable provenance
+    // intact. Previously formatted inputs and restored bubbles need not keep
+    // showing the retired verbose header after the new formatter is deployed.
+    internal static string CompactLegacyInput(string text) => Regex.Replace(text,
+        @"\A\[Telegram owner [0-9]{1,20}; message [0-9]{1,20}\] ", "");
+    internal static string CompactLegacyBubble(string text) => Regex.Replace(text,
+        @"(?m)^↪ Native input: (?:\[Telegram owner [0-9]{1,20}; message [0-9]{1,20}\] )?", "↪ ");
 
     public static string Tool(JsonElement item, bool completed)
     {

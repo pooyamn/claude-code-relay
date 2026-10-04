@@ -41,6 +41,7 @@ public static class MixedRoutingTests
         }
         var file = new StagedAttachment("document", "C:\\Protected\\asset.bin", 3, new string('a', 64), "../untrusted.ps1", "application/octet-stream", false);
         var content = ClaudeInput.Create(1, 2, "CAPTION", [file], "linux");
+        Check(ClaudeInput.Create(110123423, 13604, "Test", [], "linux")[0].GetProperty("text").GetString() == "Test", "Claude receives exact plain user text without duplicated delivery metadata");
         Check(content[0].GetProperty("type").GetString() == "text" && content.GetRawText().Contains("/mnt/c/Protected/asset.bin") &&
             content.GetRawText().Contains("CAPTION") && content.GetRawText().Contains("untrusted content"), "Claude file input keeps caption, deterministic Linux path and trust marker");
         var codexInput = Json(Attachments.Input(1, 2, "CAPTION", [file with { Image = true }], "linux"));

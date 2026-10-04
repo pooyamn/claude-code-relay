@@ -1205,7 +1205,7 @@ and installed Windows fixture runs passed **790 checks**. The exact new code
 and policy passed a fresh production SYSTEM-to-limited-owner probe, including
 UID 1000 execution against the still-running paired daemon PID 2141, generation
 229385, and actual protected-credential denial. No generic probe inferred
-Claude acceptance or generated a model prompt. Current deployed hashes:
+Claude acceptance or generated a model prompt. Web-cutover release hashes:
 
 - Router: `f61b190c8c4d212d982ce576e2223f35314fc18884e08d70558a7662f959a7a1`.
 - Policy: `740cd20e8b688a7cc14f8faa574951f54f6c27c2d56df0b4f2d352a6f4a204e2`.
@@ -1241,3 +1241,36 @@ Remaining acceptance includes Web tool/steering/control/attachment and phone
 UI/restart checks, the other thirteen original-topic cutovers, independent
 Claude continuity, physical bench movement and Mac-independent recovery.
 The Mac is not erased and full migration is not complete.
+
+### Compact input formatting, October 3 evening
+
+Plain Telegram text now reaches the native model unchanged: `Test`, not
+`[Telegram owner 110123423; message 13604]\nTest`. Authenticated sender and
+message IDs remain in the durable delivery ledger. Attachment trust warnings
+and file metadata remain intact. This is the owner-only adapter; employee
+identity or authorization has not been relaxed.
+
+Telegram echoes use `↪ Test` instead of `↪ Native input: ...`. Restored current
+bubbles and old native input events compact the legacy wrapper only for
+display; native history and audit receipts are not rewritten. The same plain
+input behavior is covered for Claude in fixtures, not claimed as live Claude
+acceptance. Six added checks cover exact plain inputs, compact echoes, legacy
+display, preserved footers and unchanged non-prefix text; the Mac suite passes
+793 checks.
+
+Deployed on the PC with **796 Windows checks** passing both before replacement
+and against the installed bytes. Router SHA-256 is
+`84ab5dea4b368980a0754fb64d23f2abbe0f63dcada6eafdb1f752e1a37e5690`;
+policy and both topic/session bindings are unchanged. The matching two-runtime
+credential/OS-boundary proof completed at `2026-10-04T02:32:51Z`. Live polling
+and startup supervision are restored, and Linux daemon PID 2141 was not
+restarted. Recovery binaries/probe/service configuration remain in
+`C:\ProgramData\KhadangRouter\release-95d5215aa019402cb19dbe35e89aa111`.
+
+A genuine owner update 759322603/message 13608 was accepted after activation.
+Its confirmed native `turn/start` contains 14 characters without the delivery
+header; sender/message provenance remains in the update ledger. The same Web
+thread is actively working in new response 13609, with confirmed bounded edits
+and no verbose prefix, unknown operations or pending responses. Exact `↪ Test`
+formatting and legacy display compaction are fixture-verified; the latest live
+tail is already long enough to roll the echoed input out of view.

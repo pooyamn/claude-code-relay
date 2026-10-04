@@ -20,7 +20,7 @@ public static class JoinedTests
         finally { stop.Cancel(); try { await running; } catch (OperationCanceledException) { } }
         Check(native.Started == 1 && native.Steered == 1, "Joined routing starts once and steers exact active turn");
         Check(native.LastProfile == ":danger-full-access" && native.LastApproval == "never", "Owner full-access profile survives exact resume");
-        Check(native.SteerTurn == "turn-1" && native.LastInput!.Contains("second owner message"), "Steering expectedTurnId and input preserved");
+        Check(native.SteerTurn == "turn-1" && native.LastInput!.Contains("second owner message") && !native.LastInput.Contains("Telegram owner"), "Steering expectedTurnId and plain input preserved without audit header");
         Check(native.Called.All(m => !m.Contains("queue", StringComparison.OrdinalIgnoreCase)), "No queue fallback");
         Check(bot.Sends == 1 && bot.Edits >= 1, "One rolling text message, final edit in place");
         Check(bot.Last!.Length <= 3900 && bot.Last.Contains("Done (") && bot.Last.Contains("FINAL-OK"), "Bounded final tail/footer survives tool output");
@@ -41,7 +41,7 @@ public static class JoinedTests
             finally { appStop.Cancel(); try { await appRun; } catch (OperationCanceledException) { } }
             Check(appNative.Started == 0 && appNative.Steered == 0, "Native-origin events cause no router model start or steering");
             Check(appBot.Sends == 1 && appBot.Edits >= 1, "Native-origin response creates one new bubble and preserves the earlier response");
-            Check(appBot.Last!.Contains("Have you updated the source? Pushed?") && appBot.Last.Contains("Native input:"), "Native user input appears in Telegram event view");
+            Check(appBot.Last!.Contains("↪ Have you updated the source? Pushed?") && !appBot.Last.Contains("Native input:"), "Native user input appears with compact Telegram prefix");
             Check(appBot.Last.Contains("MCP fixture/inspect") && appBot.Last.Contains("exit 0") && appBot.Last.Contains("TOOL-OUTPUT"), "Tool names, completion and output stay in same bubble");
             Check(!appBot.Last.Contains("FOREIGN-INPUT") && !appBot.Last.Contains("STALE-INPUT") && !appBot.Last.Contains("PRIVATE-"), "Foreign/stale events and private attachment/tool fields are not reflected");
             Check(appBot.Last.Split("Have you updated the source? Pushed?").Length == 2, "Repeated completed input item is displayed once");

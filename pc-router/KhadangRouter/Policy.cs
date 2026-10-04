@@ -170,7 +170,7 @@ public sealed class RollingBubble
             var footer = "\n\n" + state + " (" + (int)elapsed.TotalMinutes + "m " + elapsed.Seconds + "s)";
             if (!string.IsNullOrWhiteSpace(goal)) footer += "\nGoal: " + SafeTail(goal, 160);
             var available = 3900 - footer.Length;
-            return SafeTail(tail.Length == 0 ? "Connected to the PC session." : tail.Trim(), available) + footer;
+            return SafeTail(tail.Length == 0 ? "Connected to the PC session." : NativeEventView.CompactLegacyBubble(tail.Trim()), available) + footer;
         }
     }
     public static string SafeTail(string text, int length)

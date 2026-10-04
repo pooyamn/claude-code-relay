@@ -45,6 +45,7 @@ public static class AttachmentTests
         Check(Attachments.ImageExtension("fake.png"u8) == null, "A filename is not image evidence");
         var staged = new[] { new StagedAttachment("photo", "C:\\Protected\\generated.jpg", 3, new string('a', 64), "../untrusted.ps1", "image/jpeg", true), new StagedAttachment("voice", "C:\\Protected\\generated.bin", 3, new string('b', 64), null, "audio/ogg", false) };
         var inputs = Json(Attachments.Input(123, 456, "Owner Caption", staged));
+        Check(Json(Attachments.Input(110123423, 13604, "Test", []))[0].GetProperty("text").GetString() == "Test", "Codex receives exact plain user text; actor/message metadata stays in the ledger");
         Check(inputs.GetArrayLength() == 2 && inputs[1].GetProperty("type").GetString() == "localImage" && inputs[1].GetProperty("path").GetString() == staged[0].Path, "Images use native localImage while other files remain paths");
         Check(inputs[0].GetProperty("text").GetString()!.Contains("Owner Caption") && !inputs.GetRawText().Contains("file_id") && !inputs.GetRawText().Contains("api.telegram.org"), "Caption/provenance retained without credential URL or bot file ID");
         if (OperatingSystem.IsWindows())

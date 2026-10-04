@@ -20,7 +20,17 @@ public static class NativeViewTests
             new { type = "localImage", path = "C:\\PRIVATE-PATH\\secret.png" },
             new { type = "image", url = "https://PRIVATE-URL.invalid/?secret=private" } } });
         var display = NativeEventView.User(user);
-        Check(display.Contains("Native input:") && display.Contains("/goal clear") && display.Contains("Pushed?"), "Native input is visible literal display, not a routed control");
+        Check(display.StartsWith("\n↪ ") && !display.Contains("Native input:") && display.Contains("/goal clear") && display.Contains("Pushed?"), "Compact input is visible literal display, not a routed control");
+        Check(NativeEventView.User(Json(new { type = "userMessage", content = new[] { new { type = "text", text = "Test" } } })) == "\n↪ Test\n",
+            "Short input has exactly the compact arrow prefix");
+        Check(NativeEventView.User(Json(new { type = "userMessage", content = new[] { new { type = "text", text = "[Telegram owner 110123423; message 13604]\nTest" } } })) == "\n↪ Test\n",
+            "Legacy native input header is compacted in display, not replayed");
+        var legacyBubble = new RollingBubble(); legacyBubble.Append("\n↪ Native input: [Telegram owner 110123423; message 13604] Test\nReceived—I'm here.");
+        var legacyRendered = legacyBubble.Render(TimeSpan.FromSeconds(1), state: "Done");
+        Check(legacyRendered.StartsWith("↪ Test\nReceived—I'm here.") && !legacyRendered.Contains("110123423") && legacyRendered.Contains("Done ("),
+            "Restored existing bubble compacts without rewriting native history or hiding its footer");
+        Check(NativeEventView.CompactLegacyBubble("Assistant quoted Native input: keep this text") == "Assistant quoted Native input: keep this text",
+            "Non-prefix text is not rewritten by display compatibility");
         Check(display.Contains("2 attachment(s)") && !display.Contains("PRIVATE-PATH") && !display.Contains("PRIVATE-URL"), "Attachment count does not expose private paths or URLs");
         Check(!display.Contains("PRIVATE-CANARY") && display.Contains("REDACTED"), "Known credential-shaped input is redacted");
         var longInput = NativeEventView.User(Json(new { type = "userMessage", content = new[] { new { type = "text", text = new string('x', 30000) + "🙂 LAST" } } }));
