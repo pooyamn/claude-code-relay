@@ -3289,3 +3289,63 @@ bench validation and encrypted independent off-machine restore remain open.
 No source service was stopped and nothing was erased. The complete migration
 objective remains active and unproven. Weekly quota was7% remaining at21:37:47Z,
 above the owner's5% pause threshold.
+
+### Shared FPGA work restored into a private PC workspace
+
+The preceding turn preserved installed service-code bytes with an explicit
+unreadable-file gap. This continuation moved the separately archived Shared
+FPGA cohort into an actual ordinary-owner PC work folder rather than treating
+an archive as operational activation. Fresh physical-source inspection found
+exactly61 regular files and no links in `/Users/Shared/fpga`.
+
+Restore generation `812786bdd9f14da6ac849356659d3859` completed21:46:04Z:
+61 files,81377115 bytes, destination `/Users/pouya/fpga-bench`, Linux UID1000,
+directory mode0700 and original file copies0600. The complete protected Shared
+archive and index digests were verified before selected regular-file reads;
+all selected file hashes were checked again after the owned no-clobber move.
+Unknown/duplicate/linked selected members, unsafe flat names, wrong or missing
+contents and a shortened61-file index are covered by five passing fixtures.
+No arbitrary tar extraction, source-program execution or existing destination
+overwrite occurred. Private result SHA256:
+`1e7523119abc1017ae16060d5f2a81b79750d34a2f952494cb2bc35ddd7274e6`.
+
+The accepted maintenance bootstrap sealed the reviewed helper under
+`C:\ProgramData\OracovaMigration\fpga-restore-helper-8f7e5ef858894b21bb219d164bafcdac`;
+helper SHA256 `5e7ecbd3f71b5d4095622e9215eca08b531ce11b08fc1fe9d724833ca09f9ab0`.
+Its source archive/index are the accepted physical Shared run recorded above,
+not the partial service-code archive. The initial SSH authentication connection
+reset before any restore job started; a confirmed new maintenance connection
+launched exactly one restore. The retained process handle was observed terminal
+and its receipt read, not restarted after an observation timeout.
+
+A fresh complete Mac observation at21:46:28Z read and hashed all61 files
+(81377115 bytes) without source writes or a temporary archive. Its directory
+names and each file's observed identity/size/modification metadata remained
+stable during reads. All61 hashes matched the restored originals; a separate
+ordinary-owner PC reread also verified all61 files. The unchanged legacy Python
+server compiles, but was not imported, executed or started. A private continuation
+handoff records scope, usable tool paths, artifact/history limits, security
+concerns, approvals and concrete remaining checks without creating a topic or
+silently assigning a repository/session from artifact filenames.
+
+The PC Linux openFPGALoader1.1.1 passed actual `--help`, `--version` and
+`--list-cables` calls; its catalog includes `cmsisdap`. Native executable SHA256
+`3a92cc3e1125dfde99bb280bd1209c12030db8a3285fb47c07270fdd31ced677`.
+No USB scan, JTAG operation, programming, reset or erase ran. The old source
+server exposes command execution, writes and reload with optional authentication
+and Mac GUI-specific paths. It was preserved unchanged, not recreated as an
+automatically started PC privilege bridge. PC port8731 had no listener at the
+observation. Legacy HTTP compatibility, hardware/driver access and real device
+qualification are not established by loader startup/catalog checks.
+
+The helper, source manifest and comparison file passed protected Admin/SYSTEM-
+only ACL/owner checks at21:49:05Z; ordinary UID1000 opens of all three were denied
+before any byte read. Source comparison SHA256:
+`1c4f9463b55987d3a70b3a2bd30a2729a98b3ab0d945719f07cc5b6b63dea562`.
+Khadang remained Stopped and the maintenance SSH connection closed cleanly.
+This is personal data migration, not company-role approval isolation or a final
+writer-fenced snapshot. Protected database/personal data, final deltas, reviewed
+project/topic activation, pending guarded-router approval, physical bench,
+outside-LAN/power recovery and independent encrypted restore remain open.
+The Mac is not erasure-ready and the complete migration goal remains active.
+Read-only native weekly quota was7% remaining at21:49:47Z, above the5% pause gate.
