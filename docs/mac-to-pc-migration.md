@@ -1038,6 +1038,21 @@ The fresh read after code issuance still reports `errored`; issuing a code
 does not establish mobile acceptance or a working phone connection. Phone-side
 code entry and successful transport verification remain pending.
 
+At `2026-10-04T01:19:09Z`, following Pouya's phone-side confirmation, native
+`remoteControl/pairing/status` returned `claimed: true`. The same verified WSL
+daemon's `remoteControl/client/list` contains one iOS phone, app 1.2026.267.
+**Device pairing is verified; a working phone connection is not.** The daemon
+still reports `errored`, and its actual WebSocket logs show HTTP 409 Conflict,
+`Remote app server already online`. Earlier diagnostic output incorrectly
+looked for a nonexistent `message` column; this version's logs store bodies in
+`feedback_log_body`, and the diagnostic was corrected. Windows and WSL have
+different installation fingerprints and remote environment IDs. WSL contains
+only the one native Codex process; the conflicting cloud connection has not
+been identified. Existing Mac, Windows Codex, Claude and Telegram sessions were
+not stopped, re-paired or restarted. Code expiry after acceptance does not
+undo the confirmed registered phone; do not issue another code as a connection
+workaround.
+
 All 27 native-connector/observer fixtures pass in an OS sandbox without network
 or owner credentials. Both deployment scripts parse on Windows and eight exact
 missing-socket classifier fixtures pass. Native absent-daemon `version` reports
