@@ -72,7 +72,7 @@ public static class RoutingTests
                 "Same topic numbers across chats and whole-group input start/steer their own exact native sessions");
             Check(bindings.All(b => native.Starts[b.ThreadId].GetProperty("input").GetRawText().Contains("START-" + b.ThreadId) &&
                 native.Steers[b.ThreadId].GetProperty("input").GetRawText().Contains("STEER-" + b.ThreadId)), "Owner input never leaks into the other forum's matching topic number");
-            Check(bot.Sends == 0 && bindings.All(b => bot.Edits.ContainsKey(b.Address)), "Every route amends its own existing bubble, with no new text messages");
+            Check(bot.Sends == bindings.Length && bindings.All(b => bot.Edits.ContainsKey(b.Address)), "Every new response gets its own topic-addressed bubble");
             Check(bindings.All(b => bot.Edits[b.Address].Length <= 3900 && bot.Edits[b.Address].Contains("FINAL-" + b.ThreadId) && bot.Edits[b.Address].Contains("APP-" + b.ThreadId) &&
                 bindings.Where(other => other != b).All(other => !bot.Edits[b.Address].Contains(other.ThreadId))), "Native app input, tools, final text and footer stay in the correct chat's rolling bubble");
             Check(bot.Menus.Keys.Order().SequenceEqual(bindings.Select(b => b.Chat).Order()) && bot.MenuReadbacks == 3, "Owner menus registered/read back per activated chat; inaccessible unbound chat untouched");
@@ -207,13 +207,17 @@ public static class RoutingTests
             }
             await Task.Delay(Timeout.Infinite, stop); return Json(Array.Empty<object>());
         }
-        public Task<JsonElement> Send(long chat, int topic, string text, CancellationToken stop) { Sends++; throw new Exception("Routing must preserve each existing bubble"); }
+        public Task<JsonElement> Send(long chat, int topic, string text, CancellationToken stop)
+        { Sends++; Observe(chat, text); return Task.FromResult(Json(new { message_id = 901 })); }
         public Task Edit(long chat, int message, string text, CancellationToken stop)
         {
-            if (message != 900) throw new Exception("Routing changed the durable bubble ID");
+            if (message is not (900 or 901)) throw new Exception("Unknown routing bubble ID"); Observe(chat, text);
+            return Task.CompletedTask;
+        }
+        private void Observe(long chat, string text)
+        {
             var binding = bindings.Single(b => b.Chat == chat); Edits[binding.Address] = text;
             if (bindings.All(b => Edits.TryGetValue(b.Address, out var tail) && tail.Contains("FINAL-" + b.ThreadId) && tail.Contains("Done ("))) Completed.TrySetResult();
-            return Task.CompletedTask;
         }
     }
 }

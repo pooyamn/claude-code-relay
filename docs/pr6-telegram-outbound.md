@@ -10,6 +10,51 @@ until trusted producer/repair wiring, real owner-prompt acceptance and the
 integration gates below pass.
 Khadang is the authorized test bot; HamalBot wiring remains unchanged.
 
+## Per-response PC bubbles (2026-10-03)
+
+The PC adapter previously reset its display text on `turn/started` but retained
+the session-wide Telegram message ID. Separate completed responses consequently
+overwrote the same old bubble. Delivery now belongs to each native response:
+new work gets a new message, while steering, tools, goal updates and controls
+within that response continue editing its bounded rolling text and footer.
+
+Frozen final responses survive editor ticks and in-flight sends. A late receipt
+cannot attach an earlier message ID to later work. Pending finals and uncertain
+sends persist across restarts; an unknown send is never automatically replayed.
+Duplicate start notifications do not resurrect a completed turn. An empty initial
+Ready placeholder is not treated as a completed response.
+
+The source candidate passed 787 isolated offline checks; the focused hotfix
+against the installed `71a0fa8` baseline passed 348. The independently published
+hotfix source is `9ce9443` on `codex/response-bubble-hotfix`; it does not activate
+the unreleased mixed-runtime/migration adapters. Native app visibility is a
+separate unresolved gate: the router and existing Remote Control host are still
+different native processes, and phone pairing/shared-host acceptance is not
+established by this presentation change.
+
+The focused binary passed nine actual Windows response-boundary checks under
+`CodexSandboxOffline`, with the bot credential denied and network disabled.
+Its DLL SHA256 is
+`8295f9ee80de490afc02a90f642608e2ca2f66c4bf687eaf81431f985d099c2f`.
+The existing code-hash gate held the first startup against the old proof;
+`--probe-service` then produced fresh matching owner/OS-sandbox/code-denial and
+attachment-read-only proofs at `2026-10-04T00:42:11.9133305Z`, without polling,
+pairing or inference. No gate or policy was relaxed. Rollback binaries and the
+stopped-state snapshot are retained in
+`C:\ProgramData\KhadangRouter\release-bubble-BRBjPl`.
+Fresh live readback at `2026-10-04T00:43:16.1785183Z` confirms native PID 11572,
+the original topic/thread, restored startup supervision and zero unknown/pending
+operations. The old completed message 161 remains unchanged; model starts (5),
+sends (2) and topics (1) did not increase during deployment. The next owner turn
+is the remaining live rollover acceptance, not another synthetic model action.
+
+Target inspection also found the existing native Windows auth-file ACL grants
+`CodexSandboxUsers` read access. No credential bytes were read and no auth ACL or
+credential was changed. This provider-auth exposure is distinct from the
+protected SYSTEM-only router/bot credential boundary; assess it before admitting
+untrusted/company workers. The test must not claim all credentials are denied
+merely because the bot-token denial succeeds.
+
 ## PC owner-only inbound attachments (2026-10-03)
 
 The Windows migration adapter now implements direct-owner photo/file delivery,

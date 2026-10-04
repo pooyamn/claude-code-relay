@@ -208,7 +208,7 @@ public sealed partial class Router
     private void StartClaudeWork(Session session)
     {
         session.ClaudeWorkRevision++; session.ClaudeHasDelta = false; session.ClaudeResultStatus = null;
-        session.Bubble = new RollingBubble(); session.Elapsed.Restart(); session.Carried = TimeSpan.Zero;
+        BeginBubble(session); session.Elapsed.Restart(); session.Carried = TimeSpan.Zero;
         session.DeltaItems.Clear(); session.CompletedItems.Clear(); session.CompletedOrder.Clear();
         session.Busy = true; session.Status = "Working"; Touch(session);
     }
