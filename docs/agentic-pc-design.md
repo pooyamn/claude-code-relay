@@ -17,12 +17,18 @@ topics plus Hardware Lite and MPU6000-i9 are connected; six original routes,
 bench relocation and independent remote recovery remain. The four inactive
 Claude project transfers passed actual native handoff/tool-owner and exact-ID
 continuity checks, with confirmed same-topic bubbles and Claude app enrollment.
-Router code and the paired Linux Codex daemon are unchanged. Three existing
+At that cutover, router code and the paired Linux Codex daemon were unchanged. Three existing
 Claude cloud mappings were confirmed unchanged and ready after an idle restart;
 phone round trips, unattended restart/checkpoint refresh and daily off-machine
 restoration are not yet accepted. Earlier dated
 milestones below retain their historical scope; the larger infrastructure is
 still deferred. [Latest migration record](mac-to-pc-migration.md#hardware-lite-and-mpu6000-i9-connected-october-3-at-10-37-pm-pdt).
+
+UI update, October 3 at 10:57 PM PDT: Jamshid-style code blocks are restored
+on all nine Khadang live bubbles, including DUT. Existing message IDs, bounded
+tails, tool calls, goals and timers are preserved; native Claude app links stay
+tappable. Confirmed Telegram receipts and fresh native reattachment are recorded
+in the [formatting deployment evidence](mac-to-pc-migration.md#jamshid-style-bubbles-restored-october-3-at-10-57-pm-pdt).
 
 Status: v9, decisions in progress (2026-10-02). Incorporates Pouya's review decisions on local identities, relay update authorization, daily disaster recovery, tool-switch repair, evidence-based memory maintenance with passive inconsistency reporting, a builder in the first rollout with demand-driven management, a three-active-session cap with task-wide progress monitoring, subscription-aware pacing with a 10% owner reserve, evaluated GStack/GBrain integration, source-evaluated AX/Paperclip launch, ownership and continuity patterns, company-scoped human employees interacting with Khadang, and native Codex goal controls with a rolling-bubble indicator. Remaining review questions are listed in §15. These are target requirements, not claims that the live Mac relay already implements them. Owner: Pouya.
 Target: Windows PC, WSL2 Ubuntu 24.04. Agent roles run under separate local security identities with private homes and runtime state; the router runs as `relay`. Pouya remains the owner and uses one GitHub account. The existing Mac deployment remains a migration source.

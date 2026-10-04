@@ -1670,3 +1670,48 @@ KiCad research and Qwen lab. KiCad retains OpenCode state but lacks a current
 backend marker; Qwen has a retained `qwen` model override and custom provider
 settings. Reconcile those settings rather than silently replacing their tools.
 Bench relocation and independent remote/disaster recovery remain incomplete.
+
+### Jamshid style bubbles restored October 3 at 10 57 PM PDT
+
+Pouya explicitly approved restoring code-block formatting without dropping
+tools, goals, the timer or the rolling size cap. Source commit `eaa39ce`
+formats only bubble sends/edits with Telegram `pre` entities. Raw text remains
+unchanged; native Claude app URL lines sit outside the code blocks and stay
+tappable. Ordinary control/question messages remain plain. Entity positions use
+the [Bot API's UTF-16 offsets](https://core.telegram.org/bots/api#messageentity).
+Response-owned IDs and uncertain-delivery handling are unchanged.
+
+821 Mac fixture checks and 824 actual Windows candidate checks passed without
+credentials/network/models. Every one of the 187 installed artifact files
+checksum-matched the tested self-contained candidate. Router DLL SHA-256:
+`2A624143E1BFA56D40DC20287153197A9314B9E688C08580C0F39B75F6BF0747`.
+Fresh installed OS/owner/credential proof passed at
+`2026-10-04T05:55:30.3675633Z`; no model prompts were used for this deployment.
+Earlier actual Claude tool-owner/continuity checks were explicitly reused for
+unchanged native launch/control code, not represented as freshly rerun models.
+
+All nine bindings remained byte-identical to the stopped database snapshot.
+At `2026-10-04T05:56:40.8095638Z`, confirmed Telegram edit receipts showed
+code-block entities, the existing message IDs, tappable app links and text
+within 3,900 UTF-16 units for all nine bubbles. DUT message **4813** was edited
+in place. Production resumed at `05:56:06.2686696Z`; five Claude streams connected
+and all five prior native cloud mappings reattached unchanged with fresh ready
+receipts. Startup supervision returned to Ready at `05:57:15.6504050Z`, with
+zero unknown effects. Shared Linux Codex stayed PID 2141; Windows native
+transport now reports PID 28048. Phone/reboot/crash/headless acceptance is separate.
+
+Recovery preimages and the previous binary are in protected release
+`C:\ProgramData\KhadangRouter\release-dd803e5f1b154406b816a0d72b444866`.
+The five newly reviewed checkpoints in connector package
+`claude-connector-dd803e5f1b154406b816a0d72b444866` are now consumed; another
+restart still requires fresh reviewed histories. Their hashes are recorded
+under `pc_service.jamshid_code_block_hotfix` in deployment status.
+
+During staging, a stop request returned a failure although a fresh SCM read
+confirmed the service had stopped. No forced termination was used. The registry
+guard then caught four Unicode Name values decoded incorrectly as OEM437 in
+the derived snapshot; the original was retained and only that snapshot repaired.
+The database was untouched. Explicit UTF-8 fixed the helper; partial inert
+checkpoints were compared with unchanged quiesced histories, not replaced or
+replayed. Protected receipts retain this recovery evidence. Migration remains
+8/14 originals, nine PC routes including LG; Mac retirement is not accepted.
