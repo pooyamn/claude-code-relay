@@ -1,4 +1,4 @@
-param([ValidateSet('Compile','OwnerToken','SecretBoundary')][string]$Mode='Compile')
+param([ValidateSet('Compile','OwnerToken','SecretBoundary','EncryptedSnapshots')][string]$Mode='Compile')
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 # Load ONLY reviewed Add-Type definitions, not installation/startup bodies.
 function Load-Definition([string]$name){
@@ -12,6 +12,21 @@ function Load-Definition([string]$name){
 if($Mode -eq 'Compile'){
  Load-Definition 'configure-autologon.ps1';Load-Definition 'router-startup.ps1'
  [Console]::WriteLine('Both recovery API definitions compile; no APIs invoked');exit 0
+}
+if($Mode -eq 'EncryptedSnapshots'){
+ Load-Definition 'configure-autologon.ps1'
+ $flags=[Reflection.BindingFlags]'NonPublic,Static';$seal=[OwnerAutologon].GetMethod('SealSnapshot',$flags);$open=[OwnerAutologon].GetMethod('OpenSnapshot',$flags);$checks=0
+ foreach($case in @(@($false,[byte[]]@()),@($true,[byte[]]@()),@($true,[Text.Encoding]::Unicode.GetBytes('FAKE')), @($true,[Text.Encoding]::Unicode.GetBytes("FAKE`0")))){
+  $sealed=$seal.Invoke($null,[object[]]@([bool]$case[0],[byte[]]$case[1]));$plain=$open.Invoke($null,[object[]]@(,$sealed))
+  if($plain[3] -ne [byte][bool]$case[0] -or $plain.Length -ne 6+$case[1].Length){throw 'Snapshot presence/length did not round-trip'};$checks++
+  for($i=0;$i -lt $case[1].Length;$i++){if($plain[$i+6] -ne $case[1][$i]){throw 'Snapshot changed original bytes'}};$checks++
+  [Array]::Clear($plain,0,$plain.Length);$sealed[$sealed.Length-1]=$sealed[$sealed.Length-1] -bxor 1;$denied=$false
+  try{$null=$open.Invoke($null,[object[]]@(,$sealed))}catch{$denied=$true};if(-not $denied){throw 'Corrupt DPAPI snapshot accepted'};$checks++
+ }
+ foreach($case in @(@($false,[byte[]]@(0,0)),@($true,[byte[]]@(0)))){
+  $denied=$false;try{$null=$seal.Invoke($null,[object[]]@([bool]$case[0],[byte[]]$case[1]))}catch{$denied=$true};if(-not $denied){throw 'Invalid prior-secret shape accepted'};$checks++
+ }
+ [Console]::WriteLine("All $checks encrypted-snapshot checks passed; fixed fake bytes only, no LSA APIs or credential changes");exit 0
 }
 if($Mode -eq 'OwnerToken'){
  if(-not [Security.Principal.WindowsIdentity]::GetCurrent().IsSystem){throw 'SYSTEM token probe required'}
