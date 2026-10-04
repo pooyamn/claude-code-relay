@@ -1774,3 +1774,58 @@ migration helpers must be rebaselined to the current code/policy before use.
 The larger migration remains paused: **8/13 required** originals are connected;
 Qwen is excluded, and no remaining source topic/process was retired by this UI
 change.
+
+### CC relay attached to its existing PC controller October 4 at 12 15 AM PDT
+
+Topic **816** in Ai Dispatch now routes through Khadang to the exact existing
+PC Linux Codex conversation `01a0facd-1bc0-7d23-95d6-c32fde0c62db`, not a new
+thread or topic. Native readback verified its current working turn and active
+migration goal on ordinary UID 1000, shared daemon PID **2141**. The old Mac
+copy was idle with a paused goal; only its exact OpenClaw binding and topic
+fallback were fenced. Unrelated source configuration and the shared daemon
+were preserved. Private config/pointer preimages were checksum-verified and
+sealed on the PC; transcripts were not deleted.
+
+Source `21c1ccf` fixes mid-turn attachment: subscribe before resume, adopt the
+bounded latest in-progress turn, and ignore a stale snapshot after a newer
+start/completion event. Existing holds, uncertain receipts and pending native
+requests cannot be cleared by attachment. No new turn, model prompt, fork or
+daemon restart is used. **861 actual Windows candidate checks** passed,
+including attachment/completion-race fixtures. The candidate was built on the
+PC with official, checksum-verified .NET SDK **8.0.425**; this build no longer
+needs the Mac. Commands and the previously deployed Jamshid UI are unchanged.
+
+Fresh installed OS/native/credential proof passed at
+`2026-10-04T07:07:58.7819568Z`. Prior actual Claude launcher/tool/continuity
+evidence was explicitly reused for unchanged native connector sources; five
+fresh quiesced checkpoints were approved for this restart. Production started
+at `07:13:55.7455995Z`; at `07:15:30.7079288Z`, all **ten** routes were live,
+all five Claude streams connected, startup supervision Ready, and unknown
+operations zero. Windows native PID was **21080**, Linux PID **2141** unchanged.
+Installed DLL SHA-256:
+`3FD09C88CA54F0716310C3649FBC7A48907362B0487AF80DE1E4599B3AE755C1`;
+policy SHA-256:
+`1204A440086705CC0B94988371CEBEFDAF392E18354A12C407458358B9E0D8DA`.
+
+Real owner messages **13632** (`.`) and **13635** (`Hi`), updates **759322642**
+and **759322643**, were accepted from this topic. Both have confirmed native
+`turn/steer` receipts targeting the already-running turn
+`01a105b1-77be-7881-85d0-6421d6ebde27`. Confirmed Telegram send/edit receipts
+update the same rolling code-block message **13633**, with Working timer and
+active goal; a sampled edit was 1,691 UTF-16 units. This proves genuine
+Telegram-to-current-turn steering and outbound live updates, not just a saved
+mapping. Earlier messages ignored before cutover were not automatically replayed.
+
+Protected rollback, source backup and `controller-acceptance.json` are in
+release `3fffc60319f748849fb3bf7da7d3b94d`; its matching Claude connector
+package has five consumed checkpoints. Normal stop is required before replacing
+the router. SCM paths must be changed/read back using `Invoke-CimMethod`:
+PowerShell's `sc.exe` argument conversion had stripped embedded quotes.
+A stale administrator SSH master stalled the first acceptance read; a fresh
+pinned-host connection completed it without restarting the native daemon.
+
+Migration is now **9/13 required originals** plus LG. Remaining required
+originals are Startup Ideas, ai-hil 1876, supervisor-fw 5786 and KiCad 6004;
+Qwen remains excluded. The current migration goal is active. Independent
+remote/boot/disaster recovery, bench relocation and final source retirement
+remain pending; this fix does not authorize erasing the Mac.
