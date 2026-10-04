@@ -2848,3 +2848,34 @@ the remaining migration, recovery or Mac-erasure gates.
 
 Independent exact-controller observation at 17:15:25Z confirmed its original turn
 and active goal were preserved, with the startup task Ready.
+
+### Native Telegram final tables, October 4 at 10:55 AM PDT
+
+Owner requested restoration of the old relay's native rich tables. Generation
+`619f532b110645be808fc820ef7f1465` is live on the PC: both Claude and Codex finals,
+including ongoing-goal replies, use `sendRichMessage` for Markdown tables and
+adjacent prose. Actual code remains in separate classic messages, preserving
+reply order. Table-only fences, escaped pipes, inline-code pipes, safe literal
+HTML and row-based chunking are covered. Confirmed IDs/HTML survive restart;
+unknown rich sends are held without a classic fallback or automatic resend.
+Live bubble, typing, model controls and native dispatch remain unchanged.
+
+All 1,066 Linux and 1,069 sealed Windows offline checks passed. One earlier Linux
+joined-router timing fixture timed out; a complete offline rerun passed. DLL
+SHA256 is `151794E07F1CB698E5C5EB716011F5BAF01264352F88E567FC8AFC13F5674F9D`;
+policy SHA256 is `057B30EE2C604472A0689F45D5F25CDC795BEB2841517FA67DE26C4CE22015ED`.
+Protected release/preimages and SQLite snapshot remain under
+`C:\ProgramData\KhadangRouter\release-619f532b110645be808fc820ef7f1465`.
+Seven fresh quiescent exact-ID history checkpoints were taken; the native
+connectors are unchanged and prior Claude native acceptance was explicitly
+reused. Fresh no-model OS/credential/code-denial proof is timestamped 17:51:19Z;
+fresh DUT/CC typing proof is 17:53:02Z. The fixed table canary returned a real
+native table in CC topic 816, message 13716, at 17:53:55Z, without model inference,
+native process startup or Telegram polling. It cannot automatically replay.
+
+Live verification at 17:55:59Z confirmed all 12 unchanged bindings, seven Claude
+connections, native PIDs 2141/31964, unknown 0, retained presentation unknown 1,
+unchanged owner/participant policy and restored startup supervision. Independent
+native observation confirmed the exact active controller turn and active goal.
+The owner's phone display remains an observation, not a claimed test. This UI
+change does not close migration, backup/restore or Mac-erasure gates.

@@ -7,7 +7,8 @@ namespace KhadangRouter;
 public sealed record AnswerEntity(string type, int offset, int length,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? url = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? language = null);
-public sealed record AnswerPart(string Text, AnswerEntity[] Entities);
+public sealed record AnswerPart(string Text, AnswerEntity[] Entities,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? RichHtml = null);
 
 internal sealed class FinalDelivery
 {
@@ -40,7 +41,9 @@ internal sealed class FinalAnswerState
         if (Candidate.Length > FinalAnswerView.MaximumCharacters || Parts.Count > 256 || !Completed && Parts.Count != 0 ||
             Parts.Any(p => p.Part.Text.Length is < 1 or > 3900 || p.Message is <= 0 ||
                 p.Part.Entities.Any(e => e.offset < 0 || e.length <= 0 || e.offset + (long)e.length > p.Part.Text.Length ||
-                    e.type is not ("pre" or "code" or "bold" or "italic" or "strikethrough" or "text_link"))))
+                    e.type is not ("pre" or "code" or "bold" or "italic" or "strikethrough" or "text_link")) ||
+                p.Part.RichHtml != null && (p.Part.Entities.Length != 0 ||
+                    !RichTables.TryRender(p.Part.Text, out var html) || html != p.Part.RichHtml)))
             throw new InvalidDataException("Invalid saved final-answer receipt");
     }
 }
@@ -51,6 +54,11 @@ public static class FinalAnswerView
 {
     public const int MaximumCharacters = 262144;
     public static AnswerPart[] Split(string markdown)
+    {
+        if (markdown.Length > MaximumCharacters) throw new InvalidDataException("Final answer too large");
+        return RichTables.Split(NativeGoal.Redact(markdown).Replace("\r\n", "\n"));
+    }
+    internal static AnswerPart[] SplitClassic(string markdown)
     {
         if (markdown.Length > MaximumCharacters) throw new InvalidDataException("Final answer too large");
         if (string.IsNullOrWhiteSpace(markdown)) return [];

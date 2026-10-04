@@ -1,5 +1,41 @@
 # Native Telegram command menus
 
+## Native tables in clean final replies
+
+The PC router restores the old `relay_tg.py` table path for both Claude and
+Codex: Markdown tables become bordered, striped native Telegram rich tables,
+not monospace pipe tables. Adjacent prose shares the rich message. Actual code
+blocks are sent separately through classic `sendMessage` with explicit `pre`
+entities, preserving reply order and the old client's code-block behavior.
+Table-only fenced blocks are recognized too; escaped pipes and pipes inside
+inline code do not create extra columns. Literal HTML is escaped and known
+credentials are redacted before formatting.
+
+Long tables split by rows with repeated headers. Each durable part stays within
+the existing 3,900 UTF-16 character bound; generated rich HTML is additionally
+bounded to 30,000 UTF-8 bytes and a conservative block budget. More than 20
+columns or a single over-limit row is preserved completely as classic code,
+not truncated. These bounds sit below Telegram's
+[rich-message limits](https://core.telegram.org/bots/api#rich-message-formatting).
+
+Rich finals use [`sendRichMessage`](https://core.telegram.org/bots/api#sendrichmessage)
+with the exact forum topic and normal notification behavior. Their generated
+HTML and confirmed message IDs are saved in the same durable outbox as classic
+finals, including ongoing-goal replies. Unknown sends are held, never retried
+through a different transport. Older classic receipts remain readable.
+Live bubbles, Working/goal footers, typing, commands and native sessions are
+unchanged. The fixed deployment canary sends one table to the CC-relay topic,
+checks the returned native table block, and cannot automatically replay; it
+starts no native session, model turn or Telegram poller.
+
+Deployed October 4 as generation `619f532b110645be808fc820ef7f1465`:
+1,066 Linux and 1,069 sealed Windows offline checks passed. Telegram returned a
+native table block in CC-relay topic 816, message 13716, at 17:53:55 UTC. Fresh
+live verification at 17:55:59 UTC confirmed all 12 unchanged routes, seven Claude
+connections, restored startup supervision and zero unknown native/send actions.
+The active controller turn and goal remain intact. The returned native block
+was verified; the owner's phone display was not independently observed.
+
 ## Claude terminal-like stream bubble
 
 Claude's PC bubble is reconstructed from its native `stream-json` events, not

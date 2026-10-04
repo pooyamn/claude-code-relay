@@ -4,8 +4,8 @@ using KhadangRouter;
 try
 {
     if (args.SequenceEqual(new[] { "--self-test" })) { SelfTests.Run(); return; }
-    if (args.Length != 3 || args[0] is not ("--service" or "--probe-service" or "--canary-service" or "--typing-probe-service") || args[1] != "--config")
-        throw new InvalidOperationException("KhadangRouter --service|--probe-service|--canary-service|--typing-probe-service --config PATH; or --self-test");
+    if (args.Length != 3 || args[0] is not ("--service" or "--probe-service" or "--canary-service" or "--typing-probe-service" or "--table-probe-service") || args[1] != "--config")
+        throw new InvalidOperationException("KhadangRouter --service|--probe-service|--canary-service|--typing-probe-service|--table-probe-service --config PATH; or --self-test");
     var policy = RouterPolicy.Load(args[2]);
     var probe = args[0] == "--probe-service";
     WindowsService.Run(async stop =>
@@ -30,6 +30,11 @@ try
                 throw new InvalidOperationException("Wrong Telegram bot");
             var webhook = await telegram.Call("getWebhookInfo", new { }, stop);
             if (!string.IsNullOrEmpty(webhook.GetProperty("url").GetString())) throw new InvalidOperationException("Webhook present; refuse to change or compete");
+            if (args[0] == "--table-probe-service")
+            {
+                await NativeTableProbe.Run(policy, ledger, telegram, bindings, args[2], stop);
+                return;
+            }
             if (args[0] == "--typing-probe-service")
             {
                 // Explicit deployment test: ephemeral UI only, no forged input,

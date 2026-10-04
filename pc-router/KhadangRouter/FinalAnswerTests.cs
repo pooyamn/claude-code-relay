@@ -64,12 +64,14 @@ public static class FinalAnswerTests
         typeof(Router).GetMethod("RestoreAnswer", BindingFlags.NonPublic | BindingFlags.Static)!.Invoke(null, new[] { (object)restored, saved });
         Check(restored.Answer.Delivered && restored.Answer.Parts.Single().Message == 1001, "Restart restores confirmed final ID, not a new send");
         Event("turn/started", new { threadId = binding.ThreadId, turn = new { id = "uncertain" } });
-        Event("item/completed", new { threadId = binding.ThreadId, turnId = "uncertain", item = new { id = "unknown-answer", type = "agentMessage", phase = "final_answer", text = "Unknown send" } });
+        Event("item/completed", new { threadId = binding.ThreadId, turnId = "uncertain", item = new { id = "unknown-answer", type = "agentMessage", phase = "final_answer", text = "Unknown send\n\n| Route | State |\n| --- | --- |\n| DUT | Ready |" } });
         Event("turn/completed", new { threadId = binding.ThreadId, turn = new { id = "uncertain", status = "completed" } });
         bot.FailAnswer = true; await Flush(); await Flush();
         var unknown = ledger.Get("bubble/" + binding.ThreadId)!.Value;
         Check(bot.AnswerAttempts == 2 && unknown.GetProperty("held").GetBoolean() && unknown.GetProperty("finalAnswer").GetProperty("Parts")[0].GetProperty("SendUnknown").GetBoolean(),
             "Lost final-send acknowledgement holds durable intent without duplicate replay");
+        Check(unknown.GetProperty("finalAnswer").GetProperty("Parts")[0].GetProperty("Part").GetProperty("RichHtml").GetString()!.Contains("<table"),
+            "Unknown Codex native-table final remains durable, without a classic-message fallback send");
         var claudeBinding = binding with { Topic = 43, ThreadId = "b03fbbe4-56e8-4e65-8f6a-69f95e7ddece", Backend = "claude" };
         var claudeSession = sessionType.GetConstructors(flags | BindingFlags.Public).Single().Invoke(new object[] { claudeBinding, native });
         sessionType.GetField("Claude")!.SetValue(claudeSession, new Claude(claudeBinding.ThreadId));
@@ -84,13 +86,13 @@ public static class FinalAnswerTests
         ClaudeEvent(new { type = "assistant", session_id = claudeBinding.ThreadId, uuid = "tool-frame", message = new { content = new[] { tool } } });
         ClaudeEvent(new { type = "user", session_id = claudeBinding.ThreadId, uuid = "tool-result", message = new { content = new[] { new { type = "tool_result", tool_use_id = "read", content = "PRIVATE-TOOL-OUTPUT" } } } });
         ClaudeEvent(new { type = "assistant", session_id = claudeBinding.ThreadId, uuid = "answer-frame", message = new { content = new[] { new { type = "text", text = "Draft" } } } });
-        ClaudeEvent(new { type = "result", session_id = claudeBinding.ThreadId, subtype = "success", result = "**Claude final**" });
+        ClaudeEvent(new { type = "result", session_id = claudeBinding.ThreadId, subtype = "success", result = "**Claude final**\n\n| Route | State |\n| --- | --- |\n| DUT | Ready |" });
         await ClaudeFlush();
         Check(bot.Answers.Count == 1 && !bot.Progress.Contains("Done ("), "Claude result alone is not final delivery before native idle");
         Check(bot.Progress.Split("Read(board.kicad_pcb)").Length == 2 && bot.Progress.Contains("⎿ Done") && !bot.Progress.Contains("PRIVATE-TOOL"), "Claude tool start/assistant/result amend one terminal-style row without raw file output");
         ClaudeEvent(new { type = "system", session_id = claudeBinding.ThreadId, subtype = "session_state_changed", state = "idle" });
         await ClaudeFlush(); await ClaudeFlush();
-        Check(bot.Answers.Count == 2 && bot.Answers[^1].Text == "Claude final" && bot.Progress.Contains("Done ("), "Claude authoritative result delivered once, separately, after actual idle");
+        Check(bot.Answers.Count == 2 && bot.Answers[^1].RichHtml!.Contains("<b>Claude final</b>") && bot.Answers[^1].RichHtml!.Contains("<table") && bot.Progress.Contains("Done ("), "Claude authoritative native table delivered once, separately, after actual idle");
         return checks;
     }
     private sealed class Claude(string pin) : IClaudeNative

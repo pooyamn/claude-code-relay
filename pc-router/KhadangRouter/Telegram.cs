@@ -27,7 +27,7 @@ public sealed class Telegram : IBot, IDisposable
     }
     public async Task<JsonElement> Call(string method, object parameters, CancellationToken stop, bool effect = false)
     {
-        if (!new[] { "getMe", "getWebhookInfo", "getChat", "getChatMember", "getUpdates", "getFile", "sendMessage", "editMessageText", "createForumTopic", "setMyCommands", "getMyCommands", "answerCallbackQuery", "sendChatAction" }.Contains(method))
+        if (!new[] { "getMe", "getWebhookInfo", "getChat", "getChatMember", "getUpdates", "getFile", "sendMessage", "sendRichMessage", "editMessageText", "createForumTopic", "setMyCommands", "getMyCommands", "answerCallbackQuery", "sendChatAction" }.Contains(method))
             throw new InvalidOperationException("Unknown Telegram method");
         if (method == "sendChatAction" && effect)
             throw new InvalidOperationException("Ephemeral typing must not create a durable action or replay hold");
@@ -160,15 +160,24 @@ public sealed class Telegram : IBot, IDisposable
     }
     internal static Dictionary<string, object> AnswerParameters(long chat, int topic, AnswerPart part)
     {
+        if (part.RichHtml != null)
+        {
+            if (topic < 0 || part.Entities.Length != 0 || !RichTables.TryRender(part.Text, out var html) || html != part.RichHtml)
+                throw new InvalidDataException("Invalid native table answer");
+            var rich = new Dictionary<string, object> { ["chat_id"] = chat, ["rich_message"] = new { html } };
+            if (topic > 0) rich["message_thread_id"] = topic;
+            return rich; // Clean final: notifying, not a live bubble or code block.
+        }
         var parameters = SendParameters(chat, topic, part.Text);
         parameters.Remove("disable_notification"); // Final answer, not silent progress.
         parameters["entities"] = part.Entities;
         return parameters;
     }
+    internal static string AnswerMethod(AnswerPart part) => part.RichHtml == null ? "sendMessage" : "sendRichMessage";
     public async Task<JsonElement> SendAnswer(long chat, int topic, AnswerPart part, CancellationToken stop)
     {
         await outbound.WaitAsync(stop);
-        try { return await Call("sendMessage", AnswerParameters(chat, topic, part), stop, effect: true); }
+        try { return await Call(AnswerMethod(part), AnswerParameters(chat, topic, part), stop, effect: true); }
         finally { outbound.Release(); }
     }
     public static string DownloadPath(JsonElement result, AttachmentReference file)

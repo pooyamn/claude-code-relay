@@ -32,7 +32,7 @@ public static class GoalAnswerTests
             await Flush(); var bubble = bot.BubbleId;
             Final("commentary", "Still investigating", "commentary"); await Flush();
             Check(bot.Answers.Count == 0, "Commentary remains in the goal bubble");
-            Final("first", "**First result**"); bot.Failure = failure;
+            Final("first", "**First result**\n\n| Route | Status |\n| --- | --- |\n| DUT | Ready |"); bot.Failure = failure;
             await Task.WhenAll(Flush(), Flush());
             if (failure == -1)
             {
@@ -44,7 +44,7 @@ public static class GoalAnswerTests
                 Check((bool)type.GetField("Held")!.GetValue(replacement)!, "Restart retains unknown-answer hold");
                 continue;
             }
-            Check(bot.Answers.Count == 1 && bot.Answers[0].Text == "First result", "Final is delivered before the goal or turn ends");
+            Check(bot.Answers.Count == 1 && bot.Answers[0].RichHtml!.Contains("<b>First result</b>") && bot.Answers[0].RichHtml!.Contains("<table"), "Native table final is delivered before the goal or turn ends");
             Check((bool)type.GetField("Busy")!.GetValue(session)! && bot.Progress.Contains("Working (") && bot.BubbleId == bubble && bot.BubbleSends == 1, "Same rolling bubble remains working after a clean goal reply");
             Check(bot.Answers[0].Entities.All(e => e.type != "pre"), "Clean goal prose is outside the code block");
             Final("first", "Duplicate result"); Final("second", "Second result"); await Flush(); await Flush();
