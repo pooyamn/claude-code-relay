@@ -32,6 +32,10 @@ MAX_ENTRIES = 750000
 MAX_MANIFEST = 160 << 20
 MAX_FILE_BYTES = 40 << 30
 MANIFEST_NAME = "capture.json"
+NATIVE_HISTORY_ROOTS = ('.claude/projects', '.claude/file-history', '.claude/sessions',
+                        '.claude/jobs', '.claude/skills', '.codex/sessions',
+                        '.codex/archived_sessions', '.codex/generated_images',
+                        '.openclaw/agents', '.openclaw/media')
 
 
 class DigestWriter:
@@ -309,6 +313,19 @@ def dirty_selection(raw):
     return dict(zip(names, rows))
 
 
+def native_selection(raw):
+    """Exact observed leaves only, inside the ten fixed native-history roots.
+
+    This is not a timestamp-only completeness certificate or a live SQLite
+    snapshot. Package/plugin/model caches and unrelated home files are excluded.
+    """
+    expected = dirty_selection(raw)
+    if any(not any(name.startswith(root + '/') for root in NATIVE_HISTORY_ROOTS)
+           for name in expected):
+        raise ValueError('Literal native-history roots required')
+    return expected
+
+
 if __name__ == "__main__":
     try:
         if len(sys.argv) == 3 and sys.argv[1] == "--verify":
@@ -317,22 +334,26 @@ if __name__ == "__main__":
                     r"/mnt/c/ProgramData/OracovaMigration/[0-9a-f]{32}/vm-owner-tools-manifest\.tar\.gz", path):
                 raise ValueError("literal PC verification archive required")
             print(json.dumps(verify(path), separators=(",", ":")))
-        elif len(sys.argv) == 4 and sys.argv[1] == '--verify-dirty':
+        elif len(sys.argv) == 4 and sys.argv[1] in ('--verify-dirty', '--verify-native'):
             selection, path = sys.argv[2:]
+            native = sys.argv[1] == '--verify-native'
+            profile = 'vm-native-history-delta' if native else 'vm-dirty-work-manifest'
             if sys.platform != 'linux' or os.geteuid() != 1000 or not re.fullmatch(
                     r'/mnt/c/ProgramData/OracovaMigration/stream-helper-[0-9a-f]{32}/dirty-selection\.json', selection) or not re.fullmatch(
-                    r'/mnt/c/ProgramData/OracovaMigration/[0-9a-f]{32}/vm-dirty-work-manifest\.tar\.gz', path):
+                    r'/mnt/c/ProgramData/OracovaMigration/[0-9a-f]{32}/' + re.escape(profile) + r'\.tar\.gz', path):
                 raise ValueError('Literal PC dirty verification inputs required')
             with open(selection, 'rb') as source:
-                expected = dirty_selection(source.read((4 << 20) + 1))
+                expected = (native_selection if native else dirty_selection)(source.read((4 << 20) + 1))
             checked = verify(path, expected_leaves=expected)
             checked['expectedSelectionMatched'] = True
             print(json.dumps(checked, separators=(',', ':')))
-        elif len(sys.argv) == 2 and sys.argv[1] == '--dirty-selection':
+        elif len(sys.argv) == 2 and sys.argv[1] in ('--dirty-selection', '--native-selection'):
             if sys.platform != 'darwin' or os.geteuid() == 0 or pwd.getpwuid(os.geteuid()).pw_name != 'pouya':
                 raise ValueError('Ordinary Mac owner required')
-            expected = dirty_selection(sys.stdin.buffer.read((4 << 20) + 1))
-            report = capture('/Users/pouya/.openclaw/workspace', sys.stdout.buffer, owner_uid=os.geteuid(),
+            native = sys.argv[1] == '--native-selection'
+            expected = (native_selection if native else dirty_selection)(sys.stdin.buffer.read((4 << 20) + 1))
+            root = '/Users/pouya' if native else '/Users/pouya/.openclaw/workspace'
+            report = capture(root, sys.stdout.buffer, owner_uid=os.geteuid(),
                              members=sorted(expected), expected_leaves=expected)
             print(json.dumps(report, separators=(',', ':')), file=sys.stderr)
         elif len(sys.argv) == 1:

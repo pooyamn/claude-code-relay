@@ -3570,3 +3570,58 @@ off-network power recovery and independent encrypted restore remain open.
 The product goal is active again, with an explicit1% weekly pause point;
 read-only native quota at23:23:09Z showed3% remaining. The Mac is not ready
 for erasure, and nothing was wiped.
+
+### VM-first file preservation after routing was deferred, October4 23:46Z
+
+Pouya redirected work to missing Mac files, especially the VM; remaining PC
+wiring is deferred. No router, native session, scheduler, VPN or topic was
+changed during this file-only continuation. No new vendor-app/package/model
+cache backup was made, and no active PC profile was overwritten.
+
+Two new ordinary-VM-owner captures are saved under the existing Windows
+administrator/SYSTEM-only `C:\ProgramData\OracovaMigration` parent:
+
+| Recovery seed | Run | Compressed bytes |
+| --- | --- | --- |
+| Current Claude/Codex/OpenClaw settings, credentials and retired journals | `5bcfafd16b744e96bef72d3387e5102c` | 143360 |
+| Selected recent native histories, skill metadata and agent state | `c7c2b71fcff1452a9eed1f98e2e70d16` | 337104684 |
+
+Settings archive SHA256:
+`2b4ae045688c0d10c630a2cdd5235640bad1e8310c8511e20b705ad4819bac21`.
+Native-delta archive SHA256:
+`e5f0992c358eb92ac70ff4654fe1c9c91dd29e51a5d931e3fa3b298a2760aaf10`.
+Both passed source/PC compressed hashes, zero-warning producer/transport exits,
+archive readers and fresh saved-file hash/length/protected-ACL readback.
+
+The initial five-file scan after14:51Z was widened to17:00Z on October3,
+before the original native seeds, so changes were not bounded by the later
+owner-tools capture (which excludes native roots). The resulting63 regular
+files total948530776 logical bytes. Their observed selection was sealed
+separately, then every saved file's digest/size was independently verified
+against that selection; archive metadata also matched the producer manifest.
+Only ten fixed native-history namespaces
+are admitted; no arbitrary home/root capture or recursive cache import.
+Selection SHA256:
+`0a1b99647ced6276d0eb5b996a35c5b12bc9cee978149c225446359c97cc91f2b`.
+The timestamp-selected delta may overlap original seeds; it is not a complete
+all-history comparison. Database/journal bytes are recovery seeds, not new
+backup-API or cross-database consistency evidence.
+
+Fresh bounded VM Library enumeration at23:34Z found215420 entries, including
+161417 regular files and exactly one unreadable4491-byte root-owned Apple
+Control Center preferences file. It is not project data. The private gap report
+remains under run`6eda757be8cc41f1b62222533c4d6829`; the original Library archive
+is still correctly marked unaccepted, not silently promoted to complete.
+At23:46Z, Documents/Downloads/Desktop/code/src/test2/.oracova had no regular
+file modification since11:00Z and no enumeration errors. The separate owner
+config scan found no newer SSH/config/WebOS files since14:51Z; its only `.local`
+change was OpenCode's32768-byte shared-memory sidecar, not a new transcript.
+These are bounded metadata observations, not full content/ACL/xattr closure.
+
+Twenty-five source-format/SQLite regressions and53 actual Windows receiver,
+profile, argv and ACL checks passed. Reviewed helpers/selection remain sealed
+under `stream-helper-8b8a3ffafce64501b08a3a487efaaa4b`. No Mac temporary archive,
+permission bypass, deletion, extraction or automatic capture retry occurred.
+The whole powered-down VM image, final writer fence, inaccessible physical
+account/database data and independent encrypted restore remain unqualified.
+Do not erase the Mac or its VM store on the strength of these seeds.

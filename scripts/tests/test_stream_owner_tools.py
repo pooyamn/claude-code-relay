@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from scripts.stream_owner_tools import capture, verify, DigestReader, dirty_selection
+from scripts.stream_owner_tools import capture, verify, DigestReader, dirty_selection, native_selection, NATIVE_HISTORY_ROOTS
 
 
 class OwnerToolsStreamTests(unittest.TestCase):
@@ -122,6 +122,22 @@ class OwnerToolsStreamTests(unittest.TestCase):
                         [{'name': 'same', 'kind': 'file'}, {'name': 'same', 'kind': 'file'}]):
             with self.subTest(entries=entries), self.assertRaises(ValueError):
                 dirty_selection(json.dumps({'schema': 'ccrelay.dirty_source_selection.v1', 'entries': entries}).encode())
+
+    def test_native_selection_admits_only_fixed_history_leaves(self):
+        for root in NATIVE_HISTORY_ROOTS:
+            raw = json.dumps({'schema': 'ccrelay.dirty_source_selection.v1',
+                              'entries': [{'name': root + '/fixture.jsonl', 'kind': 'file',
+                                           'bytes': 0, 'sha256': hashlib.sha256(b'').hexdigest()}]}).encode()
+            self.assertEqual(list(native_selection(raw)), [root + '/fixture.jsonl'])
+
+    def test_native_selection_rejects_vendor_caches_other_home_and_prefix_lookalikes(self):
+        for name in ('.claude/plugins/cache/file', '.codex/auth.json', '.ssh/id',
+                     '.claude/projects-evil/file', '.claude/projects',
+                     '.claude/projects/../../outside', 'Library/file'):
+            raw = json.dumps({'schema': 'ccrelay.dirty_source_selection.v1',
+                              'entries': [{'name': name, 'kind': 'file'}]}).encode()
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                native_selection(raw)
 
     def test_symlink_root_not_followed(self):
         link = self.root / "alias"
