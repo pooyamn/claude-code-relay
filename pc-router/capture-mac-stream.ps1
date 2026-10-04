@@ -1,6 +1,7 @@
 param(
- [Parameter(Mandatory=$true)][ValidateSet('vm-personal','vm-library','vm-extra-work','physical-projects','physical-bench-home')][string]$Profile,
- [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-f]{32}$')][string]$RunId
+ [Parameter(Mandatory=$true)][ValidateSet('vm-personal','vm-library','vm-extra-work','vm-codex-sqlite','physical-projects','physical-bench-home')][string]$Profile,
+ [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-f]{32}$')][string]$RunId,
+ [ValidatePattern('^[0-9a-f]{64}$')][string]$SqliteProducerSha256
 )
 # One-shot source -> private PC stream. No Mac archive/temp file, extraction,
 # activation, source freeze, deletion or retry. Selected live data is a SEED,
@@ -41,6 +42,7 @@ function Get-MigrationStreamSource([string]$Name){
   'vm-personal' {return @{host='mac';user='pouya';root='/Users/pouya';members=@('Documents','Downloads')}}
   'vm-library' {return @{host='mac';user='pouya';root='/Users/pouya';members=@('Library')}}
   'vm-extra-work' {return @{host='mac';user='pouya';root='/Users/pouya';members=@('code','src','test2','toolchains','.oracova','Applications','Movies','Music','Pictures','Public','Desktop','.Trash','Augur-1.zip','note.txt','oracova-BOM-JLCPCB.csv','oracova-BOM.csv','oracova-CPL-JLCPCB.csv','oracova-positions.csv','oss-cad-dl.log','oss-cad-extract.err')}}
+  'vm-codex-sqlite' {return @{host='mac';user='pouya';root='/Users/pouya/.codex';members=@('.');captureMode='sqlite-backup-api-memory'}}
   'physical-projects' {return @{host='bench-mac';user='oracova';root='/Users/pouya';members=@('Codes','Developer','Sources','flutter_blue_plus','flutter_bluetooth')}}
   'physical-bench-home' {return @{host='bench-mac';user='oracova';root='/Users/oracova';members=@('.')}}
   default {throw 'Only explicitly selected migration source profiles admitted'}
@@ -116,6 +118,17 @@ end
 $encoded=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($producer))
 $spec=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($source | ConvertTo-Json -Compress)))
 $remote="/usr/bin/ruby -rbase64 -e 'eval(Base64.strict_decode64(ARGV.shift))' '$encoded' '$spec'"
+if($Profile -eq 'vm-codex-sqlite'){
+ if(-not $SqliteProducerSha256 -or $PSScriptRoot -notmatch '^C:\\ProgramData\\OracovaMigration\\stream-helper-[0-9a-f]{32}$'){throw 'Independently reviewed sealed SQLite producer required'}
+ Assert-MigrationStreamParent $PSScriptRoot
+ $sqliteCode=Join-Path $PSScriptRoot 'stream_codex_sqlite.py'
+ if((Get-Item -LiteralPath $sqliteCode).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Literal sealed producer required'}
+ $codeBytes=[IO.File]::ReadAllBytes($sqliteCode)
+ $codeHash=[BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($codeBytes)).Replace('-','').ToLowerInvariant()
+ if($codeHash -ne $SqliteProducerSha256){throw 'SQLite producer bytes differ from reviewed hash'}
+ $encoded=[Convert]::ToBase64String($codeBytes)
+ $remote="/opt/homebrew/bin/python3.14 -I -B -c 'import base64,sys; p=base64.b64decode(sys.argv.pop()); exec(p)' '$encoded'"
+}elseif($SqliteProducerSha256){throw 'SQLite producer grant cannot apply to a different profile'}
 $wsl='C:\Windows\System32\wsl.exe'
 $migrationArguments=@('-d','Ubuntu-24.04','-u','pou','--exec','/usr/bin/timeout','--signal=TERM','--kill-after=15s','900s',
  '/usr/bin/ssh','-F','/Users/pouya/.ssh/config','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','ConnectTimeout=10','-T',$source.host,$remote)
@@ -127,6 +140,7 @@ $sink=[MigrationStreamSink]::new($file,20GB);$child=$null
 $report=[ordered]@{schema='ccrelay.mac_to_pc_direct_stream.v1';profile=$Profile;run=$RunId;startedAt=[DateTime]::UtcNow.ToString('o');finishedAt=$null;
  destination=$archive;sourceMacTemporaryArchive=$false;producerExit=$null;transportExit=$null;archiveReaderExit=$null;
  bytes=[long]0;sha256=$null;producerDigestMatched=$false;sourceWarningBytes=$null;sourceWarningTruncated=$null;targetProtected=$false;seedAccepted=$false;
+ sqliteConsistentPerDatabase=$false;sqliteDatabaseCount=$null;sqliteSnapshotBytes=$null;sqliteSourcePeakRssBytes=$null;sqliteTargetVerified=$false;
  sourceWritersFrozen=$false;consistentFinalSnapshot=$false;fullMacBackup=$false;encryptedAtRest=$false;extracted=$false;errorType=$null}
 try{
  $child=[Diagnostics.Process]::Start($info);$child.StandardInput.Close()
@@ -152,6 +166,10 @@ if(-not $report.errorType){
   $receipt=$lines[0] | ConvertFrom-Json
   $report.producerExit=$receipt.producerExit
   $report.sourceWarningBytes=$receipt.warningBytes;$report.sourceWarningTruncated=$receipt.warningTruncated
+  if($Profile -eq 'vm-codex-sqlite'){
+   $report.sqliteConsistentPerDatabase=($receipt.consistentPerDatabase -eq $true)
+   $report.sqliteDatabaseCount=$receipt.databaseCount;$report.sqliteSnapshotBytes=$receipt.databaseBytes;$report.sqliteSourcePeakRssBytes=$receipt.peakRssBytes
+  }
   $report.producerDigestMatched=($receipt.schema -eq 'ccrelay.mac_archive_producer.v1' -and $receipt.bytes -eq $report.bytes -and $receipt.sha256 -eq $report.sha256)
   Assert-MigrationStreamParent $folder
   $a=Get-Acl -LiteralPath $archive
@@ -162,8 +180,28 @@ if(-not $report.errorType){
   $reader=[Diagnostics.Process]::Start($read);$discard=$reader.StandardOutput.BaseStream.CopyToAsync([IO.Stream]::Null)
   $readerError=New-MigrationStreamFile (Join-Path $folder 'reader.private.log')
   try{$readerErrors=$reader.StandardError.BaseStream.CopyToAsync($readerError);$reader.WaitForExit();$discard.GetAwaiter().GetResult() | Out-Null;$readerErrors.GetAwaiter().GetResult() | Out-Null;$report.archiveReaderExit=$reader.ExitCode}finally{$readerError.Dispose();$reader.Dispose()}
+  if($Profile -eq 'vm-codex-sqlite' -and $report.transportExit -eq 0 -and $report.producerDigestMatched){
+   $checker='/mnt/c/'+$sqliteCode.Substring(3).Replace('\','/')
+   $checkArgs=@('-d','Ubuntu-24.04','-u','pou','--exec','/usr/bin/timeout','240s','/usr/bin/python3','-I','-B',$checker,'--verify',('/mnt/c/ProgramData/OracovaMigration/'+$RunId+'/'+$Profile+'.tar.gz'))
+   $checkInfo=[Diagnostics.ProcessStartInfo]::new($wsl,(($checkArgs|ForEach-Object {ConvertTo-MigrationNativeArgument $_}) -join ' '))
+   $checkInfo.UseShellExecute=$false;$checkInfo.RedirectStandardOutput=$true;$checkInfo.RedirectStandardError=$true
+   $checkChild=[Diagnostics.Process]::Start($checkInfo);$checkOut=$checkChild.StandardOutput.ReadToEndAsync()
+   $checkLog=New-MigrationStreamFile (Join-Path $folder 'sqlite-check.private.log')
+   try{
+    $checkErrors=$checkChild.StandardError.BaseStream.CopyToAsync($checkLog);$checkChild.WaitForExit();$checkErrors.GetAwaiter().GetResult()|Out-Null
+    $checked=$checkOut.GetAwaiter().GetResult()|ConvertFrom-Json
+    $report.sqliteTargetVerified=($checkChild.ExitCode -eq 0 -and $checked.schema -eq 'ccrelay.memory_sqlite_target_verification.v1' -and
+     $checked.verified -eq $true -and $checked.databaseCount -eq $report.sqliteDatabaseCount -and $checked.databaseBytes -eq $report.sqliteSnapshotBytes -and
+     $checked.consistentPerDatabase -eq $true -and $checked.consistentFinalSnapshot -eq $false -and $checked.activeProfileChanged -eq $false -and $checked.extractedToFilesystem -eq $false)
+   }finally{$checkLog.Dispose();$checkChild.Dispose()}
+  }
   $report.seedAccepted=($report.transportExit -eq 0 -and $report.producerExit -eq 0 -and $receipt.warningBytes -eq 0 -and
    $report.producerDigestMatched -and $report.targetProtected -and $report.archiveReaderExit -eq 0 -and (Get-FileHash -LiteralPath $archive).Hash.ToLowerInvariant() -eq $report.sha256)
+  if($Profile -eq 'vm-codex-sqlite'){
+   $report.seedAccepted=($report.seedAccepted -and $report.sqliteTargetVerified -and $report.sqliteConsistentPerDatabase -and
+    $receipt.snapshotSchema -eq 'ccrelay.memory_sqlite_snapshot.v1' -and $report.sqliteDatabaseCount -ge 1 -and $report.sqliteDatabaseCount -le 32 -and
+    $receipt.consistentFinalSnapshot -eq $false -and $receipt.sourceTemporaryDatabaseFiles -eq $false)
+  }
  }catch{$report.errorType=$_.Exception.GetType().Name}
 }
 $report.finishedAt=[DateTime]::UtcNow.ToString('o')

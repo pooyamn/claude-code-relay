@@ -26,11 +26,13 @@ is authorized until the exact target is resolved and verified copies exist.
 ## Current inventory
 
 The original OpenClaw configuration contained 14 bindings: eight topics in Ai
-Dispatch, five in Oracova, and the standalone Startup Ideas group. Eight now
-route to the PC; CC relay has since joined them (nine now), leaving five on the
-source, of which four are required and Qwen is excluded. Required migration
-progress is 9/13. Keep the included chat and
-topic IDs unchanged. The existing PC LG topic remains intact.
+Dispatch, five in Oracova, and the standalone Startup Ideas group. As of the
+October4 readback, eleven included originals plus the existing PC LG topic
+route to the PC (twelve total). Required routing migration progress is11/13;
+Startup Ideas and KiCad remain pending. The three source bindings also include
+Qwen, which is explicitly excluded. Keep the included chat and topic IDs
+unchanged; the existing PC LG topic remains intact. Connected routing is not
+the broader hardware, phone, source preservation or recovery acceptance.
 
 | Project | Chat | Topic |
 | --- | --- | --- |
@@ -73,7 +75,7 @@ activated bench environment or a final checkpoint.
 
 The protected Windows Khadang service now routes the existing PC LG topic plus
 Web, Base board, Marginal Requests, DUT, Schematic Pipeline, Mimic Fast PCB,
-Hardware Lite and MPU6000-i9
+Hardware Lite, MPU6000-i9, ai-hil and Supervisor firmware
 in their original forums. All five original Oracova PCBA topics are connected. The personal
 router supports full chat/topic addresses, an explicit whole-group route and
 distinct Windows Codex, Linux Codex and Claude paths. Linux Codex's exact
@@ -184,8 +186,10 @@ or reproduce the Mac session ID.
 
 These are required acceptance checks, not claims about the current deployment.
 
-- All 14 existing bindings work through Khadang on the PC with the same IDs and
-  intended tools; the LG topic also remains working.
+- All13 included existing bindings work through Khadang on the PC with the
+  same IDs and intended tools; the LG topic also remains working. Qwen's
+  explicitly excluded topic/server are not migrated or replaced, and their
+  source files/history remain preserved rather than erased.
 - Repositories, local branches, dirty and untracked work, instructions, memory,
   media and native history backups are preserved and checked, including projects
   that were not bound to Telegram. Old native histories need not be restored
@@ -2354,3 +2358,67 @@ Final source fences/current SQLite snapshots,
 whole-source coverage, physical-account access and VM-image consistency,
 off-machine encryption/key recovery/restore, outstanding routes, real hardware
 and boot/outside-LAN acceptance remain required. The Mac is not ready to erase.
+
+### Fresh disk-free SQLite recovery snapshots and exact Library gap, October 4
+
+At12:01:57Z, all six current Mac Codex SQLite databases completed a fresh
+backup-API capture. The new explicitly selected `vm-codex-sqlite` profile uses
+the installed Mac Python3.14.7/SQLite3.53.4 to copy one database at a time into
+memory, then serialize and stream a synthetic tar/gzip cohort into protected
+PC storage. It never creates a source-side temporary database/archive, never
+uses `immutable=1` on a live WAL source, and never installs old state over either
+active profile. A read-only source connection prevents SQL data writes; SQLite
+may initialize tiny WAL/SHM companions. Source writers remain live.
+
+The accepted archive is
+`C:\ProgramData\OracovaMigration\8aaf9a4e85aa4154aa199d0066743cf7\vm-codex-sqlite.tar.gz`:
+174526546bytes, SHA256
+`92c1bc8e8cadabd69a63a4733850af1d465e416b892c86917447d1295c6a7c930`.
+Its six standalone snapshots total742313984bytes. Source producer, SSH/WSL
+transport and GNU tar reader all exited0 with no producer warnings; source and
+independent PC archive hashes match, and ACLs are SYSTEM/Administrators-only.
+The ordinary Linux UID1000 could not open the archive and read zero bytes.
+Measured source process peak RSS was2359148544bytes on the16GiB VM; data-volume
+free space remained approximately941MiB after the capture. This is not a
+new disk-based backup hidden under a different temporary path.
+
+The PC independently parsed every synthetic member, matched every database's
+digest/size against the manifest and ran SQLite integrity checks entirely in
+memory. No generic archive extraction, active native database replacement,
+source daemon restart, topic change, credentials login or model turn occurred.
+SQLite cannot deserialize a WAL-header image directly: only the disposable
+verification-memory copy has its two journal header flags normalized, following
+the [SQLite deserialize documentation](https://sqlite.org/c3ref/deserialize.html).
+The authoritative archived snapshot bytes and their digests remain unchanged.
+The copy uses the [SQLite online backup API](https://sqlite.org/backup.html),
+not an ordinary copy of live DB/WAL files.
+
+Eight fixtures passed for committed WAL rows/source preservation, closed WAL
+and nondefault page size, independent target integrity, byte bounds, source
+symlink/hardlink refusal, unsafe archive members, and manifest digest mismatch.
+All20 actual Windows stream/argument/ACL fixtures also passed. Production
+acceptance is the six-database source/PC receipt above, not those fixtures alone.
+The reviewed producer hash is
+`8e9d1ad883e19ea8090d69f669652bf14548314ca3cd60e98123532d7e4e1afc`;
+receiver hash `793c588b4cb4786712e188ff2dfbb76ab9927fea9bd3ae31cdf7eda6a2118272`,
+sealed together in
+`C:\ProgramData\OracovaMigration\stream-helper-8d952ede10ce454ebb304114dd64255f`.
+Snapshot consistency is **per database**, not an atomic cross-database/project
+or final writer-fenced checkpoint, and not daily encrypted off-machine restore.
+
+A complete bounded read-only metadata walk of the VM Library at12:04:08Z
+visited215233 entries:31131 directories,161236 regular files,22864 symlinks and
+2 special entries, totaling22054921169 logical regular-file bytes. It did not
+follow symlinks or read file contents, and did not hit its300000-entry bound.
+Exactly one regular file was unreadable: a UID0/root-owned mode0600 file in
+Group Containers. Its basename matches the failed tar diagnostic, resolving
+the previously unexplained Library failure. The exact pathname/report remain
+private, not in Git; public path hash is
+`6cd71e0e7fac7f296cdc4dd602d6da8555a8633819d7bfce9a743b297ea5c9e5`.
+The private report is under
+`C:\ProgramData\OracovaMigration\6eda757be8cc41f1b62222533c4d6829`, SHA256
+`255fb8211ff04009a001349674e0a9b1ec1d5b66d4ba6e6129baf41f3dacf8f31`.
+The original readable Library data/failed archive are still retained. Mac
+`sudo -n -l` denied noninteractive elevation; no password was guessed, permission
+weakened or source data removed. Controlled source administrator access is
+needed to preserve that file; broader physical-Pouya access is still pending.
