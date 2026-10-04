@@ -10,7 +10,7 @@ namespace KhadangRouter;
 // Each checkpoint authorizes one exact topic/workspace/native conversation.
 public sealed record ClaudeCheckpoint(long Chat, int Topic, string Workspace, string Sha256, string? Model = null);
 public sealed record LinuxClaudeRuntime(string PackageRoot, string WslSha256, Dictionary<string, string> FileSha256,
-    Dictionary<string, ClaudeCheckpoint> Checkpoints)
+    Dictionary<string, ClaudeCheckpoint> Checkpoints, bool GuardedRecovery = false)
 {
     public const string BinarySha256 = "0298068b686e7fdbaf9402a7a587bb7f49c0b0e084de09f69145a0719207640c";
     public const string HeldSession = "b728b1bc-3d36-4178-aa01-fd9e9b056d9c";
@@ -192,13 +192,20 @@ public sealed partial class LinuxClaudeTopics : IClaudeTopics
     private readonly Dictionary<TopicAddress, Binding> selected;
     private readonly HashSet<string> attempted = new(StringComparer.Ordinal);
     private readonly Func<Binding, CancellationToken, Task<INativeChannel>> open;
+    private readonly Func<Binding, string, string?, CancellationToken, Task<string>> renew;
+    private readonly Func<Binding, string, string?, CancellationToken, Task<INativeChannel>> openRenewed;
     public LinuxClaudeTopics(RouterPolicy policy, Ledger ledger, IReadOnlyList<Binding> bindings)
         : this(policy, ledger, bindings, async (binding, stop) => await LinuxClaudeChannel.Open(policy, binding, stop)) { }
     internal LinuxClaudeTopics(RouterPolicy policy, Ledger ledger, IReadOnlyList<Binding> bindings,
-        Func<Binding, CancellationToken, Task<INativeChannel>> open)
+        Func<Binding, CancellationToken, Task<INativeChannel>> open,
+        Func<Binding, string, string?, CancellationToken, Task<string>>? renew = null,
+        Func<Binding, string, string?, CancellationToken, Task<INativeChannel>>? openRenewed = null)
     {
         ValidateRegistry(policy, bindings, ledger); this.ledger = ledger; this.open = open; runtime = policy.LinuxClaude; this.policy = policy;
         selected = bindings.ToDictionary(binding => binding.Address);
+        this.renew = renew ?? RenewCheckpoint;
+        this.openRenewed = openRenewed ?? (async (binding, digest, model, stop) =>
+            await LinuxClaudeChannel.Open(policy with { LinuxClaude = For(binding, digest, model) }, binding, stop));
     }
     internal static void ValidateRegistry(RouterPolicy policy, IReadOnlyList<Binding> bindings, Ledger? ledger = null)
     {
@@ -224,6 +231,10 @@ public sealed partial class LinuxClaudeTopics : IClaudeTopics
     {
         if (!selected.TryGetValue(binding.Address, out var original) || binding != original)
             throw new InvalidDataException("Claude launcher cannot select a substitute binding");
+        if (runtime!.GuardedRecovery && (ledger.Get(CheckpointKey(binding)) != null || ledger.Get(RecoveryKey(binding)) != null ||
+            ledger.Get("claude/launch-handoff/" + binding.ThreadId) is { } consumed &&
+            consumed.GetProperty("checkpointSha256").GetString() == runtime.For(binding).Sha256))
+            return await Recover(binding, stop);
         if (!runtime!.Checkpoints.ContainsKey(binding.ThreadId) || ledger.Get(CheckpointKey(binding)) != null)
             return await OpenForSwitch(binding, binding, false, null, stop);
         lock (attempted)

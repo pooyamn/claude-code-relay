@@ -61,6 +61,8 @@ public sealed partial class LinuxClaudeTopics
         // This intent is one-shot per explicit switch. Failed opens remain in
         // the protected switch journal and cannot be silently repeated.
         var channel = await LinuxClaudeChannel.Open(effective, target, stop);
+        if (runtime.GuardedRecovery)
+            ledger.Put(RecoveryKey(target), new { binding = target, sha256 = digest, model, state = "connected", at = DateTimeOffset.UtcNow });
         return new ClaudeNativeStream(channel, ledger, target.ThreadId);
     }
     private LinuxClaudeRuntime For(Binding target, string digest, string? model = null)

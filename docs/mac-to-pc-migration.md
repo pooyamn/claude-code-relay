@@ -23,6 +23,22 @@ The Mac remains the rollback source until the PC passes the checks below.
 Retiring its services is distinct from erasing a Mac or VM; no filesystem wipe
 is authorized until the exact target is resolved and verified copies exist.
 
+Owner scope update, October 4: prioritize unique projects, custom builds,
+credentials, settings and irreplaceable data. Skip new bulk backups of vendor
+apps, installers and caches that can simply be downloaded again. Existing mixed
+archives are not blanket deletion targets; preserve any custom content first.
+The owner explicitly authorized continuing below the previous 5% weekly quota
+pause threshold. This does not expand credential, deletion or wipe authority.
+
+Owner approved guarded Claude checkpoint recovery on October 4. Enable it only
+in protected PC policy. Renew exact history hashes under the native writer lease
+and verified ordinary-owner process; keep the same binding, workspace, session
+ID and model. Require a completed turn, balanced native tool/queue history, no
+live writer, pending approval/reset, uncertain delivery or unresolved recovery
+launch. Never resend input or create a replacement session. A disconnected idle
+topic can become ready only after fresh native initialization confirms idle.
+Existing native hosts and VPNs are outside this router-only deployment.
+
 ## Current inventory
 
 The original OpenClaw configuration contained 14 bindings: eight topics in Ai
@@ -35,8 +51,8 @@ unchanged; the existing PC LG topic remains intact. Connected routing is not
 the broader hardware, phone, source preservation or recovery acceptance.
 Current post-reboot operation is not accepted: Khadang is stopped at the
 consumed-Claude-checkpoint guard. Stored bindings and pre-boot status do not
-establish live topic delivery. Guarded automatic recovery is awaiting owner
-security review; the guard has not been bypassed.
+establish live topic delivery. Guarded automatic recovery is now owner-approved
+and being implemented; fresh live verification is required for acceptance.
 
 System-service inspection on October4 additionally found a live PostgreSQL16
 server on the physical bench Mac. Its protected data directory is not part of

@@ -363,6 +363,70 @@ def forward(selector, child, read_fd, write_fd, ready, verify_workspace, verify_
         verify_workspace()
 
 
+def quiescent_history(source, session, workspace):
+    """Conservative native-history gate. Unknown or unfinished work stays held.
+
+    Reads metadata/tool IDs only; no transcript text leaves this process.
+    This release's transcript queue is FIFO (enqueue/dequeue). A completed
+    assistant turn alone is insufficient if a tool, queue or background task
+    remains outstanding. Do not infer that a crash cancelled an external action.
+    """
+    tools, queued, terminal = set(), 0, False
+    metadata = {'attachment', 'atis-latch', 'last-prompt', 'cost-state', 'mode', 'bridge-session',
+                'system', 'summary', 'file-history-snapshot', 'progress'}
+    for body in source:
+        row = decode_frame(body)
+        cwd = row.get('cwd', workspace)
+        # Native shell navigation records subdirectories (DUT's real history
+        # includes dut-d/kicad-hier); this does not authorize a new launch root.
+        if type(cwd) is not str or str(Path(cwd)) != cwd or '..' in Path(cwd).parts or not Path(cwd).is_relative_to(workspace) or \
+                row.get('sessionId', session) != session or row.get('isSidechain'):
+            raise Denied('Foreign or sidechain history requires explicit reconciliation')
+        kind = row.get('type')
+        if kind == 'queue-operation':
+            operation = row.get('operation')
+            if operation == 'enqueue': queued += 1
+            elif operation == 'dequeue' and queued > 0: queued -= 1
+            else: raise Denied('Unknown or unmatched native queue operation')
+        elif kind in ('user', 'assistant'):
+            message = row.get('message')
+            if type(message) is not dict or message.get('role') != kind:
+                raise Denied('Exact native history role required')
+            content = message.get('content')
+            if type(content) not in (str, list): raise Denied('Native history content required')
+            blocks = content if type(content) is list else [{'type': 'text', 'text': content}]
+            for block in blocks:
+                if type(block) is not dict: raise Denied('Native history block required')
+                if block.get('type') == 'tool_use':
+                    identity = block.get('id')
+                    if kind != 'assistant' or type(identity) is not str or not identity or identity in tools:
+                        raise Denied('Unmatched native tool history')
+                    tools.add(identity)
+                elif block.get('type') == 'tool_result':
+                    identity = block.get('tool_use_id')
+                    if kind != 'user' or identity not in tools: raise Denied('Unmatched native tool result')
+                    tools.remove(identity)
+                elif block.get('type') == 'text' and '<task-notification' in block.get('text', ''):
+                    raise Denied('Background task notification requires explicit reconciliation')
+            terminal = kind == 'assistant' and message.get('stop_reason') == 'end_turn'
+        elif kind == 'attachment' and any(word in str(row.get('attachment', {}).get('type', '')) for word in ('task_notification', 'async', 'background')):
+            raise Denied('Background history requires explicit reconciliation')
+        elif kind not in metadata:
+            raise Denied('Unrecognized native history record; review before recovery')
+    if tools or queued or not terminal:
+        raise Denied('Unfinished native turn, tool or queue; recovery held without replay')
+
+
+def no_session_writer(session):
+    for process in Path('/proc').glob('[0-9]*'):
+        if process.name == str(os.getpid()): continue
+        try: arguments = (process / 'cmdline').read_bytes().split(b'\0')
+        except (FileNotFoundError, ProcessLookupError): continue
+        except PermissionError: raise Denied('Native producer observation unavailable')
+        if any(value in (session.encode(), ('--resume=' + session).encode(), ('--session-id=' + session).encode()) for value in arguments):
+            raise Denied('Existing native session writer; recovery held')
+
+
 def snapshot(workspace, session, checkpoint, checkpoint_sha256):
     """Bounded metadata only, under the same exclusive native-writer lease.
 
@@ -384,6 +448,7 @@ def snapshot(workspace, session, checkpoint, checkpoint_sha256):
         raise Denied('Unknown checkpoint mode')
     lease = acquire_lease(session)
     try:
+        no_session_writer(session)
         history = OWNER / '.claude/projects' / re.sub(r'[/\.]', '-', workspace) / (session + '.jsonl')
         observation = None
         if history.exists():
@@ -402,14 +467,18 @@ def snapshot(workspace, session, checkpoint, checkpoint_sha256):
                 before = os.fstat(source.fileno())
                 if _file_identity(before) != _file_identity(metadata): raise Denied('Native history identity changed before checkpoint')
                 for body in iter(lambda: source.read(65536), b''): hasher.update(body)
+                source.seek(0)
+                quiescent_history(source, session, workspace)
                 if _file_identity(before) != _file_identity(os.fstat(source.fileno())) or _file_identity(before) != _file_identity(history.lstat()):
                     raise Denied('Native history changed during checkpoint')
             observation = {'path': str(history), 'bytes': before.st_size, 'sha256': hasher.hexdigest()}
         elif history.is_symlink() or value['schema'] != 'ccrelay.personal_claude_start.v1':
             raise Denied('Saved native history missing; no fresh-session fallback')
         verify()
+        no_session_writer(session)
         print(json.dumps({'type': 'ccrelay_claude_snapshot', 'uid': 1000, 'session_id': session, 'workspace': workspace,
-                          'history': observation, 'source_writer': 'quiesced', 'model_inference': False}), flush=True)
+                          'history': observation, 'source_writer': 'quiesced', 'model_inference': False,
+                          'history_quiescent': observation is not None}), flush=True)
     finally: lease.close()
     # Keep the verified Windows owner process available for post-read token
     # attestation. The history lease is released; no input is executed.

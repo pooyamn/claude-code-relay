@@ -154,6 +154,63 @@ public static class LinuxClaudeRuntimeTests
         var afterFailure = new LinuxClaudeTopics(failedPolicy,reopened,[binding],Open);
         try { await afterFailure.Open(binding,stop.Token); throw new Exception("Uncertain launch repeated"); }
         catch (InvalidOperationException) { Check(launches == 3,"Failed launch still consumes the durable handoff before any retry"); }
+        var recoveryPolicy = policy with { LinuxClaude = runtime with { GuardedRecovery = true,
+            Checkpoints = new() { [pin] = checkpoint with { Model = "opus" } } } };
+        using var recoveryLedger = new Ledger(Path.Combine(testRoot,"claude-recovery.db"));
+        recoveryLedger.Put("claude/launch-handoff/" + pin, new { checkpointSha256 = checkpoint.Sha256 });
+        int renewals = 0, recoveredLaunches = 0;
+        Task<string> Renew(Binding selected, string digest, string? model, CancellationToken token)
+        {
+            Check(selected == binding && LinuxClaudeRuntime.Digest(digest) && model == "opus", "Recovery preserves exact scope and model");
+            renewals++; return Task.FromResult(new string('f',64));
+        }
+        Task<INativeChannel> Reopen(Binding selected, string digest, string? model, CancellationToken token)
+        {
+            Check(recoveryLedger.Get(LinuxClaudeTopics.RecoveryKey(binding))!.Value.GetProperty("state").GetString() == "launch-attempted",
+                "Recovery commits intent before any native launch");
+            Check(selected == binding && digest == new string('f',64) && model == "opus", "Launch uses renewed evidence without replacement");
+            recoveredLaunches++; return Task.FromResult<INativeChannel>(new FakeChannel());
+        }
+        LinuxClaudeTopics Recovery() => new(recoveryPolicy,recoveryLedger,[binding],Open,Renew,Reopen);
+        var recoveryTopics = Recovery();
+        await using (var native = await recoveryTopics.Open(binding,stop.Token))
+            Check(native.SessionId == pin && recoveredLaunches == 1, "Consumed checkpoint can renew only the original idle session");
+        try { await recoveryTopics.Open(binding,stop.Token); throw new Exception("Duplicate recovery"); }
+        catch (InvalidOperationException) { Check(renewals == 1,"Recovery stays one-shot within a generation"); }
+        await using (var native = await Recovery().Open(binding,stop.Token))
+            Check(recoveredLaunches == 2,"Subsequent clean startup rechecks history instead of replaying a handoff");
+        var uncertain = recoveryLedger.Attempt("claude/user/send-now",new { SessionId = pin });
+        recoveryLedger.Outcome(uncertain,"unknown");
+        try { await Recovery().Open(binding,stop.Token); throw new Exception("Unknown replay"); }
+        catch (InvalidOperationException) { Check(renewals == 2,"Unknown action blocks even read-only checkpoint renewal"); }
+        recoveryLedger.Exec("UPDATE operations SET status='rejected' WHERE id=?",uncertain); // Test-only explicit reconciliation.
+        recoveryLedger.Put("claude/request/" + pin + "/pending",new { status = "pending" });
+        try { await Recovery().Open(binding,stop.Token); throw new Exception("Pending approval"); }
+        catch (InvalidOperationException) { Check(renewals == 2,"Pending native approval is never auto-answered"); }
+        recoveryLedger.Put("claude/request/" + pin + "/pending",new { status = "cancelled" });
+        object Bubble(bool busy = false, bool held = true, string status = "Held — Claude stream disconnected", bool unknownSend = false) =>
+            new { chat = binding.Chat, topic = binding.Topic, backend = "claude", runtime = "linux", busy, held, status,
+                claudeState = "idle", sendUnknown = unknownSend, pendingResponses = Array.Empty<string>(), pendingAnswers = Array.Empty<string>() };
+        foreach (var unsafeBubble in new[] { Bubble(busy:true), Bubble(status:"Held — native conversation reset"), Bubble(unknownSend:true) })
+        {
+            recoveryLedger.Put("bubble/" + pin,unsafeBubble);
+            try { await Recovery().Open(binding,stop.Token); throw new Exception("Unsafe recovery bubble"); }
+            catch (InvalidOperationException) { Check(renewals == 2,"Only a disconnected idle stream may recover"); }
+        }
+        recoveryLedger.Put("bubble/" + pin,Bubble());
+        await using (var native = await Recovery().Open(binding,stop.Token))
+            Check(recoveredLaunches == 3,"Confirmed idle disconnected bubble allows guarded renewal");
+        var failingRecovery = new LinuxClaudeTopics(recoveryPolicy,recoveryLedger,[binding],Open,Renew,(_,_,_,_) => throw new IOException("Synthetic recovery launch failure"));
+        try { await failingRecovery.Open(binding,stop.Token); throw new Exception("Failed recovery launch accepted"); } catch (IOException) { checks++; }
+        try { await Recovery().Open(binding,stop.Token); throw new Exception("Failed recovery replay"); }
+        catch (InvalidOperationException) { Check(renewals == 4 && recoveredLaunches == 3,"Failed launch remains durably stopped across startup generations"); }
+        var snapshot = new Dictionary<string,object> { ["type"] = "ccrelay_claude_snapshot", ["uid"] = 1000, ["session_id"] = pin,
+            ["workspace"] = binding.Workspace, ["source_writer"] = "quiesced", ["model_inference"] = false, ["history_quiescent"] = true,
+            ["history"] = new { path = "/Users/pouya/.claude/projects/-Users-pouya--openclaw-workspace-duts/" + pin + ".jsonl", bytes = 123, sha256 = new string('a',64) } };
+        Check(LinuxClaudeTopics.RecoveryHistory(JsonSerializer.Serialize(snapshot),binding).GetProperty("bytes").GetInt64() == 123,"Exact idle transcript snapshot accepted");
+        foreach (var (key,value) in new (string,object)[] { ("uid",0), ("session_id",Guid.NewGuid().ToString("D")), ("workspace",binding.Workspace+"-other"),
+            ("source_writer","running"), ("model_inference",true), ("history_quiescent",false), ("history",new { path = "/tmp/history", bytes = 123, sha256 = new string('a',64) }) })
+            Denied(() => LinuxClaudeTopics.RecoveryHistory(JsonSerializer.Serialize(new Dictionary<string,object>(snapshot) { [key] = value }),binding),"Unsafe recovery snapshot accepted");
         return checks;
     }
     private sealed class FakeChannel(params string[] frames) : INativeChannel

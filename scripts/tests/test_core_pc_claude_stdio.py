@@ -20,6 +20,34 @@ WORKSPACE = str(bridge.WORKSPACE_ROOT / 'duts')
 
 
 class PcClaudeStdioTests(unittest.TestCase):
+    def history(self, *rows):
+        return io.BytesIO(b''.join(json.dumps({'sessionId': SESSION, 'cwd': WORKSPACE, **row}).encode() + b'\n' for row in rows))
+
+    def test_guarded_history_accepts_completed_turn_and_balanced_tools_queue(self):
+        bridge.quiescent_history(self.history(
+            {'type': 'queue-operation', 'operation': 'enqueue'},
+            {'type': 'queue-operation', 'operation': 'dequeue'},
+            {'type': 'assistant', 'message': {'role': 'assistant', 'content': [{'type': 'tool_use', 'id': 'tool-1'}], 'stop_reason': 'tool_use'}},
+            {'type': 'user', 'message': {'role': 'user', 'content': [{'type': 'tool_result', 'tool_use_id': 'tool-1'}]}},
+            {'type': 'assistant', 'message': {'role': 'assistant', 'content': [{'type': 'text', 'text': 'done'}], 'stop_reason': 'end_turn'}},
+            {'type': 'bridge-session'}), SESSION, WORKSPACE)
+
+    def test_guarded_history_holds_unfinished_foreign_queue_task_and_malformed_records(self):
+        final = {'type': 'assistant', 'message': {'role': 'assistant', 'content': [], 'stop_reason': 'end_turn'}}
+        for rows in (
+            [], [{'type': 'user', 'message': {'role': 'user', 'content': 'unfinished'}}],
+            [{'type': 'queue-operation', 'operation': 'enqueue'}, final],
+            [{'type': 'queue-operation', 'operation': 'dequeue'}, final],
+            [{'type': 'assistant', 'message': {'role': 'assistant', 'content': [{'type': 'tool_use', 'id': 'pending'}]}}, final],
+            [{'type': 'user', 'message': {'role': 'user', 'content': [{'type': 'tool_result', 'tool_use_id': 'unknown'}]}}, final],
+            [{**final, 'sessionId': 'other'}], [{**final, 'cwd': WORKSPACE + '-other'}], [{**final, 'isSidechain': True}],
+            [{'type': 'new-upstream-format'}, final],
+            [{'type': 'user', 'message': {'role': 'user', 'content': '<task-notification>pending'}}, final],
+            [{'type': 'attachment', 'attachment': {'type': 'task_notification'}}, final],
+        ):
+            with self.subTest(rows=rows), self.assertRaises(Denied):
+                bridge.quiescent_history(self.history(*rows), SESSION, WORKSPACE)
+
     def test_fresh_start_requires_exact_protected_owner_manifest_and_unused_native_id(self):
         value = {'schema': 'ccrelay.personal_claude_start.v1', 'session_id': SESSION, 'workspace': WORKSPACE,
                  'source_writer': 'owner_switch', 'uncertain_actions': [], 'history': None, 'profile': str(bridge.OWNER / '.claude')}

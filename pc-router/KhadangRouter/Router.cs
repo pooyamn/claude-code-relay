@@ -146,8 +146,20 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 var revision = session.ClaudeStateRevision;
                 session.ClaudeInfo = await claude.Initialize(stop);
                 lock (session.Gate)
+                {
+                    // Only a disconnected *idle* stream, independently renewed
+                    // by the protected recovery gate, may shed its stale hold.
+                    // Other holds/uncertainties and all native inputs stay intact.
+                    if (revision == session.ClaudeStateRevision && policy.LinuxClaude?.GuardedRecovery == true && session.Held &&
+                        ledger.Get("bubble/" + binding.ThreadId) is { } priorBubble &&
+                        priorBubble.GetProperty("status").GetString() == "Held — Claude stream disconnected" &&
+                        session.ClaudeInfo.Value.GetProperty("session_state").GetString() == "idle" &&
+                        ledger.Get(LinuxClaudeTopics.RecoveryKey(binding)) is { } recovery &&
+                        recovery.GetProperty("binding").Deserialize<Binding>() == binding && recovery.GetProperty("state").GetString() == "connected")
+                        session.Held = false;
                     if (revision == session.ClaudeStateRevision)
                         ApplyClaudeState(session, session.ClaudeInfo.Value.GetProperty("session_state").GetString()!);
+                }
                 var remoteReceipt = await ClaudeRemoteControl.Enable(claude, binding, ledger, stop);
                 lock (session.Gate)
                 {
