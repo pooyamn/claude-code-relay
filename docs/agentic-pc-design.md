@@ -11,6 +11,12 @@ preserved worktrees. Resuming old Mac session IDs is optional, not a migration
 gate. Record the new PC IDs for normal operation and recovery; this does not
 authorize silent fresh-session fallback after an uncertain failure.
 
+Scope decision, October 3 at 11:19 PM PDT: Pouya excluded the local Qwen server
+and its Ai Dispatch topic `10656`. Neither moves to the PC, and the topic is
+not switched to Claude. Eight of thirteen required original topics are routed;
+five required originals remain. Existing Qwen source files/backups are retained,
+not deleted. Earlier fourteen-topic counts below are historical.
+
 Current migration evidence, 2026-10-03 at 10:37 PM PDT: Khadang runs nine PC
 routes, including eight of the fourteen original topics. All five Oracova PCBA
 topics plus Hardware Lite and MPU6000-i9 are connected; six original routes,
@@ -29,6 +35,16 @@ on all nine Khadang live bubbles, including DUT. Existing message IDs, bounded
 tails, tool calls, goals and timers are preserved; native Claude app links stay
 tappable. Confirmed Telegram receipts and fresh native reattachment are recorded
 in the [formatting deployment evidence](mac-to-pc-migration.md#jamshid-style-bubbles-restored-october-3-at-10-57-pm-pdt).
+
+UI clarification and deployment, October 3 at 11:45 PM PDT: only live progress
+belongs in the code-block bubble. Freeze that bubble on completion, then send
+a separate normally formatted final answer with clickable links and emphasis;
+fence only actual code/tables. Long finals split without losing their beginning.
+Tool start/completion updates one descriptive row; raw tool stdout and private
+reasoning are not mirrored. Pending questions remain visible in the bounded
+tail. Commands are explicitly unchanged, per Pouya. Windows checks and real DUT
+formatting receipts are recorded in the
+[progress/final deployment evidence](mac-to-pc-migration.md#jamshid-progress-and-separate-finals-restored-october-3-at-11-45-pm-pdt).
 
 Status: v9, decisions in progress (2026-10-02). Incorporates Pouya's review decisions on local identities, relay update authorization, daily disaster recovery, tool-switch repair, evidence-based memory maintenance with passive inconsistency reporting, a builder in the first rollout with demand-driven management, a three-active-session cap with task-wide progress monitoring, subscription-aware pacing with a 10% owner reserve, evaluated GStack/GBrain integration, source-evaluated AX/Paperclip launch, ownership and continuity patterns, company-scoped human employees interacting with Khadang, and native Codex goal controls with a rolling-bubble indicator. Remaining review questions are listed in §15. These are target requirements, not claims that the live Mac relay already implements them. Owner: Pouya.
 Target: Windows PC, WSL2 Ubuntu 24.04. Agent roles run under separate local security identities with private homes and runtime state; the router runs as `relay`. Pouya remains the owner and uses one GitHub account. The existing Mac deployment remains a migration source.

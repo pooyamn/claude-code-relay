@@ -12,6 +12,13 @@ native session IDs is optional and must not delay cutover. Record the new PC
 session IDs for subsequent operation and recovery. This is an explicit initial
 migration choice, not permission to silently replace a failed PC session.
 
+Pouya's scope decision, October 3 at 11:19 PM PDT: exclude both the local Qwen
+model server and Ai Dispatch's Qwen lab topic `10656` from the PC migration.
+Do not bind that topic to Khadang or substitute Claude. Existing source files,
+histories and backups are not authorized for deletion by this exclusion. This
+supersedes the earlier requirement to migrate all fourteen original bindings:
+thirteen are now required, with Qwen explicitly excluded.
+
 The Mac remains the rollback source until the PC passes the checks below.
 Retiring its services is distinct from erasing a Mac or VM; no filesystem wipe
 is authorized until the exact target is resolved and verified copies exist.
@@ -20,8 +27,9 @@ is authorized until the exact target is resolved and verified copies exist.
 
 The original OpenClaw configuration contained 14 bindings: eight topics in Ai
 Dispatch, five in Oracova, and the standalone Startup Ideas group. Eight now
-route to the PC; six remain on the source. Keep their chat and topic IDs
-unchanged. The existing PC LG topic remains intact.
+route to the PC; six remain on the source, of which five are required and Qwen
+is excluded. Required migration progress is 8/13. Keep the included chat and
+topic IDs unchanged. The existing PC LG topic remains intact.
 
 | Project | Chat | Topic |
 | --- | --- | --- |
@@ -31,7 +39,7 @@ unchanged. The existing PC LG topic remains intact.
 | claude-code-relay | -1003550185469 | 816 |
 | kicad-copilot-research | -1003550185469 | 6004 |
 | hardware-lite | -1003550185469 | 6333 |
-| qwen-lab | -1003550185469 | 10656 |
+| qwen-lab (excluded by owner; no PC route) | -1003550185469 | 10656 |
 | mpu6000-i9 | -1003550185469 | 8653 |
 | web | -1003550185469 | 8660 |
 | marginal-requests (Marginal Requests) | -1004395661179 | 427 |
@@ -49,8 +57,8 @@ Selected tools and provider configuration must be read from source runtime
 state, not inferred from the `claude-` agent names. Preserve both tools' histories
 and known source session IDs as backup metadata. Missing old pins do not block
 a fresh PC session with a checked handoff; record any inventory gaps rather than
-guessing a transcript by modification time. Preserve the Qwen topic's actual
-configuration rather than replacing its backend without a decision.
+guessing a transcript by modification time. Qwen is excluded by the scope
+decision above: do not migrate its provider or replace its backend with Claude.
 
 The source workspace is approximately 49 GB, with another 1.6 GB of OpenClaw
 media, 2.3 GB of Codex sessions and 1.2 GB of Claude project history. The PC has
@@ -1715,3 +1723,54 @@ The database was untouched. Explicit UTF-8 fixed the helper; partial inert
 checkpoints were compared with unchanged quiesced histories, not replaced or
 replayed. Protected receipts retain this recovery evidence. Migration remains
 8/14 originals, nine PC routes including LG; Mac retirement is not accepted.
+
+### Jamshid progress and separate finals restored October 3 at 11 45 PM PDT
+
+Pouya clarified that Jamshid's code block was only the live bubble: its final
+answer was a separate normally formatted message. He explicitly deferred
+command restoration. Source commit `e9427de` now implements that separation for
+Claude and Codex, without changing command menus, aliases or control semantics.
+Progress stays silent and bounded to 3,900 UTF-16 units, with descriptive tool
+rows amended on completion, a readable timer/goal footer and pending questions
+kept visible. Raw tool stdout and private reasoning are excluded. The final
+preserves its full text, normal emphasis and links, and fences only actual code
+or tables. Long answers split into parts; each part has a durable send intent
+and confirmed message ID. Unknown delivery is held, not automatically resent.
+
+The self-contained Windows candidate passed **845 checks** with no credentials,
+network or models. All **187 installed files** matched that candidate. The Mac
+full-suite rerun and duplicate probe packaging encountered disk exhaustion;
+neither is reported as passing. Packaging completed on the PC without deleting
+Mac files. Fresh installed owner/ACL/native Windows/Linux proof passed at
+`2026-10-04T06:43:32.3242787Z`. Prior actual Claude launch/tool-owner/continuity
+evidence was explicitly reused for unchanged native launch/control sources,
+not presented as new inference. Five fresh quiesced history checkpoints were
+captured for the idle restart.
+
+At `2026-10-04T06:46:09.1727530Z`, the normal service was Running, the enabled
+startup supervisor Ready, all nine bindings unchanged, all five Claude streams
+connected, and unknown operations zero. Linux Codex remained PID **2141**;
+Windows native transport was PID **25388**. Policy changed only the fresh
+Claude package/checkpoints, not authorization, menus, credentials or routes.
+Installed router DLL SHA-256 is
+`E2356B7A0D2821B7588B2E2D5FF920D072C61E30AA856C6FAA14C8640C07767E`;
+policy SHA-256 is
+`390CEF2715C77E8C4CFE81D3A822F7FA3AF486C85EA73DA284A7EDC4F5CDF869`.
+
+A deterministic two-message UI check in existing DUT topic **53**, without a
+model task, returned confirmed Bot API receipts at `06:45:31.1588213Z`:
+progress **4816** has a code-block entity and was edited to Done; separate final
+**4817** has bold/link entities and no whole-answer code block. This is actual
+Telegram formatting acceptance, not a phone screenshot or a new model round
+trip. Existing historical bubbles do not retroactively create final messages.
+
+Protected rollback/preimages and `ui-acceptance.json` are in release
+`2594950b4dd146a4a6a0ddb25ba91784`. Its matching `claude-connector-` package's
+five checkpoints are now consumed; another restart requires fresh reviewed
+histories. A stop request initially reported failure, but fresh SCM inspection
+confirmed normal shutdown, with no forced termination. The probe was stopped
+normally and the exact normal service path restored. Previously prepared
+migration helpers must be rebaselined to the current code/policy before use.
+The larger migration remains paused: **8/13 required** originals are connected;
+Qwen is excluded, and no remaining source topic/process was retired by this UI
+change.
