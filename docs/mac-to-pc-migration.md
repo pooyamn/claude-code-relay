@@ -3055,3 +3055,57 @@ This closes offline environment preparation, not live GUI/IPC/demo, a fresh
 agent handoff read, owner phone input or source-writer/final-delta acceptance.
 No Khadang guard/credential/policy changed. Weekly quota still had8% remaining
 at20:56:38Z, above the5% pause gate; migration stays active and incomplete.
+
+### Native Windows KiCad qualification and non-home scratch preservation
+
+The previous goal turn established the Linux offline environment. Native
+Windows IPC uses a platform-local endpoint, not Linux's `/tmp/kicad/api.sock`;
+see the [KiCad add-on developer guide](https://dev-docs.kicad.org/en/apis-and-binding/ipc-api/for-addon-developers/).
+Current inspection found Windows KiCad10.0.6 and Python3.12.10 already installed.
+The new ordinary-owner Windows environment preserves all49 source external
+package versions; colorama and pywin32 are additional Windows-dependent
+dependencies. Neither the Darwin `.venv` nor the vendor repositories changed.
+
+The original scratch cohort was found outside the selected home/workspace
+archives, in the physical bench Mac's `/Users/Shared/kicad-scratch`. Both files
+are now captured with per-file digests and separate preserved/testing copies
+under `C:\Users\pou\.migration\kicad-native-050653954b384670a2b4071254b9b31d`.
+PCB SHA256 `0d37fb73b2147ebc8379f6708cf74913335a6cbc2c78aae37d34719bc843d796`;
+project SHA256 `9a3d5113bf9d65523cb0fc751c13daf36c680407989f945dccf5ae693aa4bebe`.
+Both source digests still matched fresh post-test Mac reads. This newly
+preserved cohort is not a whole `/Users/Shared` or full-machine coverage claim.
+
+The native GUI launched only the disposable copy, using cloned settings and
+isolated configuration/documents/temp homes. The endpoint was independently
+checked against its exact scratch path before mutation tests. Initial state
+was five footprints,73 nets,zero tracks/vias and two copper layers. All37
+original state-bridge/executor/scorer/loop/nudge tests passed in48.92 seconds.
+At21:08:40Z the complete board serialization matched its initial SHA256
+`7d468d290c910c2763986dab33bfdeb800b4bb511f459c817073b6749395cfb1` exactly.
+Existing Windows settings remained byte-identical. The retained process handle
+then terminated only the disposable GUI; no GUI remained live. No source or
+production board, real model, native agent, router policy/guard, topic or
+credential was changed. This is automated scratch qualification, not the
+owner-selected P6 real-board/model demo, phone acceptance or subjective UI proof.
+
+Successful result SHA256
+`6b89131ad66aa8d5702f101d45d112e28563405798e1de71cf5b5234dce3b5a2`.
+The prior failed attempt77cde1a9547c4225ba8c6b918909cda8 remains intact: its
+client lacked Windows identity environment fields and failed before tests;
+those fields are now covered by a regression. Ten Python preparation checks
+passed. The executed native helper SHA256 is
+`b6f60400c5763d6e2d9baf478e561efc9802e9a4f4ce80f42af79fc385f77f1c`.
+The private project handoff now distinguishes qualified native scratch work
+from outstanding agent/MCP/topic and actual bench/demo acceptance. Its old
+test socket is not reusable after the GUI closed.
+
+Recovery candidate inventory now explicitly includes owner migration artifacts,
+per-user KiCad installed code/settings and Python3.12 installed code. Five actual
+Windows source-list checks passed without elevation, content reads or temporary
+fixtures. This updates candidate coverage, not the deployed backup policy or
+daily off-machine/restore proof. Current personal-run ACLs grant only the owner,
+SYSTEM and Administrators; these ordinary-owner artifacts are not a sealed
+approval authority. Khadang remains Stopped in fresh SCM inspection. Backend
+choice/topic access, guarded router recovery approval, protected Mac account
+data, final source fences, real hardware, off-network and encrypted independent
+restore gates remain open. Migration is active, incomplete and not erasure-ready.
