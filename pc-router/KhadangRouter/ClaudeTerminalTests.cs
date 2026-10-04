@@ -14,6 +14,11 @@ public static class ClaudeTerminalTests
         var header = ClaudeTerminalView.Tool(bash);
         Check(header.StartsWith("⏺ Bash(Run project tests)") && header.Contains("⎿ Running") && header.Length < 100,
             "Claude Bash display prefers the real short description to a command dump");
+        var script = Json(new { name = "Bash", input = new { command = "powershell.exe -EncodedCommand " + new string('x', 10000) } });
+        Check(ClaudeTerminalView.Tool(script).StartsWith("⏺ Bash(Run PowerShell script)") && ClaudeTerminalView.Tool(script).Length < 100, "Long Claude commands get the same compact purpose label as Codex");
+        var longDescription = Json(new { name = "Bash", input = new { command = "dotnet build", description = "Build the router and verify the changed presentation using deterministic fixture tests before publication" } });
+        Check(ClaudeTerminalView.Tool(longDescription).Length < 100 && !ClaudeTerminalView.Tool(longDescription).Contains("publication"), "Long real descriptions fit one short tool header");
+        Check(ToolSummary.Shell("git status", "token=PRIVATE-CANARY") == "token=[REDACTED]", "Purpose descriptions receive native credential redaction");
         var result = ClaudeTerminalView.Tool(bash, "completed", Json(new { content = "All tests passed\n17 checks verified\nextra output" }));
         Check(result.Contains("All tests passed") && result.Contains("17 checks verified") && !result.Contains("extra output"), "Bash result shows two short actual output lines");
         Check(!ClaudeTerminalView.Tool(bash, "completed", Json(new { content = "token=PRIVATE-CANARY" })).Contains("PRIVATE-CANARY"), "Credential-shaped output never becomes a terminal excerpt");

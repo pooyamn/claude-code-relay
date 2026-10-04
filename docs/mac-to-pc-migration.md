@@ -2879,3 +2879,47 @@ unchanged owner/participant policy and restored startup supervision. Independent
 native observation confirmed the exact active controller turn and active goal.
 The owner's phone display remains an observation, not a claimed test. This UI
 change does not close migration, backup/restore or Mac-erasure gates.
+
+### Owner-approved Windows auto-login, October 4
+
+The owner explicitly approved automatic Windows sign-in after the startup audit
+found `AutoAdminLogon=0` and a stale existing LSA credential. The new sealed helper
+validated the supplied password using a real interactive logon and the exact
+local owner SID before replacing that secret. Winlogon now reads back enabled
+for local `pou` on `DESKTOP-8SO9HDK`, with a counted-Unicode LSA secret and no
+plaintext registry password. The account password was not changed. Administrator
+or physical access remains a risk of unattended sign-in.
+
+The exact prior secret, including presence/encoding, has a DPAPI-encrypted
+Administrator/SYSTEM-only rollback beside the non-secret registry preimage.
+Ordinary WSL UID1000 could not read it. Both Windows API definitions compiled;
+14 fake-byte snapshot round-trip/corruption checks passed without LSA changes.
+Protected helper generation is `0b1e9c3afb1d413c82c8c78bcadbe52e`.
+Both Khadang and WSL logon tasks remain enabled, with their existing repeat
+checks; the router and WSL service remained running. No reboot was performed:
+cold-boot auto-login and complete outside-LAN recovery are still unverified.
+
+### Compact live tool summaries, October 4 at 11:25 AM PDT
+
+Generation `1ecc6285696c4d8eb25f13e5fc919b64` is live on all12 existing Khadang
+routes, including DUT. Codex and Claude use short action labels rather than
+shell/source/argument prefixes: builds, checks, read counts, basenames and generic
+script/remote-command labels. Native short Claude descriptions are preferred.
+Known wrapped tool calls are summarized without evaluating their code. No extra
+model call is made. Consecutive Codex tools now compact like Claude: last three
+plus failures, including nonzero command exits. Full commands stay in native
+history; old frozen bubbles are not reconstructed. Silent code-block bubble,
+bottom timer/goal line, pending questions, rich tables and separate clean finals
+are unchanged.
+
+All1081 Linux and1084 sealed Windows offline checks passed. Installed DLL SHA256
+is `FFAEC6699B17BD59C47BC40DC83D4364F6A0B9EE18101B40DAF0A45152F8D94C`;
+policy SHA256 is `33F8BE3BF0E538B03FCB20AC6112310CEA3877E0387C3663D67635BBF55C1E522`.
+Seven fresh exact-ID quiescent history checkpoints were taken. Fresh no-model
+OS/credential/code-denial proof is timestamped18:23:09Z; unchanged native Claude
+acceptance was explicitly reused, and fresh DUT/CC typing proof passed18:24:05Z.
+Live verification at18:25:19Z confirmed12 unchanged bindings, seven connected
+Claude streams, native PIDs2141/27592, unknown0, retained presentation unknown1
+and restored startup supervision. The exact controller turn and paused goal
+were preserved. Owner/participant policy did not change. Phone rendering remains
+an owner observation, not a claimed test; migration/recovery gates remain open.

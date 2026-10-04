@@ -24,17 +24,16 @@ internal static class ClaudeTerminalView
         var input = block.TryGetProperty("input", out var rawInput) && rawInput.ValueKind == JsonValueKind.Object ? rawInput : default;
         var file = Field(input, "file_path");
         if (name is "Read" or "Write" or "Edit" && file.Length > 0)
-            label += "(" + Short(file.Split('/', '\\').Last(), 80) + ")";
+            label += "(" + ToolSummary.File(file) + ")";
         else if (name == "Bash")
         {
             var description = Field(input, "description");
-            var command = Field(input, "command").Split('\n')[0];
-            var detail = Short(description.Length > 0 ? description : command);
+            var detail = ToolSummary.Shell(Field(input, "command"), description);
             if (detail.Length > 0) label += "(" + detail + ")";
         }
         else if (name is "Grep" or "Glob")
         {
-            var pattern = Short(Field(input, "pattern"), 70);
+            var pattern = ToolSummary.Compact(Field(input, "pattern"), 40);
             if (pattern.Length > 0) label += "(" + pattern + ")";
         }
         var summary = status == "failed" ? "Error — inspect native session" : status == "completed" ? "Done" : "Running…";

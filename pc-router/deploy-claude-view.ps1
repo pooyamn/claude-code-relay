@@ -6,16 +6,16 @@ param(
  [ValidatePattern('^[0-9A-Fa-f]{64}$')][string]$ObserverSha256,
  [ValidatePattern('^[0-9A-Fa-f]{64}$')][string]$InspectorSha256
 )
-# Owner-requested terminal-like Claude stream display only. Existing participant policy
+# Owner-requested compact Codex/Claude tool summaries only. Existing participant policy
 # and native authority stay unchanged; the production service is not hot-patched.
 # Preserve all twelve bindings, seven Claude histories and active Linux Codex.
 # Never replay a native input or claim an uncertain old display edit confirmed.
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 $root='C:\ProgramData\KhadangRouter';$nativeRoot='C:\ProgramData\OracovaNativeRemote'
 $release="$root\release-$Generation";$package="$nativeRoot\claude-connector-$Generation"
-$source="C:\Users\pou\workspaces\claude-view-$Generation"
-$oldCode='EF28C0A3AA87146EFCE0F5DEB2429F32CE7EE17341FEA0A391311628A3EB30D3'
-$oldPolicy='63923EDE9313E0C1C9A4D6706656FEC11CC38929ABA3B8AFDDD3168EBE279478'
+$source="C:\Users\pou\workspaces\tool-summary-$Generation"
+$oldCode='151794E07F1CB698E5C5EB716011F5BAF01264352F88E567FC8AFC13F5674F9D'
+$oldPolicy='057B30EE2C604472A0689F45D5F25CDC795BEB2841517FA67DE26C4CE22015ED'
 $normal='"'+$root+'\bin\KhadangRouter.exe" --service --config "'+$root+'\config.json"'
 $who=[Security.Principal.WindowsIdentity]::GetCurrent()
 if($env:COMPUTERNAME -ne 'DESKTOP-8SO9HDK' -or -not ([Security.Principal.WindowsPrincipal]::new($who)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'Exact PC administrator maintenance lane required'}
@@ -170,7 +170,7 @@ if($Phase -eq 'accept'){
  Copy-Item "$root\state\probe.json" "$release\generic-proof.json"
  $p.nativeLinuxClaudeLaunchVerified=$true;$p.nativeLinuxClaudeToolOwnerVerified=$true;$p.nativeLinuxClaudeContinuityVerified=$true
  if($old.nativeLinuxClaudeAcceptance){$p|Add-Member nativeLinuxClaudeAcceptance $old.nativeLinuxClaudeAcceptance -Force}
- $p|Add-Member nativeLinuxClaudeAcceptanceReuse @{reason='Unchanged native executable/launcher/connector; Claude stream display only; native dispatch and connector unchanged';priorRouterSha256=$oldCode;currentRouterSha256=$staged.code;freshCheckpoints=7;modelsRerun=$false;liveExactSessionInitializationRequired=$true;at=[DateTimeOffset]::UtcNow.ToString('o')} -Force
+ $p|Add-Member nativeLinuxClaudeAcceptanceReuse @{reason='Unchanged native executable/launcher/connector; compact tool display only; native dispatch, rich final replies and connector unchanged';priorRouterSha256=$oldCode;currentRouterSha256=$staged.code;freshCheckpoints=7;modelsRerun=$false;liveExactSessionInitializationRequired=$true;at=[DateTimeOffset]::UtcNow.ToString('o')} -Force
  Save "$root\state\probe.json" $p;Save "$release\accepted.json" @{policy=$staged.policy;code=$staged.code;freshOsProof=$true;priorNativeChecksExplicitlyReused=$true;at=[DateTimeOffset]::UtcNow.ToString('o')}
  @{phase='accepted-not-live';freshOsProof=$true;priorNativeChecksExplicitlyReused=$true}|ConvertTo-Json -Compress;return
 }
@@ -205,5 +205,5 @@ if($s.service -ne 'Running' -or @($s.bindings).Count -ne 12 -or $s.status.unknow
 $before=Get-Content "$release\prior-bindings.json" -Raw -Encoding UTF8|ConvertFrom-Json
 if((($before|Sort-Object Chat,Topic|ConvertTo-Json -Depth 20 -Compress) -cne ($s.bindings|Sort-Object Chat,Topic|ConvertTo-Json -Depth 20 -Compress))){throw 'A native topic binding changed'}
 Enable-ScheduledTask Oracova-KhadangStartup|Out-Null
-Save "$release\live-verified.json" @{phase='live-verified';routes=12;connectedClaudeStreams=7;participant=199200674;owner=110123423;ownerControlsGranted=$false;bindingsChanged=$false;unknown=$s.status.unknown;presentationUnknown=$s.status.presentationUnknown;nativeLinuxPid=$s.status.nativeLinuxPid;nativeWindowsPid=$s.status.nativePid;startupRestored=$true;receiptTyping=$s.status.receiptTyping;typingApiVerified=$true;claudeStreamTerminalView=$true;at=[DateTimeOffset]::UtcNow.ToString('o')}
+Save "$release\live-verified.json" @{phase='live-verified';routes=12;connectedClaudeStreams=7;participant=199200674;owner=110123423;ownerControlsGranted=$false;bindingsChanged=$false;unknown=$s.status.unknown;presentationUnknown=$s.status.presentationUnknown;nativeLinuxPid=$s.status.nativeLinuxPid;nativeWindowsPid=$s.status.nativePid;startupRestored=$true;receiptTyping=$s.status.receiptTyping;typingApiVerified=$true;claudeStreamTerminalView=$true;compactToolSummaries=$true;at=[DateTimeOffset]::UtcNow.ToString('o')}
 Get-Content "$release\live-verified.json" -Raw

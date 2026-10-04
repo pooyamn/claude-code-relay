@@ -666,7 +666,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                     session.Items[itemId.GetString()!] = item.Clone();
                 }
                 var label = NativeEventView.Tool(item, completed: false);
-                if (label.Length > 0 && item.TryGetProperty("id", out var toolId)) session.Bubble.Upsert("tool:" + toolId.GetString(), label);
+                if (label.Length > 0 && item.TryGetProperty("id", out var toolId)) session.Bubble.Upsert("tool:" + toolId.GetString(), label, important: NativeEventView.Failed(item));
             }
             else if (method == "item/completed")
             {
@@ -705,7 +705,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                         displayItem = JsonSerializer.SerializeToElement(fields);
                     }
                     var label = NativeEventView.Tool(displayItem, completed: true);
-                    if (label.Length > 0 && item.TryGetProperty("id", out var toolId)) session.Bubble.Upsert("tool:" + toolId.GetString(), label);
+                    if (label.Length > 0 && item.TryGetProperty("id", out var toolId)) session.Bubble.Upsert("tool:" + toolId.GetString(), label, important: NativeEventView.Failed(displayItem));
                 }
             }
             else if (method is "thread/goal/updated" or "thread/goal/cleared")

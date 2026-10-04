@@ -174,16 +174,18 @@ public sealed class RollingBubble
     private readonly List<Entry> entries = [];
     public string Tail { get { lock (gate) return Display(entries); } }
     private string Body() => string.Join("\n\n", entries.Select(e => e.Text));
+    private static bool IsTool(Entry row) => row.Id is { } id &&
+        (id.StartsWith("ctool:", StringComparison.Ordinal) || id.StartsWith("tool:", StringComparison.Ordinal));
     private static string Display(IEnumerable<Entry> values)
     {
         var rows = values.ToArray(); var output = new List<string>();
         for (var index = 0; index < rows.Length; index++)
         {
             var row = rows[index];
-            if (row.Id?.StartsWith("ctool:", StringComparison.Ordinal) ?? false)
+            if (IsTool(row))
             {
                 var tools = new List<Entry> { row };
-                while (index + 1 < rows.Length && (rows[index + 1].Id?.StartsWith("ctool:", StringComparison.Ordinal) ?? false)) tools.Add(rows[++index]);
+                while (index + 1 < rows.Length && IsTool(rows[index + 1])) tools.Add(rows[++index]);
                 var shown = tools.Where((entry, position) => entry.Important || position >= tools.Count - 3).ToArray();
                 if (tools.Count > shown.Length) output.Add("⏺ … " + (tools.Count - shown.Length) + " earlier tool calls");
                 output.AddRange(shown.Select(entry => entry.Text));
@@ -220,7 +222,7 @@ public sealed class RollingBubble
         // Tool spam must not evict recent assistant text before it is rendered.
         while (Body().Length > 30000)
         {
-            var tool = entries.FindIndex(e => (e.Id?.StartsWith("ctool:", StringComparison.Ordinal) ?? false) && !e.Important);
+            var tool = entries.FindIndex(e => IsTool(e) && !e.Important);
             if (tool < 0) break;
             entries.RemoveAt(tool);
         }

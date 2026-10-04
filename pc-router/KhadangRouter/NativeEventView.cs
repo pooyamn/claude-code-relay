@@ -48,12 +48,12 @@ public static class NativeEventView
         var type = Field(item, "type");
         if (type is "" or "agentMessage" or "userMessage" or "reasoning" or "functionCallOutput") return "";
         var name = type switch {
-            "mcpToolCall" => "MCP " + Field(item, "server") + "/" + Field(item, "tool"),
-            "dynamicToolCall" => "Tool " + Field(item, "tool"),
-            "commandExecution" => Command(item),
-            "fileChange" => "Edit " + Paths(item),
-            "webSearch" => "Web search " + Field(item, "query"),
-            "imageView" => "View image " + Field(item, "path"),
+            "mcpToolCall" => ToolSummary.Compact("MCP " + Field(item, "server") + "/" + Field(item, "tool")),
+            "dynamicToolCall" => ToolSummary.Dynamic(item),
+            "commandExecution" => ToolSummary.Command(item),
+            "fileChange" => "Edit " + ToolSummary.Changes(item),
+            "webSearch" => "Search web",
+            "imageView" => "View image " + ToolSummary.File(Field(item, "path")),
             "contextCompaction" => "Compact context",
             "plan" or "todoList" => "Update plan",
             _ => type
@@ -62,26 +62,11 @@ public static class NativeEventView
         var suffix = status.Length == 0 ? completed ? "completed" : "started" : status;
         if (type == "commandExecution" && completed && item.TryGetProperty("exitCode", out var code) && code.ValueKind == JsonValueKind.Number && code.TryGetInt32(out var exit))
             suffix += "; exit " + exit;
-        var mark = status is "failed" or "declined" ? "✗" : completed ? "✓" : "⏳";
+        var mark = Failed(item) ? "✗" : completed ? "✓" : "⏳";
         return "\n" + mark + " " + name + " (" + suffix + ")\n";
     }
-    private static string Command(JsonElement item)
-    {
-        if (item.TryGetProperty("commandActions", out var actions) && actions.ValueKind == JsonValueKind.Array)
-        {
-            var labels = actions.EnumerateArray().Take(8).Select(action => Field(action, "type") switch {
-                "read" => "Read " + Field(action, "name"),
-                "search" => "Search " + Field(action, "query"),
-                "listFiles" => "List files " + Field(action, "path"), _ => ""
-            }).Where(s => s.Length > 0).ToArray();
-            if (labels.Length > 0) return string.Join("; ", labels);
-        }
-        var command = item.TryGetProperty("command", out var value) && value.ValueKind == JsonValueKind.String ? value.GetString()!.Split('\n')[0] : "";
-        var clean = NativeGoal.Literal(command);
-        return clean.Length == 0 ? "Command" : "Run " + (clean.Length <= 300 ? clean : clean[..300] + "…");
-    }
-    private static string Paths(JsonElement item) => item.TryGetProperty("changes", out var changes) && changes.ValueKind == JsonValueKind.Array
-        ? string.Join(", ", changes.EnumerateArray().Take(8).Select(change => Field(change, "path"))) : "file";
+    public static bool Failed(JsonElement item) => Field(item, "status") is "failed" or "declined" ||
+        item.TryGetProperty("exitCode", out var code) && code.ValueKind == JsonValueKind.Number && code.TryGetInt32(out var exit) && exit != 0;
     public static string ClaudeTool(JsonElement block, string status = "started")
     {
         var name = Field(block, "name");
@@ -89,10 +74,10 @@ public static class NativeEventView
         if (block.TryGetProperty("input", out var input) && input.ValueKind == JsonValueKind.Object)
         {
             var file = Field(input, "file_path");
-            if (name is "Read" or "Write" or "Edit" && file.Length > 0) label += " " + file;
-            else if (name == "Bash") label = Command(input);
-            else if (name == "Grep") label = "Search " + Field(input, "pattern");
-            else if (name == "Glob") label = "List files " + Field(input, "pattern");
+            if (name is "Read" or "Write" or "Edit" && file.Length > 0) label += " " + ToolSummary.File(file);
+            else if (name == "Bash") label = ToolSummary.Shell(ToolSummary.Field(input, "command"), ToolSummary.Field(input, "description"));
+            else if (name == "Grep") label = "Search files";
+            else if (name == "Glob") label = "List files";
         }
         return (status == "failed" ? "✗ " : status == "completed" ? "✓ " : "⏳ ") + label;
     }
