@@ -40,7 +40,7 @@ public static class JoinedTests
             try { await appBot.Completed.Task.WaitAsync(TimeSpan.FromSeconds(12)); }
             finally { appStop.Cancel(); try { await appRun; } catch (OperationCanceledException) { } }
             Check(appNative.Started == 0 && appNative.Steered == 0, "Native-origin events cause no router model start or steering");
-            Check(appBot.Sends == 0 && appBot.Edits >= 1, "Native-origin work edits the existing bubble only");
+            Check(appBot.Sends == 1 && appBot.Edits >= 1, "Native-origin response creates one new bubble and preserves the earlier response");
             Check(appBot.Last!.Contains("Have you updated the source? Pushed?") && appBot.Last.Contains("Native input:"), "Native user input appears in Telegram event view");
             Check(appBot.Last.Contains("MCP fixture/inspect") && appBot.Last.Contains("exit 0") && appBot.Last.Contains("TOOL-OUTPUT"), "Tool names, completion and output stay in same bubble");
             Check(!appBot.Last.Contains("FOREIGN-INPUT") && !appBot.Last.Contains("STALE-INPUT") && !appBot.Last.Contains("PRIVATE-"), "Foreign/stale events and private attachment/tool fields are not reflected");
@@ -48,7 +48,7 @@ public static class JoinedTests
             Check(appBot.Last.Length <= 3900 && appBot.Last.Contains("Done (") && appLedger.Unknown == 0, "Native-origin terminal footer and receipts remain bounded/durable");
             Check(appNative.Called.Count(m => m == "remoteControl/status/read") == 1 && appBot.Last.Contains("Remote Control: disabled") && appBot.Last.Contains("Phone round trip"),
                 "Authenticated remote command reads exact process once; foreign sender denied, no connection inference");
-            Check(appBot.RemoteMenuVerified && appNative.Started == 0 && appBot.Sends == 0 && !appLedger.Get("bubble/exact-native-id")!.Value.GetProperty("held").GetBoolean(),
+            Check(appBot.RemoteMenuVerified && appNative.Started == 0 && appBot.Sends == 1 && !appLedger.Get("bubble/exact-native-id")!.Value.GetProperty("held").GetBoolean(),
                 "Remote diagnostic registered/read back and amends existing bubble without inference or held session");
         }
         foreach (var mode in new[] { "missing", "foreign", "malformed" })
@@ -209,7 +209,9 @@ public static class JoinedTests
         }
         public Task<JsonElement> Send(long chat, int topic, string text, CancellationToken stop)
         {
-            Sends++; Last = text; FirstSent.TrySetResult(); return Task.FromResult(Json(new { message_id = 900 }));
+            Sends++; Last = text; FirstSent.TrySetResult();
+            if (native.NativeOriginOnly && text.Contains("NATIVE-FINAL") && text.Contains("Done (")) Completed.TrySetResult();
+            return Task.FromResult(Json(new { message_id = 900 }));
         }
         public Task Edit(long chat, int message, string text, CancellationToken stop)
         {

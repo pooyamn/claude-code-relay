@@ -50,6 +50,7 @@ public static class SelfTests
         checks += NativeViewTests.Run();
         checks += RemoteTests.Run().GetAwaiter().GetResult();
         checks += JoinedTests.Run(root, policy).GetAwaiter().GetResult();
+        checks += BubbleBoundaryTests.Run(root, policy).GetAwaiter().GetResult();
         checks += GoalTests.Run(root, policy).GetAwaiter().GetResult();
         checks += QuotaTests.Run(root, policy).GetAwaiter().GetResult();
         checks += AttachmentTests.Run(root, policy).GetAwaiter().GetResult();

@@ -6,7 +6,7 @@ namespace KhadangRouter;
 
 // Owner-only Windows migration adapter. It does not claim company/role gates or
 // replace the prepared WSL authorization/admission/deployment components.
-public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, INative rpc, IAttachments? attachments = null, NativeRemote? nativeRemote = null)
+public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot telegram, INative rpc, IAttachments? attachments = null, NativeRemote? nativeRemote = null)
 {
     private sealed class Session(Binding binding)
     {
@@ -18,9 +18,12 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
         public TimeSpan Carried;
         public string? Turn;
         public NativeGoal Goal = new(binding.ThreadId);
-        public int? Message;
-        public string LastRendered = "", Status = "Ready";
-        public bool Busy, SendUnknown, Dirty, Held;
+        public ResponseMessage Response = new();
+        public readonly Queue<ResponseMessage> PendingBubbles = new();
+        public int? Message { get => Response.Message; set => Response.Message = value; }
+        public bool SendUnknown { get => Response.SendUnknown; set => Response.SendUnknown = value; }
+        public string Status = "Ready";
+        public bool Busy, Dirty, Held;
         public long Revision;
         public readonly Dictionary<string, JsonElement> Items = new();
         public readonly HashSet<string> DeltaItems = new();
@@ -58,6 +61,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
                 session.Held = saved.GetProperty("held").GetBoolean() || saved.GetProperty("busy").GetBoolean();
                 session.Status = session.Held ? "Held — reconcile interrupted turn" : saved.GetProperty("status").GetString()!;
                 session.Carried = TimeSpan.FromMilliseconds(saved.GetProperty("elapsedMs").GetDouble());
+                RestorePendingBubbles(session, saved);
                 session.Dirty = true;
             }
             sessions[binding.Topic] = session;
@@ -254,7 +258,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
                         if (wait > TimeSpan.Zero) await Task.Delay(wait, stop);
                         lock (session.Gate)
                         {
-                            session.Bubble = new RollingBubble(); session.Elapsed.Restart(); session.Carried = TimeSpan.Zero;
+                            BeginBubble(session); session.Elapsed.Restart(); session.Carried = TimeSpan.Zero;
                             session.Status = "Working"; session.Busy = true; session.Turn = null; session.Items.Clear(); session.DeltaItems.Clear(); session.CompletedItems.Clear(); session.CompletedOrder.Clear(); Touch(session);
                         }
                         var result = await rpc.Call("turn/start", new { threadId = session.Binding.ThreadId, input }, stop);
@@ -486,8 +490,10 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
             }
             else if (method == "turn/started")
             {
-                if (!session.Busy) { session.Bubble = new RollingBubble(); session.Elapsed.Restart(); session.Carried = TimeSpan.Zero; session.DeltaItems.Clear(); session.Items.Clear(); session.CompletedItems.Clear(); session.CompletedOrder.Clear(); }
-                session.Turn = parameters.GetProperty("turn").GetProperty("id").GetString(); session.Busy = true; session.Status = "Working";
+                var started = parameters.GetProperty("turn").GetProperty("id").GetString();
+                if (started == session.Turn) return;
+                if (!session.Busy) { BeginBubble(session); session.Elapsed.Restart(); session.Carried = TimeSpan.Zero; session.DeltaItems.Clear(); session.Items.Clear(); session.CompletedItems.Clear(); session.CompletedOrder.Clear(); }
+                session.Turn = started; session.Busy = true; session.Status = "Working";
             }
             else if (method == "turn/completed")
             {
@@ -548,34 +554,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
         {
             foreach (var session in sessions.Values)
             {
-                string text; int? message; long revision;
-                lock (session.Gate)
-                {
-                    if (session.SendUnknown || !session.Dirty && !session.Busy) continue;
-                    text = session.Bubble.Render(session.Carried + session.Elapsed.Elapsed, session.Goal.Footer, session.Status); message = session.Message; revision = session.Revision;
-                    if (text == session.LastRendered) continue;
-                }
-                try
-                {
-                    if (message == null)
-                    {
-                        lock (session.Gate) { session.SendUnknown = true; Persist(session); }
-                        var sent = await telegram.Send(policy.ChatId, session.Binding.Topic, text, stop);
-                        lock (session.Gate) { session.Message = sent.GetProperty("message_id").GetInt32(); session.SendUnknown = false; Persist(session); }
-                    }
-                    else await telegram.Edit(policy.ChatId, message.Value, text, stop);
-                    lock (session.Gate) { session.LastRendered = text; session.Dirty = revision != session.Revision; Persist(session); }
-                }
-                catch (TelegramFailure failure)
-                {
-                    if (failure.Code == 429)
-                    {
-                        lock (session.Gate) { session.SendUnknown = false; Persist(session); }
-                        await Task.Delay(TimeSpan.FromSeconds(Math.Clamp(failure.RetryAfter, 1, 60)), stop);
-                    }
-                    else if (failure.NotModified) lock (session.Gate) { session.LastRendered = text; session.Dirty = revision != session.Revision; Persist(session); }
-                    else lock (session.Gate) { session.SendUnknown = true; Persist(session); } // No second bubble after an uncertain first send.
-                }
+                await FlushBubble(session, stop);
             }
             await Task.Delay(3000, stop);
         }
@@ -599,6 +578,7 @@ public sealed class Router(RouterPolicy policy, Ledger ledger, IBot telegram, IN
         var goal = session.Goal.Snapshot;
         ledger.Put("bubble/" + session.Binding.ThreadId, new {
             tail = session.Bubble.Tail, message = session.Message, sendUnknown = session.SendUnknown, held = session.Held,
+            pendingResponses = session.PendingBubbles.Select(r => new { text = r.Text, message = r.Message, lastRendered = r.LastRendered, sendUnknown = r.SendUnknown }).ToArray(),
             busy = session.Busy, status = session.Status, elapsedMs = (session.Carried + session.Elapsed.Elapsed).TotalMilliseconds,
             goal = goal.Goal, goalKnown = goal.Known, goalObservedAt = goal.ObservedAt });
     }

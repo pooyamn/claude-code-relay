@@ -75,7 +75,7 @@ public static class AttachmentTests
             var running = new Router(policy, ledger, bot, native, store).Run(stop.Token);
             try { await bot.Completed.Task.WaitAsync(TimeSpan.FromSeconds(5)); }
             finally { stop.Cancel(); try { await running; } catch (OperationCanceledException) { } }
-            Check(bot.Sends == 0 && bot.Last!.Length <= 3900, "Attachment controls/errors use one existing bubble: " + scenario);
+            Check(bot.Sends == 1 && bot.Last!.Length <= 3900, "New native turn gets one bubble; attachment controls/errors amend it: " + scenario);
             Check(!ledger.Get("bubble/attachment-thread")!.Value.GetProperty("held").GetBoolean() && ledger.Unknown == 0, "Known pre-native media failures do not hold session or create uncertain effects: " + scenario);
             Check(native.Starts == 0 && native.Calls.All(c => c.Method != "thread/start"), "Attachments never create new sessions or convert stale media into new turns");
             if (scenario is "failed" or "failed-json" or "ended" or "album" or "unsupported") Check(native.Steers == 0 && bot.Last!.Contains("held:"), "No partial/failed/stale/unsupported attachment input sent");
@@ -151,12 +151,17 @@ public static class AttachmentTests
             }
             await Task.Delay(Timeout.Infinite, stop); return Json(Array.Empty<object>());
         }
-        public Task<JsonElement> Send(long chat, int topic, string text, CancellationToken stop) { Sends++; throw new Exception("Attachment update must keep one bubble"); }
+        public Task<JsonElement> Send(long chat, int topic, string text, CancellationToken stop)
+        { Sends++; Observe(text); return Task.FromResult(Json(new { message_id = 901 })); }
         public Task Edit(long chat, int message, string text, CancellationToken stop)
         {
-            if (message != 900) throw new Exception("Media bubble receipt changed"); Last = text;
-            if ((text.Contains("steered") || text.Contains("held:")) && (text.Contains("PC session:") || text.Contains("Interrupt requested"))) Completed.TrySetResult();
+            if (message is not (900 or 901)) throw new Exception("Unknown media bubble receipt"); Observe(text);
             return Task.CompletedTask;
+        }
+        private void Observe(string text)
+        {
+            Last = text;
+            if ((text.Contains("steered") || text.Contains("held:")) && (text.Contains("PC session:") || text.Contains("Interrupt requested"))) Completed.TrySetResult();
         }
         public Task Download(AttachmentReference file, Stream target, CancellationToken stop) => target.WriteAsync(new byte[] { 1, 2, 3 }, stop).AsTask();
     }

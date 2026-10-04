@@ -91,7 +91,7 @@ public static class QuotaTests
             var running = new Router(policy, ledger, bot, native).Run(stop.Token);
             try { await bot.Completed.Task.WaitAsync(TimeSpan.FromSeconds(5)); }
             finally { stop.Cancel(); try { await running; } catch (OperationCanceledException) { } }
-            Check(bot.Sends == 0 && bot.Last!.Contains("Existing tool history") && bot.Last.Contains("Working ("), "Limits/status amend one existing active bubble without clearing tool history");
+            Check(bot.Sends == 1 && bot.Last!.Contains("Existing tool history") && bot.Last.Contains("Working ("), "New tool turn gets one bubble; limits/status amend it without clearing tool history");
             Check(!ledger.Get("bubble/quota-thread")!.Value.GetProperty("held").GetBoolean() && ledger.Unknown == 0, "Quota read failure never holds owner session or marks an effect uncertain");
             Check(native.Calls.Count(c => c.Method == "account/rateLimits/read") == (scenario is "race" or "startup-race" ? 2 : 1) && native.Calls.All(c => !c.Method.StartsWith("turn/") || scenario == "slow" && c.Method == "turn/interrupt"), "Foreign sender denied; limits never start/interrupt a turn");
             Check(bot.MenuVerified, "Limits native command registered/read back");
@@ -158,12 +158,17 @@ public static class QuotaTests
             }
             await Task.Delay(Timeout.Infinite, stop); return Json(Array.Empty<object>());
         }
-        public Task<JsonElement> Send(long chat, int topic, string text, CancellationToken stop) { Sends++; throw new Exception("Quota command cannot create another bubble"); }
+        public Task<JsonElement> Send(long chat, int topic, string text, CancellationToken stop)
+        { Sends++; Observe(text); return Task.FromResult(Json(new { message_id = 901 })); }
         public Task Edit(long chat, int message, string text, CancellationToken stop)
         {
-            if (message != 900) throw new Exception("Quota bubble receipt changed"); Last = text;
-            if (text.Contains("not yet enforced") && text.Contains("PC session:")) Completed.TrySetResult();
+            if (message is not (900 or 901)) throw new Exception("Unknown quota bubble receipt"); Observe(text);
             return Task.CompletedTask;
+        }
+        private void Observe(string text)
+        {
+            Last = text;
+            if (text.Contains("not yet enforced") && text.Contains("PC session:")) Completed.TrySetResult();
         }
     }
 }

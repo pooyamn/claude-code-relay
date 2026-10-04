@@ -45,7 +45,7 @@ public static class GoalTests
             var run = new Router(policy, ledger, bot, native).Run(stop.Token);
             try { await bot.Completed.Task.WaitAsync(TimeSpan.FromSeconds(10)); }
             finally { stop.Cancel(); try { await run; } catch (OperationCanceledException) { } }
-            Check(bot.Sends == 0 && bot.Edits > 0 && bot.Last!.Length <= 3900, "Goal/control UI edits only existing message 900: " + scenario);
+            Check(bot.Sends == 1 && bot.Edits > 0 && bot.Last!.Length <= 3900, "New native turn gets one bubble; goal controls amend that response: " + scenario);
             Check(native.Calls.All(c => !c.Method.StartsWith("turn/") && c.Method != "thread/start"), "Goal controls never fall back to prompts, interrupt tools or create a thread: " + scenario);
             if (scenario == "controls")
             {
@@ -122,12 +122,17 @@ public static class GoalTests
             native.Event("turn/completed", new { threadId = "goal-thread", turn = new { id = "running-tool-turn", status = "completed" } });
             await Task.Delay(Timeout.Infinite, stop); return Json(Array.Empty<object>());
         }
-        public Task<JsonElement> Send(long chat, int topic, string text, CancellationToken stop) { Sends++; throw new Exception("Goal controls must edit the existing bubble"); }
+        public Task<JsonElement> Send(long chat, int topic, string text, CancellationToken stop)
+        { Sends++; Observe(text); return Task.FromResult(Json(new { message_id = 901 })); }
         public Task Edit(long chat, int message, string text, CancellationToken stop)
         {
-            if (message != 900) throw new Exception("Goal bubble receipt changed"); Edits++; Last = text;
-            if (scenario == "restart" ? text.Contains("\nGoal: paused") : text.Contains("Done (") && text.Contains(scenario == "controls" || scenario == "complete" ? "No resumable goal" : "Goal status unavailable")) Completed.TrySetResult();
+            if (message is not (900 or 901)) throw new Exception("Unknown goal bubble receipt"); Edits++; Observe(text);
             return Task.CompletedTask;
+        }
+        private void Observe(string text)
+        {
+            Last = text;
+            if (scenario == "restart" ? text.Contains("\nGoal: paused") : text.Contains("Done (") && text.Contains(scenario == "controls" || scenario == "complete" ? "No resumable goal" : "Goal status unavailable")) Completed.TrySetResult();
         }
     }
 }
