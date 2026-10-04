@@ -64,8 +64,12 @@ foreach($entry in $services){
  $path='"'+(Join-Path $release 'ServiceHost.exe')+'" '+$entry.Name
  $changed=Invoke-CimMethod -InputObject (Get-CimInstance Win32_Service -Filter ('Name="'+$entry.Name+'"')) -MethodName Change -Arguments @{PathName=$path}
  if($changed.ReturnValue -ne 0){throw 'MTProto service path change failed'}
- & 'C:\Windows\System32\sc.exe' failure $entry.Name reset= 3600 actions= 'restart/10000/restart/30000/none/0'
+ & 'C:\Windows\System32\sc.exe' failure $entry.Name reset= 3600 actions= 'restart/10000/restart/30000/restart/60000'
  if($LASTEXITCODE -ne 0){throw 'Bounded service recovery configuration failed'}
+ & 'C:\Windows\System32\sc.exe' config $entry.Name start= auto
+ if($LASTEXITCODE -ne 0){throw 'Automatic startup configuration failed'}
+ & 'C:\Windows\System32\sc.exe' failureflag $entry.Name 1
+ if($LASTEXITCODE -ne 0){throw 'Non-crash failure recovery configuration failed'}
 }
 $filter|Set-NetFirewallApplicationFilter -Program $python | Out-Null
 foreach($entry in $services){Start-Service -Name $entry.Name}

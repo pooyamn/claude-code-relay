@@ -34,6 +34,13 @@ class ReplacementConfig(unittest.TestCase):
         self.assertEqual(digests, ['C75B52AACC6C0C260F204CBDD834F76EDC9FB0D8E0DA9FBF8352EF58202564E2'])
         self.assertTrue(all(len(value) == 64 for value in digests))
 
+    def test_installer_keeps_retrying_and_avoids_delayed_boot(self):
+        installer = (Path(__file__).parents[2] / 'pc-router/replace-mtproto.ps1').read_text()
+        self.assertIn("'restart/10000/restart/30000/restart/60000'", installer)
+        self.assertNotIn('restart/30000/none/0', installer)
+        self.assertIn('config $entry.Name start= auto', installer)
+        self.assertIn('failureflag $entry.Name 1', installer)
+
     def test_refuses_unexpected_bind_and_bad_secret(self):
         with self.assertRaises(ValueError):
             ADAPTER.configuration(self.document('0.0.0.0:443'), '0.0.0.0:8443')

@@ -2914,7 +2914,7 @@ are unchanged.
 
 All1081 Linux and1084 sealed Windows offline checks passed. Installed DLL SHA256
 is `FFAEC6699B17BD59C47BC40DC83D4364F6A0B9EE18101B40DAF0A45152F8D94C`;
-policy SHA256 is `33F8BE3BF0E538B03FCB20AC6112310CEA3877E0387C3663D67635BBF55C1E522`.
+policy SHA256 is `33F8BE3BF0E538B03FCB20AC612310CEA3877E0387C3663D67635BBF55C1E522`.
 Seven fresh exact-ID quiescent history checkpoints were taken. Fresh no-model
 OS/credential/code-denial proof is timestamped18:23:09Z; unchanged native Claude
 acceptance was explicitly reused, and fresh DUT/CC typing proof passed18:24:05Z.
@@ -2923,3 +2923,32 @@ Claude streams, native PIDs2141/27592, unknown0, retained presentation unknown1
 and restored startup supervision. The exact controller turn and paused goal
 were preserved. Owner/participant policy did not change. Phone rendering remains
 an owner observation, not a claimed test; migration/recovery gates remain open.
+
+### VPN startup and crash recovery, October 4 at 11:48 AM PDT
+
+The owner requested reliable VPN auto-restart after the reboot-related MTProto
+outage. Readback found all seven VPN/tunnel services used delayed auto-start;
+MTProto started about two minutes after Windows. Both MTProto services also
+stopped retrying on the third failure within an hour. The reviewed
+`pc-router/configure-vpn-recovery.ps1` defaults to inspection, verifies the exact
+existing LocalService identities/paths, and retains protected preimages before
+applying changes. All seven now use ordinary automatic startup and SCM restart
+backoff of 10/30/60 seconds, repeating the last action, with reported non-crash
+failure recovery enabled and failure counts reset after one hour. Existing code,
+accounts, secrets, links, routes and firewall rules were not changed. The MTProto
+replacement installer carries the corrected policy for future installations.
+
+All nine intentional child-crash checks passed without a manual restart:
+loopback MTProto recovered after 10.3, 30.4 and 60.5 seconds; direct MTProto,
+both Cloudflare tunnels, sing-box, subscription serving and VPN-state reporting
+each recovered under a new host/child PID. Authenticated FakeTLS plus Telegram
+`resPQ`/nonce checks passed again on loopback10990, LAN8443, LAN443 and the public
+Cloudflare helper, which was then terminated. Eleven Windows policy fixtures
+and five MTProto adapter/installer checks passed. The protected preimages and
+18:48:19Z crash receipt are under
+`C:\ProgramData\OracovaVPN-20261003-FA9g4b\recovery-policy-1cfc9b316cd2407dbf73fe4ac47927b8`.
+These tests cover abrupt child crashes, not hangs or every clean-exit behavior
+of the remaining WinSW wrappers. No further reboot was performed; immediate
+startup on the next boot and phone/off-network acceptance remain unverified.
+This VPN change does not resolve Khadang's separately reported consumed-Claude-
+checkpoint startup guard, or close the full migration/disaster-recovery gates.
