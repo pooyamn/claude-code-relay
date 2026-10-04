@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only final-history evidence for the exact three PC Claude topics."""
+"""Read-only final-history evidence for the fixed selected PC Claude topics."""
 import hashlib
 import json
 import os
@@ -9,14 +9,21 @@ import stat
 import sys
 
 PROJECTS = {
-    '7dc840b0-402f-451e-bc79-dadfb706d363': ('ai-hil/hardware/duts', 53),
-    '6159472a-7878-42e4-b497-ffbb64a7e2d6': ('schematic-pipeline-lab', 2697),
-    '10ab0d8a-f31c-49ca-ab99-1a6152ae4ee2': ('mimic-fast-pcb', 3315),
+    '7dc840b0-402f-451e-bc79-dadfb706d363': ('ai-hil/hardware/duts', 53, -1004395661179),
+    '6159472a-7878-42e4-b497-ffbb64a7e2d6': ('schematic-pipeline-lab', 2697, -1004395661179),
+    '10ab0d8a-f31c-49ca-ab99-1a6152ae4ee2': ('mimic-fast-pcb', 3315, -1004395661179),
 }
+if sys.argv[1:] == ['--additional']:
+    PROJECTS.update({
+        '5fc53034-e240-43b5-a2c4-75ee1947aefa': ('hardware-lite', 6333, -1003550185469),
+        'a32bd2ef-172a-4a51-95ba-1b9bce4f44eb': ('ai-hil/demos/fpga/mpu6000-i9', 8653, -1003550185469),
+    })
+elif sys.argv[1:]:
+    raise ValueError('Only the fixed additional migration batch is supported')
 if sys.platform != 'linux' or os.getuid() != 1000 or os.geteuid() != 1000:
     raise ValueError('Exact ordinary PC Linux owner required')
 results = []
-for session, (relative, topic) in PROJECTS.items():
+for session, (relative, topic, chat) in PROJECTS.items():
     workspace = '/Users/pouya/.openclaw/workspace/' + relative
     path = Path('/Users/pouya/.claude/projects') / re.sub(r'[/\.]', '-', workspace) / (session + '.jsonl')
     before = path.lstat()
@@ -42,6 +49,6 @@ for session, (relative, topic) in PROJECTS.items():
                 producers.append(int(process.name))
         except (OSError, ProcessLookupError):
             pass
-    results.append({'session': session, 'workspace': workspace, 'chat': -1004395661179, 'topic': topic,
+    results.append({'session': session, 'workspace': workspace, 'chat': chat, 'topic': topic,
                     'path': str(path), 'bytes': before.st_size, 'sha256': sha, 'uid': 1000, 'liveProducers': producers})
 print(json.dumps(results, separators=(',', ':')))

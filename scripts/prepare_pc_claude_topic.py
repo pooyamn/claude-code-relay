@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-shot personal migration checks for two retained project topics.
+"""One-shot personal migration checks for fixed retained project topics.
 
 Create a fresh native history only in fresh mode; continuity resumes that exact
 ID. Each mode has one durable claim/input intent and never retries. This does
@@ -23,8 +23,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pc_claude_stdio as native
 
 PROJECTS = {
-    'schematic-pipeline-lab': (2697, '0639c6d69c75e8d3e134d99d553fc20defa51ec8dc37e40630640d34b61769a9'),
-    'mimic-fast-pcb': (3315, 'f3d549789ff8bd2c405fd8f9a98de4a205c6d713a5df23d298308a31b325e61c'),
+    'schematic-pipeline-lab': (-1004395661179, 2697, '0639c6d69c75e8d3e134d99d553fc20defa51ec8dc37e40630640d34b61769a9'),
+    'mimic-fast-pcb': (-1004395661179, 3315, 'f3d549789ff8bd2c405fd8f9a98de4a205c6d713a5df23d298308a31b325e61c'),
+    'hardware-lite': (-1003550185469, 6333, 'f07f21030466a16ded5fc424a6295ae9e39a43c1afe2759280af609442e600e0'),
+    'ai-hil/demos/fpga/mpu6000-i9': (-1003550185469, 8653, '83a2a46049dbf7dd1d8844f2183895fc73a24fbeb4222fd243858b87ec82f414'),
 }
 COMMAND = 'id -u && sha256sum -- PC-MIGRATION-HANDOFF.md'
 
@@ -89,22 +91,22 @@ def run(project, session, mode):
     native.require_owner()
     native.session_id(session)
     os.umask(0o077)
-    topic, digest = PROJECTS[project]
+    chat, topic, digest = PROJECTS[project]
     workspace = str(native.WORKSPACE_ROOT / project)
     verify_workspace = native.attest_workspaces([workspace])
     handoff = Path(workspace) / 'PC-MIGRATION-HANDOFF.md'
     native.read_pinned(handoff, digest)
     text = handoff.read_text()
-    marker = project.upper().replace('-', '_') + '_PC_HANDOFF_READY'
+    marker = project.upper().replace('-', '_').replace('/', '_') + '_PC_HANDOFF_READY'
     history = native.OWNER / '.claude/projects' / re.sub(r'[/\.]', '-', workspace) / (session + '.jsonl')
     root = native.OWNER / '.migration' / ('topic-native-' + session)
     root.mkdir(mode=0o700, exist_ok=True)
     state = root / mode
     state.mkdir(mode=0o700)  # Existing attempt must be inspected, never repeated.
     durable(state / 'claim.json', {'session': session, 'project': project, 'mode': mode, 'topic': topic,
-                                 'handoffSha256': digest, 'at': time.time()})
+                                 'chat': chat, 'handoffSha256': digest, 'at': time.time()})
     report = {'complete': False, 'session': session, 'project': project, 'workspace': workspace,
-              'chat': -1004395661179, 'topic': topic, 'mode': mode, 'routingChanged': False,
+              'chat': chat, 'topic': topic, 'mode': mode, 'routingChanged': False,
               'handoffSha256': digest, 'modelPromptsAttempted': 0, 'uncertain': False}
     child, lease, selector = None, None, None
     try:

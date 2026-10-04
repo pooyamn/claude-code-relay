@@ -19,8 +19,8 @@ is authorized until the exact target is resolved and verified copies exist.
 ## Current inventory
 
 The original OpenClaw configuration contained 14 bindings: eight topics in Ai
-Dispatch, five in Oracova, and the standalone Startup Ideas group. Six now
-route to the PC; eight remain on the source. Keep their chat and topic IDs
+Dispatch, five in Oracova, and the standalone Startup Ideas group. Eight now
+route to the PC; six remain on the source. Keep their chat and topic IDs
 unchanged. The existing PC LG topic remains intact.
 
 | Project | Chat | Topic |
@@ -63,7 +63,8 @@ now also have a protected, checksum-verified PC archive. That archive is not an
 activated bench environment or a final checkpoint.
 
 The protected Windows Khadang service now routes the existing PC LG topic plus
-Web, Base board, Marginal Requests, DUT, Schematic Pipeline and Mimic Fast PCB
+Web, Base board, Marginal Requests, DUT, Schematic Pipeline, Mimic Fast PCB,
+Hardware Lite and MPU6000-i9
 in their original forums. All five original Oracova PCBA topics are connected. The personal
 router supports full chat/topic addresses, an explicit whole-group route and
 distinct Windows Codex, Linux Codex and Claude paths. Linux Codex's exact
@@ -72,7 +73,8 @@ paired PC managed daemon and is now activated. Only Web has a genuine
 owner-message round trip verified so far; the new PCBA routes have exact native
 resume and confirmed connection notices. Linux Claude subscription login is
 established; DUT and both lab topics have live native streams and Claude app
-enrollment. The lab topics passed actual handoff/tool-owner and exact-session
+enrollment. Hardware Lite and MPU6000-i9 are also connected and enrolled.
+The four newly migrated inactive topics passed actual handoff/tool-owner and exact-session
 continuity checks, not yet genuine owner phone-message round trips.
 Claude's pinned streaming control interface now also connects and disconnects
 authenticated native Remote Control on the PC through an explicit control
@@ -1598,3 +1600,73 @@ local migration recovery copy, not the daily off-machine disaster backup.
 
 Original routing is **6 of 14**, with eight remaining. The Mac is not erased;
 bench relocation, independent remote recovery and full-system restore remain.
+
+### Hardware Lite and MPU6000 i9 connected October 3 at 10 37 PM PDT
+
+Khadang now has nine PC routes, including **eight of fourteen original routes**.
+Hardware Lite keeps Ai Dispatch topic **6333**, native Claude conversation
+`5fc53034-e240-43b5-a2c4-75ee1947aefa`; MPU6000-i9 keeps topic **8653**,
+conversation `a32bd2ef-172a-4a51-95ba-1b9bce4f44eb`. Both keep chat
+`-1003550185469` and their selected Claude backend. No new topic was created.
+
+Recursive source/PC checksums matched both complete projects apart from refreshed
+Git indexes, which were not overwritten. MPU6000 is a separate nested repository;
+its dirty RTL, generators, tests and golden data remain intact. Private handoffs
+were created and read back. Four actual native checks verified full handoff reads,
+Linux tool UID 1000, exact file hashes and separate exact-ID continuity as the
+non-elevated Windows owner. Hooks/MCP were disabled only for bootstrap; production
+uses the unchanged accepted connector. Thirteen focused synthetic evidence and
+source-fencing tests passed; the previous 809 router fixtures were not rerun.
+
+Hardware Lite's historical turn receipt names `9e452652-73b0-4a6e-a81a-47f7b02365e9`,
+but no exact native source history or current pointer was found. This gap is
+recorded, not replaced by a guessed transcript. MPU6000's old history is retained
+in the private native seed: **570,956 bytes**, matching source and PC SHA-256
+`2393e5488a3c3f775c2c9e144b72fbd2dfac753ac1a0cdffc4bfcb4e6b75fdc1`.
+No old relay-repair or hardware action was replayed.
+
+The cutover retained seven existing bindings and unrelated ledger content,
+digest `DEA37AD4302FC514277C48D39BE7F04A16C294419A817B84CDECD817A6F93241`.
+All five Claude histories were freshly captured after the idle service stopped.
+New policy SHA-256 is
+`B61DC1C276815DCF964094721337DAA794CC3C6FDA0E19C01A68E27AF2DBD663`;
+router code remains `94111E96E68F5D935FAA3DF94085E81F06AC3867E28A75DF290A744048D55841`.
+Fresh no-model, no-polling owner/credential/code/sandbox/Linux proof passed at
+`2026-10-04T05:33:07.1097007Z`. The diagnostic intentionally stays Running after
+success until stopped; it was stopped normally, not retried after an observation
+timeout. The normal quoted SCM service path was restored.
+
+Only source topics 6333 and 8653 were disabled and unbound, with recoverable
+configuration/state preimages. Gateway hot reload was observed at
+`2026-10-04T05:33:40.195Z`; six original bindings remain on Mac. Production
+started at `2026-10-04T05:33:56.2166859Z`. Confirmed Telegram responses preserve
+the original chat/topic addresses: messages **13627** and **13626** respectively
+contain native Claude app links. MPU6000 later has rolling message **13628**;
+this is not, by itself, proof of a genuine owner phone round trip.
+
+All nine bindings were idle, unheld and without uncertain/pending effects at
+`2026-10-04T05:37:56.9291576Z`; all five Claude streams were connected. Startup
+supervision is Ready. The saved task XML omits the default Enabled setting;
+Windows Task Scheduler's own parser confirmed it was enabled before restoring
+that setting. The shared Linux Codex daemon stayed PID 2141, without re-pairing.
+For DUT and both PCBA lab sessions, comparison with the retained pre-restart
+database confirmed the same cloud mappings and fresh ready receipts after restart.
+This proves those native mappings reattached, not phone UI, reboot or crash recovery.
+
+Protected preimages are in
+`C:\ProgramData\KhadangRouter\release-65fc17bfcb9d47a190ab128b096bba5d`;
+the unchanged connector and five consumed checkpoints are in
+`C:\ProgramData\OracovaNativeRemote\claude-connector-65fc17bfcb9d47a190ab128b096bba5d`.
+Another restart still needs fresh reviewed checkpoints. Source recovery archive
+`additional-topic-cutover-20261003-sftp.tar.gz` is retained in protected migration
+run `65fc17bfcb9d47a190ab128b096bba5d`, **6,834 bytes**, SHA-256
+`3a68d93668d8322a90258d4471bb5e104a396bce0a158fdd504e57893866c2cb`.
+After a pre-reservation copy failure, the same archive was transferred without
+recapturing or rerunning models. Windows reader, checksum and Admin/System-only
+ACL checks passed at `2026-10-04T05:36:51.7084348Z`. This is not a daily off-machine backup.
+
+Remaining originals: Startup Ideas, ai-hil, supervisor-fw, controller 816,
+KiCad research and Qwen lab. KiCad retains OpenCode state but lacks a current
+backend marker; Qwen has a retained `qwen` model override and custom provider
+settings. Reconcile those settings rather than silently replacing their tools.
+Bench relocation and independent remote/disaster recovery remain incomplete.

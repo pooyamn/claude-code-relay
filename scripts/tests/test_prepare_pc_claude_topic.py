@@ -12,9 +12,17 @@ spec.loader.exec_module(topic)
 retire_spec = importlib.util.spec_from_file_location('retire_topics', ROOT / 'retire_mac_lab_topics.py')
 retire = importlib.util.module_from_spec(retire_spec)
 retire_spec.loader.exec_module(retire)
+additional_spec = importlib.util.spec_from_file_location('retire_additional', ROOT / 'retire_mac_additional_topics.py')
+additional = importlib.util.module_from_spec(additional_spec)
+additional_spec.loader.exec_module(additional)
 
 
 class EvidenceTests(unittest.TestCase):
+    def test_additional_projects_keep_exact_topic_addresses(self):
+        self.assertEqual(topic.PROJECTS['hardware-lite'][:2], (-1003550185469, 6333))
+        self.assertEqual(topic.PROJECTS['ai-hil/demos/fpga/mpu6000-i9'][:2], (-1003550185469, 8653))
+        self.assertEqual(topic.PROJECTS['schematic-pipeline-lab'][:2], (-1004395661179, 2697))
+
     def evidence(self, continuity=False):
         return topic.Evidence('/workspace', 'session', 'digest', 'marker', 'first\nlast\n', continuity)
 
@@ -61,22 +69,27 @@ class EvidenceTests(unittest.TestCase):
 
 
 class SourceFenceTests(unittest.TestCase):
+    module = retire
+    chat = '-1004395661179'
+
     def config(self):
+        first = next(iter(self.module.TOPICS))
         bindings = [{'agentId': agent, 'match': {'channel': 'telegram',
-                    'peer': {'id': '-1004395661179:topic:' + number}}}
-                    for number, (agent, _, _) in retire.TOPICS.items()]
+                    'peer': {'id': self.chat + ':topic:' + number}}}
+                    for number, (agent, *_) in self.module.TOPICS.items()]
         bindings.append({'agentId': 'unrelated', 'match': {'peer': {'id': 'other'}}})
         return {'bindings': bindings, 'private': {'preserve': True}, 'channels': {'telegram': {'groups': {
-            '-1004395661179': {'allowFrom': ['*'], 'topics': {'53': {'enabled': False},
-                             '2697': {'custom': 'preserved'}}}, 'other': {'enabled': True}}}}}
+            self.chat: {'allowFrom': ['*'], 'topics': {'53': {'enabled': False},
+                       first: {'custom': 'preserved'}}}, 'other': {'enabled': True}}}}}
 
     def test_only_exact_topics_change(self):
-        original = self.config(); before = copy.deepcopy(original); result = retire.fenced(original)
+        original = self.config(); before = copy.deepcopy(original); result = self.module.fenced(original)
         self.assertEqual(original, before)
         self.assertEqual(len(result['bindings']), 1)
-        group = result['channels']['telegram']['groups']['-1004395661179']
-        self.assertEqual(group['topics']['2697'], {'custom': 'preserved', 'enabled': False})
-        self.assertEqual(group['topics']['3315'], {'enabled': False})
+        group = result['channels']['telegram']['groups'][self.chat]
+        first, second = self.module.TOPICS
+        self.assertEqual(group['topics'][first], {'custom': 'preserved', 'enabled': False})
+        self.assertEqual(group['topics'][second], {'enabled': False})
         self.assertEqual(result['private'], original['private'])
         self.assertEqual(result['channels']['telegram']['groups']['other'], {'enabled': True})
 
@@ -84,11 +97,16 @@ class SourceFenceTests(unittest.TestCase):
         for mutate in (lambda value: value['bindings'].pop(0),
                        lambda value: value['bindings'].append(copy.deepcopy(value['bindings'][0]))):
             config = self.config(); mutate(config)
-            with self.assertRaises(ValueError): retire.fenced(config)
+            with self.assertRaises(ValueError): self.module.fenced(config)
 
     def test_changed_source_agent_is_not_retired(self):
         config = self.config(); config['bindings'][0]['agentId'] = 'new-agent'
-        with self.assertRaises(ValueError): retire.fenced(config)
+        with self.assertRaises(ValueError): self.module.fenced(config)
+
+
+class AdditionalSourceFenceTests(SourceFenceTests):
+    module = additional
+    chat = additional.CHAT
 
 
 if __name__ == '__main__':
