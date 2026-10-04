@@ -23,7 +23,7 @@ try{
   Assert ($out.Length -eq 0) 'Byte bound cannot silently truncate as success'
  }finally{$bounded.Dispose();$out.Dispose()}
  try{$f=New-MigrationStreamFile (Join-Path $root 'fixture.bin');$f.Dispose();throw 'accepted'}catch{Assert ($_.Exception.Message -match 'exists') 'Existing archive never overwritten'}
- foreach($profile in @('vm-personal','vm-library','vm-extra-work','vm-owner-tools','vm-owner-tools-manifest','vm-package-caches','vm-editor-cache','vm-darwin-cad-tools','vm-codex-sqlite','vm-ai-hil-kicad-dependency','physical-projects','physical-bench-home','physical-shared','vm-shared','physical-service-config','vm-service-config','physical-service-code','vm-system-applications')){
+ foreach($profile in @('vm-personal','vm-library','vm-extra-work','vm-owner-tools','vm-owner-tools-manifest','vm-package-caches','vm-editor-cache','vm-darwin-cad-tools','vm-codex-sqlite','vm-ai-hil-kicad-dependency','physical-projects','physical-bench-home','physical-shared','vm-shared','physical-service-config','vm-service-config','physical-service-code','vm-system-applications','physical-system-applications')){
   $source=Get-MigrationStreamSource $profile
   Assert ($source.host -in @('mac','bench-mac') -and $source.members.Count -gt 0) 'Explicit pinned source profiles only'
  }
@@ -51,6 +51,10 @@ try{
  Assert ($vmConfig.host -eq 'mac' -and $vmConfig.user -eq 'pouya' -and $vmConfig.root -eq '/' -and ($vmConfig.members -join '|') -ceq 'Library/LaunchAgents|Library/LaunchDaemons|opt/homebrew/etc') 'VM system configuration uses its exact separate identity and same bounded cohorts'
  $systemApps=Get-MigrationStreamSource 'vm-system-applications'
  Assert ($systemApps.host -eq 'mac' -and $systemApps.user -eq 'pouya' -and $systemApps.root -eq '/' -and ($systemApps.members -join '|') -ceq 'Applications') 'System Applications is one exact VM root, never the home Applications alias, another account or a whole disk grant'
+ $physicalApps=Get-MigrationStreamSource 'physical-system-applications'
+ Assert ($physicalApps.host -eq 'bench-mac' -and $physicalApps.user -eq 'oracova' -and $physicalApps.root -eq '/' -and ($physicalApps.members -join '|') -ceq 'Applications') 'Physical Applications uses its exact observed host/account and one system cohort'
+ Assert ((Get-MigrationStreamArchiveLimit 'physical-system-applications') -eq 40GB -and (Get-MigrationStreamArchiveLimit 'vm-system-applications') -eq 20GB -and (Get-MigrationStreamArchiveLimit 'physical-service-code') -eq 20GB) 'Only the observed physical Applications cohort gets the larger bounded sink'
+ try{Get-MigrationStreamArchiveLimit '../';throw 'accepted'}catch{Assert ($_.Exception.Message -match 'explicitly selected') 'Larger sink cannot be selected for an arbitrary source'}
  $serviceCode=Get-MigrationStreamSource 'physical-service-code'
  $expectedCode=@('StackBuilder_3rd_party_licenses.txt','commandlinetools_3rd_party_licenses.txt','bin','debug_symbols','doc','include','installation_summary.log','installer','lib','pgAdmin 4.app','pgAdmin_3rd_party_licenses.txt','pgAdmin_license.txt','pg_env.sh','scripts','server_license.txt','share','stackbuilder.app','uninstall-postgresql.app')|ForEach-Object{'Library/PostgreSQL/16/'+$_}
  $expectedCode+=@('Library/PrivilegedHelperTools','Library/Frameworks/OpenVPNConnect.framework','Library/Frameworks/OVPNHelper.framework','usr/local/bin')

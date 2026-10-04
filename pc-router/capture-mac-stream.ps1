@@ -1,5 +1,5 @@
 param(
- [Parameter(Mandatory=$true)][ValidateSet('vm-personal','vm-library','vm-extra-work','vm-owner-tools','vm-owner-tools-manifest','vm-package-caches','vm-editor-cache','vm-darwin-cad-tools','vm-codex-sqlite','vm-ai-hil-kicad-dependency','vm-dirty-work-manifest','physical-projects','physical-bench-home','physical-shared','vm-shared','physical-service-config','vm-service-config','physical-service-code','vm-system-applications')][string]$Profile,
+ [Parameter(Mandatory=$true)][ValidateSet('vm-personal','vm-library','vm-extra-work','vm-owner-tools','vm-owner-tools-manifest','vm-package-caches','vm-editor-cache','vm-darwin-cad-tools','vm-codex-sqlite','vm-ai-hil-kicad-dependency','vm-dirty-work-manifest','physical-projects','physical-bench-home','physical-shared','vm-shared','physical-service-config','vm-service-config','physical-service-code','vm-system-applications','physical-system-applications')][string]$Profile,
  [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-f]{32}$')][string]$RunId,
  [ValidatePattern('^[0-9a-f]{64}$')][string]$SqliteProducerSha256,
  [ValidatePattern('^[0-9a-f]{64}$')][string]$OwnerToolsProducerSha256,
@@ -70,6 +70,7 @@ function Get-MigrationStreamSource([string]$Name){
   # System Applications is distinct from the already preserved owner's
   # Applications directory. Copy bytes/links only, never activate Mac apps.
   'vm-system-applications' {return @{host='mac';user='pouya';root='/';members=@('Applications')}}
+  'physical-system-applications' {return @{host='bench-mac';user='oracova';root='/';members=@('Applications')}}
   # Original Darwin service/client code and local tools, not an active PC
   # replacement. PostgreSQL's protected data and Library remain open gaps.
   'physical-service-code' {return @{host='bench-mac';user='oracova';root='/';members=@(
@@ -82,6 +83,13 @@ function Get-MigrationStreamSource([string]$Name){
    'Library/PrivilegedHelperTools','Library/Frameworks/OpenVPNConnect.framework','Library/Frameworks/OVPNHelper.framework','usr/local/bin')}}
   default {throw 'Only explicitly selected migration source profiles admitted'}
  }
+}
+function Get-MigrationStreamArchiveLimit([string]$Name){
+ # The physical Applications preflight observed about30GiB allocated. Grant
+ # only this exact cohort a40GiB sink; all existing profiles retain20GiB.
+ Get-MigrationStreamSource $Name | Out-Null
+ if($Name -eq 'physical-system-applications'){return 40GB}
+ return 20GB
 }
 Add-Type @'
 using System;
@@ -193,7 +201,7 @@ $info=[Diagnostics.ProcessStartInfo]::new($wsl, (($migrationArguments | ForEach-
 $info.UseShellExecute=$false;$info.CreateNoWindow=$true;$info.RedirectStandardOutput=$true;$info.RedirectStandardError=$true;$info.RedirectStandardInput=$true
 $archive=Join-Path $folder ($Profile+'.tar.gz');$diagnostics=Join-Path $folder 'producer.private.log'
 $file=New-MigrationStreamFile $archive;$errors=New-MigrationStreamFile $diagnostics
-$sink=[MigrationStreamSink]::new($file,20GB);$child=$null
+$sink=[MigrationStreamSink]::new($file,(Get-MigrationStreamArchiveLimit $Profile));$child=$null
 $report=[ordered]@{schema='ccrelay.mac_to_pc_direct_stream.v1';profile=$Profile;run=$RunId;startedAt=[DateTime]::UtcNow.ToString('o');finishedAt=$null;
  destination=$archive;sourceMacTemporaryArchive=$false;producerExit=$null;transportExit=$null;archiveReaderExit=$null;
  bytes=[long]0;sha256=$null;producerDigestMatched=$false;sourceWarningBytes=$null;sourceWarningTruncated=$null;targetProtected=$false;seedAccepted=$false;

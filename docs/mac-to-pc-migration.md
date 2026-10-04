@@ -3390,3 +3390,57 @@ guarded-router recovery approval, physical bench/outside-LAN power recovery and
 independent encrypted restore remain open. The Mac is not erasure-ready; the
 full migration goal remains active. Read-only weekly quota was7% at22:00:01Z,
 above the owner's5% pause threshold.
+
+### Physical Mac system Applications preserved
+
+On October 4, 2026, a fresh read-only physical-Mac preflight found47 immediate
+members under `/Applications`:43 directories, two files and two links, with
+31881207808 allocated bytes and no `du` warnings. The separately pinned
+`physical-system-applications` profile uses `bench-mac` as `oracova`, root `/`,
+and exactly the Applications member. Only this profile gets a40GiB compressed
+sink; existing profiles retain20GiB. No other account, disk or database grant
+was added. All50 actual Windows fixtures passed before one capture started.
+
+Run `2892550d844c4488bcfbc84c4dfc0717` completed at22:15:26Z with producer,
+transport and native archive-reader exits0, source warnings0, matching
+source/PC digests and `seedAccepted=true`. Its16530278400-byte archive SHA256:
+`e1ebc65815997fa2e1138d5e902b5af8e3ed4a560167797fb3cb153fc3477ec9`.
+No second source transfer or automatic retry ran.
+
+Independent file-level verification completed at22:24:17Z:385175 entries,
+294796 regular files,40112339155 file bytes,11835 symlinks and24553 hardlinks.
+Every regular payload was read and hashed; member paths stayed under Applications
+without duplicates. Immediate member counts match the preflight. A separate
+bounded check at22:25:26Z proved all24553 hardlinks resolve to hashed regular
+payloads inside this archive, including hardlink chains. Neither check extracted
+anything, followed symlinks, activated apps or changed source files. Four isolated
+in-memory archive-reader fixtures and two structural digest tests also passed.
+
+The sealed helper package is
+`C:\ProgramData\OracovaMigration\stream-helper-01d5cc7eec92493a854c20b9f42246b2`.
+Capture helper SHA256:
+`6653afac935ac72ca3a19c5c02d87535e74b19ac3c3f9759bad8761f6e2f9515`.
+Independent reader SHA256:
+`2feedb7c247fad4e0bc7180c08e6339fc546b7c19e3033c64742dc4cea24f37c`.
+Private member index SHA256:
+`a4942d65ddf455db2a0aba3164bb95373bce96834672bfc9546db7815b92bb26`.
+Supplemental hardlink helper SHA256:
+`5319e69310bdcb4a913b8f4b243d98d1e5451cb66523f7463d0c04198c250fc4`.
+Retained hardlink verification receipt SHA256:
+`5cc7d81fa203a8a43cb4d6d98485dc7fd719e07e339304fafc65e8e1736fb92c`.
+
+At22:26:38Z all11 helper/evidence files passed protected Admin/SYSTEM-only ACL
+and Administrators-owner checks. Independent ordinary UID1000 opens of all11
+were denied before any byte read. Owned validation processes were observed
+terminal and disposed; maintenance SSH then closed cleanly. Fresh service
+inspection during the copy showed all seven VPN services Running/Auto, including
+both MTProto services. Khadang remained Stopped at its consumed-handoff guard.
+
+This preserves the selected Applications cohort on both Mac installations; it
+does not qualify native Windows replacements, capture external symlink targets,
+preserve all ACL/xattr metadata, establish a final writer fence or supply the
+encrypted independent daily backup. Protected personal/database data, other
+system cohorts, final deltas, checked project/topic activation, guarded-router
+approval, physical bench/outside-LAN power recovery and clean-machine restore
+remain open. Nothing was erased; the Mac is not erasure-ready and the full goal
+remains active. Read-only weekly quota was6% at22:26:54Z, above the5% pause gate.
