@@ -82,12 +82,18 @@ def safe_name(name):
 
 
 def capture(root, output, *, owner_uid, members=MEMBERS, max_entries=MAX_ENTRIES,
-            max_archive=MAX_ARCHIVE, max_manifest=MAX_MANIFEST, max_file_bytes=MAX_FILE_BYTES, timeout_seconds=850):
+            max_archive=MAX_ARCHIVE, max_manifest=MAX_MANIFEST, max_file_bytes=MAX_FILE_BYTES, timeout_seconds=850,
+            expected_leaves=None):
     if any(type(v) is not int or v <= 0 for v in (max_entries, max_archive, max_manifest, max_file_bytes, timeout_seconds)):
         raise ValueError("positive capture bounds required")
     members = tuple(members)
-    if not members or len(set(members)) != len(members) or any("/" in safe_name(n) or n == MANIFEST_NAME for n in members):
+    leaf_mode = expected_leaves is not None
+    if not members or len(set(members)) != len(members) or any(
+            ("/" in safe_name(n) and not leaf_mode) or n == MANIFEST_NAME for n in members):
         raise ValueError("unique direct source members required")
+    if leaf_mode and (not isinstance(expected_leaves, dict) or set(expected_leaves) != set(members) or
+            any(row.get('kind') not in ('file', 'symlink') for row in expected_leaves.values())):
+        raise ValueError('Exact regular-file/symlink selection required')
     root = Path(root)
     metadata = root.lstat()
     if not root.is_absolute() or root.resolve() != root or not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != owner_uid:
@@ -109,6 +115,8 @@ def capture(root, output, *, owner_uid, members=MEMBERS, max_entries=MAX_ENTRIES
                         raise ValueError("source entry bound")
                     safe_name(relative)
                     before = os.stat(base, dir_fd=parent_fd, follow_symlinks=False)
+                    if leaf_mode and not (stat.S_ISREG(before.st_mode) or stat.S_ISLNK(before.st_mode)):
+                        raise ValueError('Selected leaf changed object type')
                     info = tarfile.TarInfo(relative)
                     info.mode, info.uid, info.gid = stat.S_IMODE(before.st_mode), before.st_uid, before.st_gid
                     info.mtime = before.st_mtime_ns // 1000000000
@@ -161,15 +169,35 @@ def capture(root, output, *, owner_uid, members=MEMBERS, max_entries=MAX_ENTRIES
                         raise ValueError("unsupported source object; not silently omitted")
                     if identity(os.stat(base, dir_fd=parent_fd, follow_symlinks=False)) != identity(before):
                         raise ValueError("source entry changed during capture")
+                    if leaf_mode:
+                        expected = expected_leaves[relative]
+                        keys = ('kind', 'bytes', 'sha256') if record['kind'] == 'file' else ('kind', 'target')
+                        if any(record.get(key) != expected.get(key) for key in keys):
+                            raise ValueError('Selected leaf differs from observed source contents')
 
                 for member in members:
-                    visit(root_fd, member, member)
+                    if not leaf_mode:
+                        visit(root_fd, member, member)
+                        continue
+                    descriptors, parent = [], root_fd
+                    try:
+                        parts = member.split('/')
+                        for part in parts[:-1]:
+                            descriptor = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+                            descriptors.append(descriptor)
+                            parent = descriptor
+                        visit(parent, parts[-1], member)
+                    finally:
+                        for descriptor in reversed(descriptors):
+                            os.close(descriptor)
                 manifest = {"schema": SCHEMA, "members": list(members), "entries": records,
                             "fileBytes": file_bytes, "socketCount": sockets, "startedAt": started,
                             "finishedAt": time.time(), "fileBytesVerifiedDuringCapture": True,
                             "sourceTemporaryFiles": False, "sourceWritersFrozen": False,
                             "consistentFinalSnapshot": False, "socketKernelStatePreserved": False,
                             "macAclAndXattrClosure": False}
+                if leaf_mode:
+                    manifest['selectionMode'] = 'exact-leaf-paths'
                 raw = json.dumps(manifest, ensure_ascii=True, separators=(",", ":")).encode()
                 if len(raw) > max_manifest:
                     raise ValueError("manifest byte bound")
@@ -185,7 +213,8 @@ def capture(root, output, *, owner_uid, members=MEMBERS, max_entries=MAX_ENTRIES
             "consistentFinalSnapshot": False}
 
 
-def verify(path, *, max_entries=MAX_ENTRIES, max_manifest=MAX_MANIFEST, max_file_bytes=MAX_FILE_BYTES, timeout_seconds=850):
+def verify(path, *, max_entries=MAX_ENTRIES, max_manifest=MAX_MANIFEST, max_file_bytes=MAX_FILE_BYTES, timeout_seconds=850,
+           expected_leaves=None):
     actual, manifest, total = {}, None, 0
     deadline = time.monotonic() + timeout_seconds
     with tarfile.open(path, mode="r|gz") as archive:
@@ -226,17 +255,28 @@ def verify(path, *, max_entries=MAX_ENTRIES, max_manifest=MAX_MANIFEST, max_file
         raise ValueError("missing or incompatible manifest")
     declared = manifest.get("entries")
     members = manifest.get("members")
-    if not isinstance(members, list) or not members or any("/" in safe_name(n) for n in members) or \
+    leaf_mode = manifest.get('selectionMode') == 'exact-leaf-paths'
+    if manifest.get('selectionMode') not in (None, 'exact-leaf-paths') or \
+            leaf_mode != (expected_leaves is not None):
+        raise ValueError('Exact leaf archives require independent expected selection')
+    if not isinstance(members, list) or not members or any("/" in safe_name(n) and not leaf_mode for n in members) or \
             len(set(members)) != len(members) or not isinstance(declared, list) or len(declared) > max_entries:
         raise ValueError("invalid source declaration")
+    if leaf_mode and (not isinstance(expected_leaves, dict) or set(expected_leaves) != set(members)):
+        raise ValueError('Selected source declaration differs from expected set')
     names, sockets = set(), 0
     for record in declared:
         if not isinstance(record, dict):
             raise ValueError("invalid entry record")
         name = safe_name(record.get("name"))
-        if name in names or name.split("/")[0] not in members:
+        if name in names or (name not in members if leaf_mode else name.split("/")[0] not in members):
             raise ValueError("duplicate or outside declared source set")
         names.add(name)
+        if leaf_mode:
+            expected = expected_leaves[name]
+            keys = ('kind', 'bytes', 'sha256') if expected.get('kind') == 'file' else ('kind', 'target')
+            if expected.get('kind') not in ('file', 'symlink') or any(record.get(key) != expected.get(key) for key in keys):
+                raise ValueError('Archived leaf differs from independent source observation')
         if record.get("kind") == "socket":
             if name in actual or record.get("representation") != "metadata-only" or \
                     record.get("restore") != "recreate via its owning application; kernel state is not portable":
@@ -255,6 +295,20 @@ def verify(path, *, max_entries=MAX_ENTRIES, max_manifest=MAX_MANIFEST, max_file
             "activeProfileChanged": False, "extractedToFilesystem": False}
 
 
+def dirty_selection(raw):
+    if len(raw) > 4 << 20:
+        raise ValueError('Dirty source selection bound')
+    value = json.loads(raw)
+    if not isinstance(value, dict) or value.get('schema') != 'ccrelay.dirty_source_selection.v1' or \
+            not isinstance(value.get('entries'), list) or not 1 <= len(value['entries']) <= 5000:
+        raise ValueError('Exact dirty-source selection required')
+    rows = value['entries']
+    names = [safe_name(row.get('name')) for row in rows]
+    if len(set(names)) != len(names) or any(row.get('kind') not in ('file', 'symlink') for row in rows):
+        raise ValueError('Duplicate or unsupported dirty source selection')
+    return dict(zip(names, rows))
+
+
 if __name__ == "__main__":
     try:
         if len(sys.argv) == 3 and sys.argv[1] == "--verify":
@@ -263,6 +317,24 @@ if __name__ == "__main__":
                     r"/mnt/c/ProgramData/OracovaMigration/[0-9a-f]{32}/vm-owner-tools-manifest\.tar\.gz", path):
                 raise ValueError("literal PC verification archive required")
             print(json.dumps(verify(path), separators=(",", ":")))
+        elif len(sys.argv) == 4 and sys.argv[1] == '--verify-dirty':
+            selection, path = sys.argv[2:]
+            if sys.platform != 'linux' or os.geteuid() != 1000 or not re.fullmatch(
+                    r'/mnt/c/ProgramData/OracovaMigration/stream-helper-[0-9a-f]{32}/dirty-selection\.json', selection) or not re.fullmatch(
+                    r'/mnt/c/ProgramData/OracovaMigration/[0-9a-f]{32}/vm-dirty-work-manifest\.tar\.gz', path):
+                raise ValueError('Literal PC dirty verification inputs required')
+            with open(selection, 'rb') as source:
+                expected = dirty_selection(source.read((4 << 20) + 1))
+            checked = verify(path, expected_leaves=expected)
+            checked['expectedSelectionMatched'] = True
+            print(json.dumps(checked, separators=(',', ':')))
+        elif len(sys.argv) == 2 and sys.argv[1] == '--dirty-selection':
+            if sys.platform != 'darwin' or os.geteuid() == 0 or pwd.getpwuid(os.geteuid()).pw_name != 'pouya':
+                raise ValueError('Ordinary Mac owner required')
+            expected = dirty_selection(sys.stdin.buffer.read((4 << 20) + 1))
+            report = capture('/Users/pouya/.openclaw/workspace', sys.stdout.buffer, owner_uid=os.geteuid(),
+                             members=sorted(expected), expected_leaves=expected)
+            print(json.dumps(report, separators=(',', ':')), file=sys.stderr)
         elif len(sys.argv) == 1:
             if sys.platform != "darwin" or os.geteuid() == 0 or pwd.getpwuid(os.geteuid()).pw_name != "pouya":
                 raise ValueError("ordinary Mac owner required")

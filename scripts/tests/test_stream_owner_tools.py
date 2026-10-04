@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from scripts.stream_owner_tools import capture, verify, DigestReader
+from scripts.stream_owner_tools import capture, verify, DigestReader, dirty_selection
 
 
 class OwnerToolsStreamTests(unittest.TestCase):
@@ -88,6 +88,40 @@ class OwnerToolsStreamTests(unittest.TestCase):
     def test_missing_source_member_fails(self):
         with self.assertRaises(FileNotFoundError):
             capture(self.source, io.BytesIO(), owner_uid=os.getuid(), members=("missing",))
+
+    def test_exact_nested_leaves_match_independent_expected_selection(self):
+        (self.source / '.config/link').symlink_to('/not/read/or/activated')
+        expected = {'.config/private.txt': {'kind': 'file', 'bytes': self.file.stat().st_size,
+                                          'sha256': hashlib.sha256(self.file.read_bytes()).hexdigest()},
+                    '.config/link': {'kind': 'symlink', 'target': '/not/read/or/activated'}}
+        output = io.BytesIO()
+        report = capture(self.source, output, owner_uid=os.getuid(), members=sorted(expected), expected_leaves=expected)
+        path = self.root / 'selected.tar.gz'
+        path.write_bytes(output.getvalue())
+        checked = verify(path, expected_leaves=expected)
+        self.assertEqual(checked['fileManifestEntries'], 2)
+        self.assertEqual(report['sha256'], hashlib.sha256(output.getvalue()).hexdigest())
+        with self.assertRaisesRegex(ValueError, 'independent expected selection'):
+            verify(path)
+        with self.assertRaisesRegex(ValueError, 'expected set'):
+            verify(path, expected_leaves={'.config/private.txt': expected['.config/private.txt']})
+
+    def test_changed_selected_bytes_and_parent_symlink_cannot_capture_as_success(self):
+        expected = {'.config/private.txt': {'kind': 'file', 'bytes': self.file.stat().st_size, 'sha256': '0' * 64}}
+        with self.assertRaisesRegex(ValueError, 'observed source contents'):
+            capture(self.source, io.BytesIO(), owner_uid=os.getuid(), members=sorted(expected), expected_leaves=expected)
+        (self.source / 'alias').symlink_to(self.source / '.config', target_is_directory=True)
+        aliased = {'alias/private.txt': {'kind': 'file', 'bytes': self.file.stat().st_size,
+                                         'sha256': hashlib.sha256(self.file.read_bytes()).hexdigest()}}
+        with self.assertRaises(OSError):
+            capture(self.source, io.BytesIO(), owner_uid=os.getuid(), members=sorted(aliased), expected_leaves=aliased)
+
+    def test_selection_rejects_duplicate_directory_and_escape(self):
+        for entries in ([{'name': '../outside', 'kind': 'file'}],
+                        [{'name': '.config', 'kind': 'directory'}],
+                        [{'name': 'same', 'kind': 'file'}, {'name': 'same', 'kind': 'file'}]):
+            with self.subTest(entries=entries), self.assertRaises(ValueError):
+                dirty_selection(json.dumps({'schema': 'ccrelay.dirty_source_selection.v1', 'entries': entries}).encode())
 
     def test_symlink_root_not_followed(self):
         link = self.root / "alias"

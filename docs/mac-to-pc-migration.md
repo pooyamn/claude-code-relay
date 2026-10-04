@@ -2757,3 +2757,59 @@ outside-LAN/cold-boot/secure sign-in acceptance or encrypted off-machine full
 restore. Next, compare file contents for the recorded dirty/untracked project
 state and bounded ignored cohorts, preserving Mac-only deltas without replacing
 newer PC work. The migration goal remains active and the Mac is not ready to erase.
+
+### Dirty/untracked content comparison and preservation, October 4 at 9:28 AM PDT
+
+Fresh Git status observations from the 77 valid source repositories selected 19,788
+unique dirty/untracked paths. The read-only no-follow observer hashed 1,532,311,437
+source file bytes, with no status or entry errors, finishing16:03:59Z. The PC
+comparison finished at 16:07:14Z: 19,691 paths had matching contents, 18 differed and 27
+were missing. Another 52 records are non-files, including 51 directories whose
+contents were **not enumerated**. Absence/deletion records never authorize PC
+deletions. The comparison does not cover all clean/ignored files or establish a
+consistent global snapshot. Detailed paths and contents remain private.
+
+All 45 missing/differing regular files, 25,063,967 logical bytes, were preserved in
+the new literal `vm-dirty-work-manifest` profile. Its bounded, independently
+hashed selection admits exact leaf paths only, rejects changed contents or
+symlink ancestors, and does not recursively expand directories. The target
+verifier checks the archive's complete member set, every file digest and metadata
+against its captured manifest **and** the separately sealed observed selection.
+No archive extraction or replacement of newer active PC work occurred.
+
+Run `01d39451432d4cd5826e69e82007365e` finished at 16:24:04Z. Its archive is
+`C:\ProgramData\OracovaMigration\01d39451432d4cd5826e69e82007365e\vm-dirty-work-manifest.tar.gz`,
+6,182,473 compressed bytes, SHA256
+`108614a988ba4f19dc09d111b3ae322875fbb5fa8fbe70180478619e012248cc`.
+Producer, transport, archive reader and controller all exited 0, with no source
+warnings. Independent saved-file hash/size, full expected-selection verification
+and Administrator/SYSTEM-only directory/file ACL checks passed. Actual ordinary
+Linux UID 1000 opening the archive was denied before any byte was read at 16:26:02Z.
+Four private inventory/comparison/selection files, 13,653,772 bytes, were sealed
+without replacement and independently rehashed beside the accepted archive.
+The separate verification and final audit receipts are also retained there.
+
+Reviewed producer SHA256:
+`be7985bc80bb16d3f4005b3a4956cc4544e1c5df62ee8ca7954873cdf1ed8895`;
+receiver SHA256:
+`14295fa525ca9250d1b0a1b3121cc01038082ec25c760158a580684349b43ce9`;
+expected selection SHA256:
+`64f44885bb644bdeb70ee8e928f4ed5b2ba7551cd16b72194abff0581590c59d`.
+All 23 Python format/inventory tests and 34 actual sealed Windows receiver
+checks passed. No system execution-policy change, source temporary archive,
+source permission change, deletion, model turn or router/native restart occurred.
+
+Final router readback at 16:27:46Z remained Running, 12 routes/seven Claude streams,
+native PIDs 2141/20968, global unknown 0 and retained presentation unknown 1, with
+unchanged router code/policy digests. All capture/quota processes are terminal;
+administrator SSH closed at 16:28:03Z, exit 0. Weekly quota remained 12% at 16:27:47Z,
+above the owner's 5% pause gate.
+
+This closes the selected missing/differing file preservation gap, not activation
+or final migration acceptance. Classify source-only files before importing them:
+runtime pointers, credentials, locks and conflicting PC versions must not be
+activated blindly. Unenumerated directories, clean/ignored deltas, final source
+writer/database fencing, protected account/Library access, checked handoffs for
+all projects, the remaining two topics, hardware relocation, outside-LAN cold-boot
+and secure sign-in acceptance, and encrypted off-machine clean restoration
+remain unresolved. The goal remains active and the Mac is not ready to erase.

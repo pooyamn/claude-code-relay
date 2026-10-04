@@ -31,6 +31,11 @@ including non-forum destinations; updates amend the same message. Separate final
 answers omit that flag and retain normal notifying delivery, subject to the
 user's Telegram notification settings.
 [Telegram silent message parameter](https://core.telegram.org/bots/api#sendmessage).
+Native "Seen"/read acknowledgment is not available to this ordinary forum bot;
+`readBusinessMessage` requires a managed business connection and its read right.
+[Telegram business read API](https://core.telegram.org/bots/api#readbusinessmessage).
+An optional eye reaction can acknowledge bridge receipt, not model acceptance;
+that alternative remains pending owner confirmation and is not enabled.
 Sanitized `receiptTyping` status counters record attempts, confirmations,
 failures, suppressions and the last confirmed destination/time—never input text,
 credentials or URL-bearing errors.

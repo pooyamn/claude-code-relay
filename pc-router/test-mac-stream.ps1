@@ -41,6 +41,8 @@ try{
  Assert ($sqlite.captureMode -eq 'sqlite-backup-api-memory' -and $sqlite.root -eq '/Users/pouya/.codex') 'SQLite profile explicitly requires backup API memory capture, never raw live-file tar'
  $dependency=Get-MigrationStreamSource 'vm-ai-hil-kicad-dependency'
  Assert ($dependency.host -eq 'mac' -and $dependency.user -eq 'pouya' -and $dependency.root -eq '/Users/pouya/.openclaw/workspace/ai-hil/hardware/duts/dut-d/node_modules' -and $dependency.members.Count -eq 1 -and $dependency.members[0] -eq 'circuit-json-to-kicad') 'Source-only dependency has a literal bounded profile, not an arbitrary project/root grant'
+ $dirty=Get-MigrationStreamSource 'vm-dirty-work-manifest'
+ Assert ($dirty.host -eq 'mac' -and $dirty.user -eq 'pouya' -and $dirty.root -eq '/Users/pouya/.openclaw/workspace' -and $dirty.members.Count -eq 0 -and $dirty.captureMode -eq 'observed-exact-leaf-content') 'Dirty archive requires a separate sealed selection, never recursive whole-workspace or arbitrary root capture'
  try{Get-MigrationStreamSource '../';throw 'accepted'}catch{Assert ($_.Exception.Message -match 'explicitly selected') 'No arbitrary source/root injection'}
  Assert ((ConvertTo-MigrationNativeArgument 'a"b\') -eq '"a\"b\\"') 'Embedded quote and final backslash literal'
  Assert ((ConvertTo-MigrationNativeArgument 'literal$(name);&') -eq '"literal$(name);&"') 'Arguments do not use a local shell'
