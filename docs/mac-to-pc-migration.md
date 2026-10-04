@@ -1069,12 +1069,49 @@ must back up the PC database, clear only that copied enrollment locally, then
 let the empty WSL daemon enroll its own host and issue a new native pairing
 code. This requires stopping only the new WSL daemon while changing its cache,
 not the live Mac, Windows remote hosts, Telegram router or any histories/auth.
-No enrollment was deleted or live daemon stopped; owner approval for the
-targeted local cache removal is pending. History migration must exclude live
-remote enrollment state in future restores.
+At that observation no enrollment had been deleted; the owner was asked to
+approve the targeted local cache removal.
 
-All 27 native-connector/observer fixtures pass in an OS sandbox without network
-or owner credentials. Both deployment scripts parse on Windows and eight exact
+After Pouya approved, the ordinary owner repair backed up the PC's database to
+`/Users/pouya/.migration/codex-enrollment-repair-CgBorX/before.sqlite` (owner-only;
+SHA-256 `d2309ab67750983bce88f1abb586a0cd5a6c3f2f8f7026e53a06dfdb322c2e86`).
+Only the empty WSL daemon was stopped. Exactly one matching copied Mac enrollment
+was removed locally; all other database data/schema, histories and logins were
+verified unchanged. The source archive and live Mac enrollment were untouched.
+Native startup regenerated the PC registration without revoking the Mac host.
+
+At `2026-10-04T01:33:56Z`, the new WSL daemon PID 2141, generation 229385,
+reports **connected**. Its environment fingerprint is
+`411f13f2b5008f9b1d9be1f4a6900aa2e435f21bd7bb076c490b6cb57622cdfa`,
+distinct from the still-connected Mac environment
+`5424e0396b3c6136b14c48a326674545a1f796bae22b7f38750b4ba8a69417ba`.
+The five-minute supervisor is running again; automatic updates remain disabled.
+The protected one-shot repair task completed with result zero and is disabled,
+not scheduled for replay. Existing Windows Codex, Claude and Khadang processes
+and router code/configuration were not changed or restarted.
+
+A fresh native pairing code was issued at `2026-10-04T01:33:28Z`, expiring at
+`2026-10-04T01:43:31Z`, for this **distinct PC** registration. Its private value
+was sent to the owner, not committed. The fresh native read at
+`2026-10-04T01:35:21Z` reports connected, matching pairing/native environment,
+`claimed: false`, and no registered clients. At `2026-10-04T01:38:03Z`, a fresh
+native read reports **connected**, `claimed: true`, matching pairing/native PC
+environment, and one registered iOS phone (app 1.2026.267). **Distinct PC host
+enrollment and phone pairing are now verified.** Phone-side app visibility and
+an actual conversation round trip still need confirmation. The earlier claimed
+receipt belongs to the copied Mac identity, not this PC.
+
+The fresh-host history restore now excludes `remote_control_enrollments` only
+from the new copied database, after existing-destination and stopped-native
+checks and before immutable history validation/native startup. It retains the
+raw source snapshot, conversation rows and schema, checkpoints the standalone
+copy and requires native reenrollment. This is a new-host migration rule, not
+same-host disaster recovery. Five added fixtures cover preserved source/history,
+WAL visibility, missing/empty enrollment tables and refused symlink redirects.
+
+All 37 native-connector/observer/history fixtures pass in an OS sandbox without
+network or owner credentials, including ten history-restore fixtures. Both
+deployment scripts parse on Windows and eight exact
 missing-socket classifier fixtures pass. Native absent-daemon `version` reports
 errno 2 rather than JSON `stopped`; only that exact measured absence permits
 startup. Other errors do not trigger a lifecycle retry.

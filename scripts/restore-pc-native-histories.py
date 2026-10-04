@@ -67,6 +67,35 @@ def mirror_component(source, target, run):
     return before
 
 
+def detach_migrated_remote_registration(database_path):
+    """Exclude host-bound enrollment from a NEW copy, retaining its raw seed.
+
+    Codex's enrollment key excludes installation_id. Copying these rows makes
+    a new computer impersonate the source host and yields HTTP 409 when that
+    host is online. Native enrollment regenerates them for the new computer;
+    conversation/history rows and the archived source are not modified.
+    main() calls this only after fresh-destination and stopped-native checks.
+    """
+    if database_path.is_symlink() or not database_path.is_file():
+        raise ValueError('Literal freshly copied state database required')
+    with closing(sqlite3.connect(str(database_path))) as db:
+        present = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='remote_control_enrollments'").fetchone()
+        removed = 0
+        if present:
+            with db:
+                removed = db.execute('SELECT COUNT(*) FROM remote_control_enrollments').fetchone()[0]
+                db.execute('DELETE FROM remote_control_enrollments')
+                if db.execute('SELECT COUNT(*) FROM remote_control_enrollments').fetchone()[0]:
+                    raise ValueError('Copied host registration was not excluded')
+            # Later immutable history checks read the standalone copy, not WAL.
+            if db.execute('PRAGMA wal_checkpoint(TRUNCATE)').fetchone()[0] != 0:
+                raise ValueError('Fresh copy unexpectedly has another database reader/writer')
+        if db.execute('PRAGMA quick_check').fetchone()[0] != 'ok':
+            raise ValueError('Sanitized history database failed integrity check')
+    return {'copiedRemoteEnrollmentsExcluded': removed, 'sourceSnapshotChanged': False,
+            'nativeReenrollmentRequired': bool(removed), 'sanitizedStateSha256': digest(database_path)}
+
+
 def pinned_executable(install):
     archive = install / 'package.tar.gz'
     if archive.is_symlink() or digest(archive) != PACKAGE_DIGEST:
@@ -209,6 +238,7 @@ def main(migration_run, run):
             report['components'].append({'component': target.name, **evidence})
             with (state / ('copied-' + target.name + '.json')).open('x') as output:
                 json.dump(evidence, output)
+        report['hostBoundRegistration'] = detach_migrated_remote_registration(codex / 'state_5.sqlite')
         expected = []
         for relative, _, _ in checker.PROJECTS:
             workspace = checker.WORKSPACE / relative
