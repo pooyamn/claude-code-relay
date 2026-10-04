@@ -28,11 +28,15 @@ is authorized until the exact target is resolved and verified copies exist.
 The original OpenClaw configuration contained 14 bindings: eight topics in Ai
 Dispatch, five in Oracova, and the standalone Startup Ideas group. As of the
 October4 readback, eleven included originals plus the existing PC LG topic
-route to the PC (twelve total). Required routing migration progress is11/13;
+are registered on the PC (twelve total). Required routing migration progress is11/13;
 Startup Ideas and KiCad remain pending. The three source bindings also include
 Qwen, which is explicitly excluded. Keep the included chat and topic IDs
 unchanged; the existing PC LG topic remains intact. Connected routing is not
 the broader hardware, phone, source preservation or recovery acceptance.
+Current post-reboot operation is not accepted: Khadang is stopped at the
+consumed-Claude-checkpoint guard. Stored bindings and pre-boot status do not
+establish live topic delivery. Guarded automatic recovery is awaiting owner
+security review; the guard has not been bypassed.
 
 | Project | Chat | Topic |
 | --- | --- | --- |
@@ -73,7 +77,7 @@ selected operational projects, firmware, keys, captures and tool installations
 now also have a protected, checksum-verified PC archive. That archive is not an
 activated bench environment or a final checkpoint.
 
-The protected Windows Khadang service now routes the existing PC LG topic plus
+Before the latest reboot, the protected Windows Khadang service routed the existing PC LG topic plus
 Web, Base board, Marginal Requests, DUT, Schematic Pipeline, Mimic Fast PCB,
 Hardware Lite, MPU6000-i9, ai-hil and Supervisor firmware
 in their original forums. All five original Oracova PCBA topics are connected. The personal
@@ -2952,3 +2956,67 @@ of the remaining WinSW wrappers. No further reboot was performed; immediate
 startup on the next boot and phone/off-network acceptance remain unverified.
 This VPN change does not resolve Khadang's separately reported consumed-Claude-
 checkpoint startup guard, or close the full migration/disaster-recovery gates.
+
+### Post-reboot audit and workspace content closure, October 4 at 1:45 PM PDT
+
+The preceding VPN goal turn made authoritative progress: corrected service
+policies and nine real crash-recovery checks. A subsequent Windows boot at
+19:09:37.5Z now provides fresh boot evidence. Both MTProto children started
+11.8 seconds after boot; the other five VPN/tunnel children started12.7 seconds
+after boot. All seven are Running with delayed auto-start disabled. The owner
+desktop appeared13.7 seconds after boot, AutoAdminLogon remains enabled and no
+plaintext Winlogon password value exists. All three native remote hosts are
+alive in owner session1 without elevation; Linux Codex's pinned daemon PID455
+also returned `remoteControl/status/read=connected` independently at20:38:09Z.
+This is not outside-LAN, power-loss or a clean-machine disaster-restore proof.
+
+Khadang remains Stopped. Fresh failure inspection confirms the consumed-Claude-
+handoff guard; an actual read-only ledger query found zero uncertain non-display
+native/delivery operations. Seven exact Claude histories still have ordinary
+UID1000 ownership and no matching live producer processes were found. No
+checkpoint, model, binding, privilege or startup guard was changed. An owner
+security-review question for guarded automatic checkpoint renewal is pending.
+The old status file's12 routes/seven streams/PIDs are explicitly historical,
+not current routing acceptance.
+
+The wider workspace metadata walk contained17,375 missing/different exact file
+or link leaves beyond the earlier Git-status cohort. All372 files,43,097,566
+logical bytes, and17,003 symlinks are now preserved in five protected PC archives.
+Producer/transport/reader exits were0 with no warnings, and independent archive
+hashes, complete expected member sets, per-file hashes and ACL checks passed.
+The preservation receipt and copied metadata are under
+`C:\ProgramData\OracovaMigration\99b6034204f14fe2b336dc0b5e896e94`.
+The copied symlinks were not followed, extracted or activated.
+
+A new batched, no-follow hash comparison then checked all839,343 formerly
+size-only regular-file matches, reading55,425,896,736 logical source bytes.
+It finished20:41:08Z:839,302 files match exactly;41 differ, with zero missing
+source files or read errors. The41 source versions,1,295,642 bytes, were freshly
+rechecked and preserved separately without replacing active PC versions.
+Their archive is
+`C:\ProgramData\OracovaMigration\79bbf697db2b438dbc393afd93e35da7\vm-dirty-work-manifest.tar.gz`,
+536,278 bytes, SHA256
+`74a9d402d8cd36eac3cc480da0668611606b19d3909db7e535cb62275d57d273`.
+Independent verification passed20:44:34Z. The comparison receipt, all53 full-pass
+evidence files and the second preservation receipt are protected under
+`C:\ProgramData\OracovaMigration\4d2dc351c7fb4583a0945ccd85d2e6b5`.
+Ordinary UID1000 could not open any of the six archives or the sealed full-pass
+receipt before any bytes were read. No source temporary archive, permission
+change, deletion, source-writer freeze, native restart or active project import
+occurred. The capture controller permits preservation while the router is held,
+but records that stopped state and still rejects code/policy changes; it does
+not repair or falsely accept routing.28 Python tests, eight Windows observation
+fixtures and34 sealed Windows receiver fixtures passed.
+The final20:48:40Z audit checked all89 saved evidence files across both new
+preservation runs: Administrator/SYSTEM-only protected ACLs and owner checks
+passed, with unchanged installed router/policy digests and Khadang still Stopped.
+
+This verifies/preserves the selected workspace file bytes at their observation
+times, not a globally consistent final source snapshot or Mac ACL/xattr closure.
+Remaining gates include source writer/database fencing, protected account and
+Library access, reviewed activation/handoffs for every project, Startup Ideas
+and KiCad, physical bench qualification, Khadang reboot recovery, off-network
+access, encrypted daily off-machine backup with independent key recovery and
+a clean-machine restore. No Mac-erasure approval or target resolution occurred.
+Weekly quota remained8% available at20:42:06Z, above the owner's5% pause gate.
+The full migration objective remains active and incomplete.
