@@ -18,9 +18,10 @@ is authorized until the exact target is resolved and verified copies exist.
 
 ## Current inventory
 
-The source OpenClaw configuration contains 14 bindings: eight topics in Ai
-Dispatch, five in Oracova, and the standalone Startup Ideas group. Keep their
-chat and topic IDs unchanged. The existing PC LG topic remains intact.
+The original OpenClaw configuration contained 14 bindings: eight topics in Ai
+Dispatch, five in Oracova, and the standalone Startup Ideas group. Three now
+route to the PC; eleven remain on the source. Keep their chat and topic IDs
+unchanged. The existing PC LG topic remains intact.
 
 | Project | Chat | Topic |
 | --- | --- | --- |
@@ -1353,3 +1354,39 @@ automation are preserved, but Windows Fusion import/save/render remains
 unqualified and required. Eleven other original topics, physical bench movement
 and Mac-independent recovery remain pending. Full migration is not complete;
 the Mac has not been erased.
+
+### DUT Claude cutover preparation, October 3 evening
+
+Pouya explicitly requested that DUT retain Claude in its existing Oracova PCBA
+chat `-1004395661179`, topic **53**. Its source session key is
+`cr-87dfb2a5b8`, not the separate ai-hil session `cr-8551d639a0`. The source
+Claude pane reports idle, no writers or uncertain external actions, and a
+current uncommitted `PC-MIGRATION-HANDOFF.md`. No DUT work was started.
+
+A full source/PC content comparison completed with **131,411 entries on each
+side and zero differences**. The handoff also matches on both hosts:
+`e639f198591c5326702d3bd9bd568397c6bce1eac86029ddbfb513e1563bdce7`.
+This is copy acceptance, not an ingress fence or working Claude route.
+
+The earlier failed PC creation record was located and retained: attempt
+`cd6a8619ea17d909cf3af61c330a1a05`, native DUT UUID
+`7dc840b0-402f-451e-bc79-dadfb706d363`. It reported UID 1000, native exit 1,
+`ready: false`, and `nativeStopped: true`; no route was changed. Any continuation
+must reconcile that exact attempt rather than silently create another UUID.
+
+Linux Claude needs its own renewed subscription login. The valid Windows Claude
+login is unchanged. A limited interactive owner task started one native Linux
+login attempt `f737e0313ae24a55bc65ae692041e318` at
+`2026-10-04T03:08:25.8637098Z`; the browser authorization link was sent privately
+to Pouya. At `03:13Z` it was still running without a submitted code. The task's
+nine-minute deadline applies to this attempt; an expired link must not be
+reported as usable. Login URLs, authorization codes and tokens are not recorded
+in this document.
+
+Authentication is not the remaining route acceptance by itself: the protected
+production policy has no DUT binding, and its generic probe deliberately does
+not consume a real Claude checkpoint. Candidate-bound native launch,
+tool-owner and continuity checks must pass before source ingress is retired
+and the original topic is admitted on Khadang. DUT therefore remains on
+Jamshid for now; original-topic cutovers remain **3 of 14**, with existing PC
+LG, Web, Base board and Marginal Requests unchanged.
