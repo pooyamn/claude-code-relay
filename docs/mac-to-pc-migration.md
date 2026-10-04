@@ -1027,6 +1027,17 @@ performed. WSL Telegram routing, boot/crash acceptance and original-topic
 cutovers remain unverified; the existing LG binding and protected router code,
 policy and credential are unchanged.
 
+At Pouya's explicit request, native `remote-control pair --json` issued a
+short-lived PC manual pairing code at `2026-10-04T01:09:31Z`, expiring at
+`2026-10-04T01:19:34Z`. The one-shot operation ran as the ordinary interactive
+owner against verified WSL daemon PID 1174; it did not restart the daemon,
+change accounts or start inference. The protected, trigger-free task
+`Oracova-CodexWslPair-CgBorX` is disabled after its confirmed receipt. Pairing
+secrets remain in owner-private PC evidence and were not added to source.
+The fresh read after code issuance still reports `errored`; issuing a code
+does not establish mobile acceptance or a working phone connection. Phone-side
+code entry and successful transport verification remain pending.
+
 All 27 native-connector/observer fixtures pass in an OS sandbox without network
 or owner credentials. Both deployment scripts parse on Windows and eight exact
 missing-socket classifier fixtures pass. Native absent-daemon `version` reports
