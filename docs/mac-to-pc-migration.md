@@ -2422,3 +2422,67 @@ The original readable Library data/failed archive are still retained. Mac
 `sudo -n -l` denied noninteractive elevation; no password was guessed, permission
 weakened or source data removed. Controlled source administrator access is
 needed to preserve that file; broader physical-Pouya access is still pending.
+
+### Additional VM home preservation, October 4
+
+A fresh home-root metadata inventory found59 entries:37 hidden and22 visible.
+Four new literal cohorts cover owner/tool configuration, package caches, editor
+data and the original Darwin CAD installation. Caches are preserved, not assumed
+disposable. These are separate bounded streams into SYSTEM/Administrator-only
+PC storage; no source archive/temp file or active PC profile replacement occurs.
+The reviewed receiver SHA256 is
+`742b8ef5a8db689b1318702893584295d1556eca6cee7a0bbc6dbe7db655a772`, sealed in
+`C:\ProgramData\OracovaMigration\stream-helper-17af1cf4f70d4c8fa6dc2c177d3394ea`.
+All28 actual Windows argument/binary/bounds/profile/ACL fixtures passed.
+
+Package-cache run`6aa41918b4704c4fbdc4e6368442ce3d` finished at12:43:19Z:
+6822553600 compressed bytes, SHA256
+`b8415b86fd67f98111611c8bca7079914ba0b3bd6d2d772e6c711388e8e785def`.
+Source producer/transport/PC archive reader all exited0, with no source warnings;
+source digest and independent PC file hash matched. Actual ordinary Linux
+UID1000 archive open was denied before reading any bytes.
+
+Editor run`8f7c64366204467dbe2de98c36c9e656` finished at12:47:33Z:
+6675302400 bytes, SHA256
+`ab42c26b99071dc1e8ee5a98ef961763706caa023d7d2c3265a601c2fd8ad904`.
+Original Darwin CAD run`eb95e307685047a19209b5455535116d` finished at12:48:04Z:
+571136000 bytes, SHA256
+`c2991c213917fc0ec6c8eae0e7942589770989e63ba87774a3dfa0e2aa311ba3`.
+Both passed the same0/0/0, no-warning, independent hash and protected ACL gates;
+ordinary UID1000 open was independently denied without reading any bytes.
+All three accepted archives total14068992000 compressed bytes. The Darwin
+installation was not activated over the existing PC Linux CAD tools.
+
+Owner/tool run`cbfcde4fe50745ecb84ac3630c7a5fab` is retained **unaccepted**:
+2837524480 bytes, SHA256
+`853be4b8916195f62b36b0af3669b4e5ad60d7718719ca5ea111bb0c715d21ba6`.
+Producer/transport/reader exited0/1/0: tar itself completed but its152-byte
+diagnostic references an unarchivable socket. The archive digest/readability/ACL
+checks passed, but the no-warning gate correctly refused acceptance. No warning
+was suppressed, old receipt reclassified or failed cohort retried.
+A no-follow metadata walk of its19 directory roots visited156106 entries:
+14153 directories,141322 regular files,629 symlinks and2 sockets. Regular files
+total7954598285 logical bytes; none were unreadable. Its750000-entry bound was
+not hit. Exact socket/diagnostic paths remain private. This metadata audit is
+not a file-content manifest, socket reconciliation or a final writer fence.
+The exact diagnostic is`pax format cannot archive sockets`. A bounded
+current-source lstat of its normalized warning pathname ended with
+`Errno::ENOENT`; the two sockets observed by the directory walk were not
+assumed to be that same endpoint. No socket metadata acceptance or silent
+regular-files-only recovery claim was fabricated.
+
+The PC VPN, both MTProto services, both Cloudflare services, VPN state server,
+SSH and Magic Remote services were observed Running/Auto without restarting
+them. Router readback at12:27:59Z remained Running with12 routes, seven connected
+Claude streams, native PIDs2141/19956, zero global unknowns and one retained
+presentation unknown. Service state is not fresh outside-LAN protocol or
+cold-boot acceptance. Physical-Pouya access, the root-owned Library file, final
+source deltas, pending topics, hardware relocation and independently recoverable
+off-machine backup remain required; the Mac is not ready to erase.
+Post-transfer readback at12:49:49Z again confirmed all12 routes/seven Claude
+streams and the same native PIDs/unknown counts. Participant199200674 remains
+enrolled with owner110123423 unchanged. Cdrive free space was731657023488 bytes.
+Final12:57:22Z readback retained the same state and independently confirmed the
+Windows native PID alive. Administrator SSH was closed cleanly. Native weekly
+quota remained13% available, above the owner's5% pause threshold; the migration
+goal remains active and incomplete.

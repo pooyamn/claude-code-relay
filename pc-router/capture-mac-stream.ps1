@@ -1,5 +1,5 @@
 param(
- [Parameter(Mandatory=$true)][ValidateSet('vm-personal','vm-library','vm-extra-work','vm-codex-sqlite','physical-projects','physical-bench-home')][string]$Profile,
+ [Parameter(Mandatory=$true)][ValidateSet('vm-personal','vm-library','vm-extra-work','vm-owner-tools','vm-package-caches','vm-editor-cache','vm-darwin-cad-tools','vm-codex-sqlite','physical-projects','physical-bench-home')][string]$Profile,
  [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-f]{32}$')][string]$RunId,
  [ValidatePattern('^[0-9a-f]{64}$')][string]$SqliteProducerSha256
 )
@@ -42,6 +42,13 @@ function Get-MigrationStreamSource([string]$Name){
   'vm-personal' {return @{host='mac';user='pouya';root='/Users/pouya';members=@('Documents','Downloads')}}
   'vm-library' {return @{host='mac';user='pouya';root='/Users/pouya';members=@('Library')}}
   'vm-extra-work' {return @{host='mac';user='pouya';root='/Users/pouya';members=@('code','src','test2','toolchains','.oracova','Applications','Movies','Music','Pictures','Public','Desktop','.Trash','Augur-1.zip','note.txt','oracova-BOM-JLCPCB.csv','oracova-BOM.csv','oracova-CPL-JLCPCB.csv','oracova-positions.csv','oss-cad-dl.log','oss-cad-extract.err')}}
+  # These literal, separately bounded cohorts close the home-root inventory
+  # gaps, including caches. Never infer that an inaccessible/cache file is
+  # disposable; preserve bytes without activating Darwin tools on the PC.
+  'vm-owner-tools' {return @{host='mac';user='pouya';root='/Users/pouya';members=@('.CFUserTextEncoding','.DS_Store','.anydesk','.aspnet','.azure','.bun','.cargo','.claude.json','.claude.json.bak-trust-20260924-190310','.config','.copilot','.dotnet','.gitconfig','.homebrew','.kimi-code','.local','.matplotlib','.net','.nuget','.rustup','.ssh','.templateengine','.webos','.zcompdump','.zprofile','.zsh_history','.zsh_sessions','.zshrc','.zshrc.bak-opus5-20260727-192500')}}
+  'vm-package-caches' {return @{host='mac';user='pouya';root='/Users/pouya';members=@('.cache','.npm')}}
+  'vm-editor-cache' {return @{host='mac';user='pouya';root='/Users/pouya';members=@('.vscode-server')}}
+  'vm-darwin-cad-tools' {return @{host='mac';user='pouya';root='/Users/pouya';members=@('oss-cad-suite')}}
   'vm-codex-sqlite' {return @{host='mac';user='pouya';root='/Users/pouya/.codex';members=@('.');captureMode='sqlite-backup-api-memory'}}
   'physical-projects' {return @{host='bench-mac';user='oracova';root='/Users/pouya';members=@('Codes','Developer','Sources','flutter_blue_plus','flutter_bluetooth')}}
   'physical-bench-home' {return @{host='bench-mac';user='oracova';root='/Users/oracova';members=@('.')}}
