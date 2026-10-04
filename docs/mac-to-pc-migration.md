@@ -130,11 +130,19 @@ or reproduce the Mac session ID.
    than replaying them to make migration appear complete.
 4. Cut over one topic at a time. Checkpoint and quiesce that source writer,
    capture the final delta and checked handoff, validate the PC copy, then
-   connect Khadang's new PC session to the same topic. Verify owner input,
-   active-turn steering, tools, one rolling bubble, controls, attachments,
-   app-origin updates where supported, and recovery of the new PC session after
-   restart. Do not require recovery of its old Mac session. Disable Hamal routing
-   for that topic only after Khadang receipts prove it works. Keep relay topic
+   prepare Khadang's new PC session and the same-topic binding under a non-polling
+   native/code/policy probe. Before activating that topic's PC input, disconnect
+   Jamshid/Hamal for that address: remove its explicit binding, disable topic
+   ingress so default routing cannot take over, stop its old live-update watcher
+   and retire the source native-session pointer recoverably. Then activate
+   Khadang and verify owner input and its same-topic reply. Pouya explicitly
+   requires every Khadang-connected topic to disconnect from Jamshid; never
+   leave both bots accepting project work. If activation fails, keep delivery
+   held or restore the single old route only after the PC route is stopped;
+   do not enable both as a recovery shortcut. Continue active-turn steering, tools,
+   one rolling bubble, controls, attachments, app-origin updates where supported
+   and new-session restart acceptance on the PC. Do not require recovery of
+   its old Mac session. Keep relay topic
    816 until last so the
    migration controller is not stranded. Do not restart the shared Mac native
    daemon or abandon an unfinished handoff.
@@ -1160,3 +1168,76 @@ fixed read-method guards passed on Windows, and all **787 PC-router fixtures**
 passed in an OS sandbox excluding credentials and network. The next operational
 step is checked fresh PC session creation from a source handoff, then the same
 original topic binding. Original-topic cutovers remain **0 of 14**.
+
+### First original topic live: Web, October 3 evening
+
+Original-topic routing cutovers are now **1 of 14**. Web remains Ai Dispatch
+chat `-1003550185469`, topic `8660`; no replacement Telegram topic was created.
+Its fresh PC Codex thread is `01a104a6-9fce-74a3-bdb0-e6dc04237ce7`, model
+`gpt-6-astra`, workspace `/Users/pouya/.openclaw/workspace/ai-hil/web`.
+The existing Windows LG topic/session remains unchanged.
+
+The full source and target Web directories match: **393 files, 522,066,731
+bytes**, content/tree SHA-256
+`f0770ffe769f5ede1619d2b64b603f5f9221e486f1097667627573c82b007a42`.
+The final source read remained unchanged after the greeting exchange and
+before retirement; its old native thread was no longer loaded. The private
+`PC-MIGRATION-HANDOFF.md` also matches at both ends, SHA-256
+`d6fe808e29a4ea5854eada96de66c7469ed8e5028c736304f7c03ebe51bda1dd`.
+The last Fusion deliverable and landing-concept WIP notes are preserved. Fusion
+automation on Windows is still unqualified, not replaced or discarded.
+
+The one-shot session creation `cbd984bbed3d4784b7254840bc837208` confirmed
+`thread/start`, `thread/inject_items` and `thread/name/set`. Its final assertion
+failed because `thread/read` does not expose an injected raw-only Responses
+item as a normal turn. An independent read of the exact native rollout found
+the complete, exact user checkpoint, context SHA-256
+`5db2b3691eb1bba7b4eecc7406152d58c20a8081c0703302404d30f06585b704`;
+no creation or injection was repeated and no model turn was started by that
+creation attempt. Failed evidence remains retained; the verification helper
+now checks exact session identity and raw user checkpoint storage instead.
+
+Protected deployment preimages are retained under
+`C:\ProgramData\KhadangRouter\release-5270c60967fa4c8bb426a68279afb0be`.
+The migration used a consistent SQLite snapshot and verified that all existing
+LG binding and unrelated ledger data remained unchanged. Both pre-deployment
+and installed Windows fixture runs passed **790 checks**. The exact new code
+and policy passed a fresh production SYSTEM-to-limited-owner probe, including
+UID 1000 execution against the still-running paired daemon PID 2141, generation
+229385, and actual protected-credential denial. No generic probe inferred
+Claude acceptance or generated a model prompt. Current deployed hashes:
+
+- Router: `f61b190c8c4d212d982ce576e2223f35314fc18884e08d70558a7662f959a7a1`.
+- Policy: `740cd20e8b688a7cc14f8faa574951f54f6c27c2d56df0b4f2d352a6f4a204e2`.
+- Archive: `7fc51635af416e8f71f83565fe52be8d2e8ec7af0d4734fb421863d0dacaf203`.
+
+Production activated at approximately `2026-10-04T02:13:43Z`; deterministic
+owner-ready startup supervision is enabled again. Real Telegram owner updates
+759322599/message 13599 and 759322600/message 13601 reached this exact PC
+thread, with two confirmed native turns and same-topic replies. The first
+reply confirms the handoff was loaded. Telegram response message IDs **13598
+and 13602 are distinct**, with confirmed edits and terminal Done; no held,
+unknown or pending response remained at the observed receipt. These are actual
+owner messages, not a synthetic deployment canary. A read-only receipt helper
+`pc-router/inspect-web-cutover.ps1` exposes only this route's acceptance metadata.
+
+Pouya then explicitly required immediate disconnection from Jamshid for every
+Khadang-connected topic. The controller removed only Web's Mac OpenClaw
+binding, added `enabled:false` for that exact topic (preventing default-agent
+fallback), stopped watcher `crw-c6111d2d6d`, and archived the old Mac native
+pointer. Configuration validation passed, a structural comparison confirmed
+all unrelated configuration was preserved, and the running gateway logged the
+hot reload at `2026-10-03T19:17:12-07:00`. Its Telegram channel reloaded normally;
+the shared Mac native daemon and other topic bindings were not restarted or
+removed. Private preimages are in
+`/Users/pouya/.openclaw/web-topic-cutover.7nQWLb`, with a protected PC archive.
+That archive is 4,285 bytes, SHA-256
+`1af94d158f90a86c430b8eb5b0b522a182e915de018724096a26ca6b4402b3f1`;
+source producer, SFTP, target archive reader and content verification all passed.
+The PC's ordinary-owner legacy session pointer now references the same new Web
+thread; its prior value is retained as a private backup.
+
+Remaining acceptance includes Web tool/steering/control/attachment and phone
+UI/restart checks, the other thirteen original-topic cutovers, independent
+Claude continuity, physical bench movement and Mac-independent recovery.
+The Mac is not erased and full migration is not complete.

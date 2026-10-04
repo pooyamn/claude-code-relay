@@ -2,7 +2,8 @@ param(
     [Parameter(Mandatory=$true)][string]$Archive,
     [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-fA-F]{64}$')][string]$ExpectedSha256,
     [ValidateSet('probe','canary','live')][string]$Mode = 'probe',
-    [switch]$OwnerFullAccess
+    [switch]$OwnerFullAccess,
+    [switch]$WebCutover
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -46,6 +47,11 @@ if ($startup) {
 }
 Stop-Service KhadangRouter
 (Get-Service KhadangRouter).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(20))
+if ($WebCutover) {
+    # Fixed, reviewed migration of the already-created Web checkpoint; never
+    # create a model session or alter the existing LG route in the installer.
+    & (Join-Path $PSScriptRoot 'stage-web-topic.ps1') -RecoveryDirectory $release
+}
 if ($OwnerFullAccess) {
     # Explicit owner authorization only; never extend this to employee roles.
     $policyPath = Join-Path $root 'config.json'

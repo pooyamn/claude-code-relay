@@ -1,6 +1,7 @@
 param(
  [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-f]{32}$')][string]$RunId,
- [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-fA-F]{64}$')][string]$ExpectedSha256
+ [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-fA-F]{64}$')][string]$ExpectedSha256,
+ [ValidateSet('probe','create-web')][string]$Mode='probe'
 )
 # Stage only reviewed diagnostic bytes. Preserve live router/bindings/remotes.
 # SYSTEM owns the deterministic launcher; all native execution is limited pou.
@@ -81,7 +82,8 @@ if(-not (Test-Path (Join-Path $bin 'coreclr.dll')) -or
  -not ($runtime.runtimeOptions.includedFrameworks|Where-Object name -eq 'Microsoft.NETCore.App')){throw 'Self-contained Windows runtime required'}
 & $exe --self-test
 if($LASTEXITCODE -ne 0){throw 'Fixed observation method guards failed'}
-$action=New-ScheduledTaskAction -Execute $exe -Argument ('--run '+$RunId) -WorkingDirectory $bin
+$flag=if($Mode -eq 'create-web'){'--create-web'}else{'--run'}
+$action=New-ScheduledTaskAction -Execute $exe -Argument ($flag+' '+$RunId) -WorkingDirectory $bin
 $principal=New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
 $settings=New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 2) -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 Register-ScheduledTask -TaskName $task -Action $action -Principal $principal -Settings $settings|Out-Null
@@ -94,4 +96,4 @@ if($security.Owner.Value -ne $admin.Value -or -not ($security.ControlFlags -band
 foreach($ace in $security.DiscretionaryAcl){if($ace.SecurityIdentifier.Value -notin @($admin.Value,$system.Value)){throw 'Untrusted task grant'}}
 Start-ScheduledTask -TaskName $task
 [Console]::WriteLine((@{task=$task;state=[string](Get-ScheduledTask -TaskName $task).State;
- result=(Join-Path $release 'proof\result.json');oneShot=$true;productionChanged=$false}|ConvertTo-Json -Compress))
+ result=(Join-Path $release 'proof\result.json');oneShot=$true;productionChanged=$false;mode=$Mode}|ConvertTo-Json -Compress))

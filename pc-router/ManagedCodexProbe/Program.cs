@@ -7,7 +7,9 @@ using KhadangRouter;
 
 // Fixed, one-shot proof of the candidate's REAL SYSTEM -> limited Windows owner
 // -> UID 1000 connector to the already-running, paired native daemon. No bot
-// credential decryption, Telegram poll, thread resume/start, prompt or lifecycle.
+// credential decryption, Telegram poll, prompt or daemon lifecycle. --create-web
+// is a separately selected, one-shot migration action: create a fresh thread
+// with the reviewed handoff, but never start a model or repeat a prior attempt.
 if (args.SequenceEqual(new[] { "--self-test" }))
 {
     foreach (var method in new[] { "remoteControl/status/read", "remoteControl/client/list", "thread/loaded/list" }) Allowed(method);
@@ -16,10 +18,17 @@ if (args.SequenceEqual(new[] { "--self-test" }))
         try { Allowed(method); throw new InvalidOperationException("Unsafe observation accepted"); }
         catch (InvalidDataException) { }
     }
+    const string saved = "{\"type\":\"session_meta\",\"payload\":{\"id\":\"test-thread\"}}\n" +
+        "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"exact checkpoint\"}]}}";
+    if (!CheckpointPersisted(saved, "test-thread", "exact checkpoint") || CheckpointPersisted(saved, "test-thread", "checkpoint") ||
+        CheckpointPersisted(saved, "other-thread", "exact checkpoint") ||
+        CheckpointPersisted(saved.Replace("\"user\"", "\"assistant\""), "test-thread", "exact checkpoint"))
+        throw new InvalidOperationException("Exact raw checkpoint verification failed");
     Console.WriteLine("Managed connector observation guards passed; no native activity.");
     return;
 }
 string? root = null;
+var createWeb = args.Length == 2 && args[0] == "--create-web";
 var report = new Dictionary<string, object?> { ["complete"] = false, ["modelsStarted"] = false,
     ["productionChanged"] = false, ["existingConversationsResumed"] = false, ["telegramPolling"] = false };
 try
@@ -27,7 +36,7 @@ try
     if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
     using var identity = WindowsIdentity.GetCurrent();
     if (Environment.MachineName != "DESKTOP-8SO9HDK" || !identity.IsSystem ||
-        Process.GetCurrentProcess().SessionId != 0 || args.Length != 2 || args[0] != "--run" || !Guid.TryParseExact(args[1], "N", out var run))
+        Process.GetCurrentProcess().SessionId != 0 || args.Length != 2 || args[0] is not ("--run" or "--create-web") || !Guid.TryParseExact(args[1], "N", out var run))
         throw new InvalidDataException("Exact fixed SYSTEM diagnostic task required; native remains ordinary owner");
     root = LinuxCodexRuntime.ProtectedRoot + "\\codex-connector-" + run.ToString("N");
     var state = Path.Combine(root, "proof");
@@ -62,6 +71,58 @@ try
     report["routerSha256"] = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(typeof(Router).Assembly.Location)));
     report["policySha256"] = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(config)));
     if (ledger.Unknown != 0) throw new InvalidDataException("Unexpected uncertain observation outcome");
+    if (createWeb)
+    {
+        // A pre-creation observation of zero cannot describe later mutations
+        // if an exception prevents their final reconciliation.
+        report["unknownEffects"] = null;
+        const string expectedHandoff = "d6fe808e29a4ea5854eada96de66c7469ed8e5028c736304f7c03ebe51bda1dd";
+        var file = binding.Workspace + "/PC-MIGRATION-HANDOFF.md";
+        var checkpoint = await rpc.Call("command/exec", new { command = new[] { "/usr/bin/cat", file },
+            cwd = binding.Workspace, sandboxPolicy = new { type = "dangerFullAccess" }, timeoutMs = 10000 }, stop.Token);
+        var handoff = checkpoint.GetProperty("stdout").GetString()!;
+        if (checkpoint.GetProperty("exitCode").GetInt32() != 0 ||
+            Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(handoff))).ToLowerInvariant() != expectedHandoff)
+            throw new InvalidDataException("Web handoff bytes differ from reviewed source; no new thread");
+        var context = "[Migration checkpoint; not a request to start work.] Pouya approved a fresh PC session for this existing topic. " +
+            "Load the following reviewed handoff. Do not replay previous actions or start a goal; wait for the next owner input. " +
+            "Handoff SHA-256: " + expectedHandoff + "\n\n" + handoff;
+        var started = await rpc.Call("thread/start", new { cwd = binding.Workspace, model = "gpt-6-astra",
+            approvalPolicy = policy.NativeApprovalPolicy, approvalsReviewer = "user", permissions = policy.NativePermissionProfile,
+            allowProviderModelFallback = false }, stop.Token);
+        var thread = started.GetProperty("thread").GetProperty("id").GetString()!;
+        if (!Guid.TryParseExact(thread, "D", out _) || thread == "01a0ee66-b1e1-75b1-8a15-eb2e5175f6dd" ||
+            started.GetProperty("cwd").GetString() != binding.Workspace || started.GetProperty("model").GetString() != "gpt-6-astra")
+            throw new InvalidDataException("Created native session does not match the explicit fresh Web migration");
+        // Save the new identity BEFORE the next effect. A partial attempt is
+        // retained for reconciliation, never replaced with another fresh thread.
+        var migrated = new Binding(-1003550185469, 8660, "Web · PC", binding.Workspace, thread, "codex", "linux");
+        File.WriteAllText(Path.Combine(state, "created-native-thread.json"), JsonSerializer.Serialize(new {
+            binding = migrated, model = "gpt-6-astra", handoffSha256 = expectedHandoff, at = DateTimeOffset.UtcNow }));
+        report["newPcBinding"] = migrated;
+        await rpc.Call("thread/inject_items", new { threadId = thread, items = new[] { new { type = "message", role = "user",
+            content = new[] { new { type = "input_text", text = context } } } } }, stop.Token);
+        await rpc.Call("thread/name/set", new { threadId = thread, name = "Web (topic 8660) · PC" }, stop.Token);
+        var persisted = await rpc.Call("thread/read", new { threadId = thread, includeTurns = true }, stop.Token, effect: false);
+        var storedThread = persisted.GetProperty("thread");
+        var path = storedThread.GetProperty("path").GetString()!;
+        if (storedThread.GetProperty("id").GetString() != thread ||
+            !path.StartsWith("/Users/pouya/.codex/sessions/", StringComparison.Ordinal) ||
+            !path.EndsWith("-" + thread + ".jsonl", StringComparison.Ordinal) || path.Contains("..") || path.Any(char.IsControl))
+            throw new InvalidDataException("Exact new session storage identity did not persist; preserve this attempt");
+        // inject_items persists raw Responses items without making a turn. In
+        // Codex 0.160.0 thread/read's normal turns omit those raw-only items.
+        // Verify the exact user checkpoint in the exact native rollout instead
+        // of rejecting a successful injection or replaying it into a new turn.
+        var raw = await rpc.Call("command/exec", new { command = new[] { "/usr/bin/cat", path },
+            cwd = binding.Workspace, sandboxPolicy = new { type = "dangerFullAccess" }, timeoutMs = 10000 }, stop.Token);
+        if (raw.GetProperty("exitCode").GetInt32() != 0 || !CheckpointPersisted(raw.GetProperty("stdout").GetString()!, thread, context))
+            throw new InvalidDataException("Exact raw session checkpoint did not persist; preserve this attempt");
+        if (ledger.Unknown != 0) throw new InvalidDataException("Uncertain migration outcome; do not replay");
+        report["unknownEffects"] = 0;
+        report["freshSessionCreated"] = true; report["handoffPersistedAndReadBack"] = true;
+        report["handoffSha256"] = expectedHandoff;
+    }
     report["complete"] = true;
 }
 catch (Exception error)
@@ -86,4 +147,25 @@ static void Allowed(string method)
 static Task<JsonElement> Read(NativeRpc rpc, string method, CancellationToken stop, object? parameters = null)
 {
     Allowed(method); return rpc.Call(method, parameters ?? new { }, stop, effect: false);
+}
+static bool CheckpointPersisted(string jsonl, string thread, string expected)
+{
+    if (jsonl.Length > 2_000_000) throw new InvalidDataException("New checkpoint rollout exceeds bound");
+    bool identity = false, checkpoint = false;
+    foreach (var line in jsonl.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+    {
+        using var doc = JsonDocument.Parse(line); var item = doc.RootElement;
+        var kind = item.GetProperty("type").GetString(); var payload = item.GetProperty("payload");
+        if (kind == "session_meta")
+        {
+            if (payload.GetProperty("id").GetString() != thread) return false;
+            identity = true;
+        }
+        if (kind != "response_item" || !payload.TryGetProperty("type", out var type) || type.GetString() != "message" ||
+            !payload.TryGetProperty("role", out var role) || role.GetString() != "user" ||
+            !payload.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Array) continue;
+        checkpoint |= content.EnumerateArray().Any(part => part.TryGetProperty("type", out var contentType) &&
+            contentType.GetString() == "input_text" && part.TryGetProperty("text", out var text) && text.GetString() == expected);
+    }
+    return identity && checkpoint;
 }
