@@ -3228,3 +3228,64 @@ off-machine restore acceptance also remain required. No Mac/VM erasure or
 source service retirement occurred. Migration stays active and incomplete.
 Native account-scoped read-only quota at21:31:03Z showed7% weekly remaining,
 above the owner's5% pause gate.
+
+### Original service-code partial preservation and exact access gap
+
+The preceding continuation preserved system configurations and identified the
+live database gap. Fresh read-only plist inspection traced13 physical and3 VM
+system launch entries to installed executable paths; all observed executable
+references were present/readable. This did not execute those programs or read
+their configured environment secrets. The physical server reports PostgreSQL
+16.3. Its `data` and private `Library` directories remain postgres-owned
+mode0700; neither was selected for a raw live-file archive.
+
+A new exact physical-service-code profile preserves the18 other observed
+PostgreSQL installation entries, PrivilegedHelperTools, both OpenVPN client
+frameworks and `/usr/local/bin` (22 literal cohorts). It is preservation of
+original Darwin bytes, not installation/activation as a Windows replacement.
+All44 actual Windows capture fixtures passed. The sealed helper package is
+`C:\ProgramData\OracovaMigration\stream-helper-c6f5546159a84e91bc8b4e52cef291e0`;
+executed helper SHA256:
+`59dd3b991e583b52a00b4f09d7be978140eb34ae1ec28d237b6c894cc46726ff`.
+
+Run `745bda94e22b4a72a1a25a144b984579`, `physical-service-code.tar.gz`, completed
+at21:35:17Z with435159040 compressed bytes and SHA256
+`a7feb4b450a2c0839cf209c8ea2ae37759127b228f7422874b64f5c7fa604b50`.
+Source/PC digests matched and the archive reader exited0, but producer/transport
+exited1 with98 warning bytes. The original receipt remains `seedAccepted:false`;
+no retry, overwrite, warning suppression or complete-cohort claim occurred.
+
+The diagnostic identifies an unreadable `installbuilder` file. A fresh source
+metadata check resolved it to the PostgreSQL uninstaller's Resources directory:
+root-owned mode0700,1186503 bytes. It is absent from the saved archive and still
+needs authorized source administrator access. The original protected producer
+diagnostic is retained; a separate read-only metadata inspection resolved its
+basename to the source path, not a capture retry. No permission, owner, key or
+credential was changed to bypass this boundary.
+
+Independent saved-content verification finished21:37:05Z:29216 entries,
+19961 regular files,1118886059 logical file bytes,100 symlinks,0 hardlinks.
+Every captured regular file was read and hashed without filesystem extraction
+or following links. All selected cohort roots were present. This proves captured
+content readability, not that every source file was captured: the private
+report explicitly records `cohortComplete:false` and `seedAccepted:false`.
+The PostgreSQL server and both OpenVPN executable hashes matched fresh source
+hashes independently. Member report SHA256:
+`a7667d81aa191f230741ea14cf71334dc3ea6c5e1d8365e5226f5850d07fcdf2`.
+Verifier SHA256:
+`2755eb9a868583cfe08fb1e2f5f6391a3d92f2420a20a8bba22646ae627752aa`.
+
+At21:37:46Z all8 evidence/helper files passed protected Admin/SYSTEM-only ACL
+and Administrators-ownership checks. Ordinary UID1000 opens of archive and
+member report were denied before any byte read. Khadang remained Stopped;
+the Administrator SSH session closed cleanly. Five metadata-inventory and two
+structural digest regression tests passed, separate from real source evidence.
+
+The incomplete installation archive is retained as useful preservation, not
+accepted recovery. Database export/PC restore, protected postgres Library and
+uninstaller file, personal accounts, Applications, final source fences/deltas,
+checked project/topic activation, guarded router recovery approval, physical
+bench validation and encrypted independent off-machine restore remain open.
+No source service was stopped and nothing was erased. The complete migration
+objective remains active and unproven. Weekly quota was7% remaining at21:37:47Z,
+above the owner's5% pause threshold.

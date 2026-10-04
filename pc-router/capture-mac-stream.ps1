@@ -1,5 +1,5 @@
 param(
- [Parameter(Mandatory=$true)][ValidateSet('vm-personal','vm-library','vm-extra-work','vm-owner-tools','vm-owner-tools-manifest','vm-package-caches','vm-editor-cache','vm-darwin-cad-tools','vm-codex-sqlite','vm-ai-hil-kicad-dependency','vm-dirty-work-manifest','physical-projects','physical-bench-home','physical-shared','vm-shared','physical-service-config','vm-service-config')][string]$Profile,
+ [Parameter(Mandatory=$true)][ValidateSet('vm-personal','vm-library','vm-extra-work','vm-owner-tools','vm-owner-tools-manifest','vm-package-caches','vm-editor-cache','vm-darwin-cad-tools','vm-codex-sqlite','vm-ai-hil-kicad-dependency','vm-dirty-work-manifest','physical-projects','physical-bench-home','physical-shared','vm-shared','physical-service-config','vm-service-config','physical-service-code')][string]$Profile,
  [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-f]{32}$')][string]$RunId,
  [ValidatePattern('^[0-9a-f]{64}$')][string]$SqliteProducerSha256,
  [ValidatePattern('^[0-9a-f]{64}$')][string]$OwnerToolsProducerSha256,
@@ -67,6 +67,16 @@ function Get-MigrationStreamSource([string]$Name){
   # This does not grant database data, root account or whole-machine capture.
   'physical-service-config' {return @{host='bench-mac';user='oracova';root='/';members=@('Library/LaunchAgents','Library/LaunchDaemons','opt/homebrew/etc')}}
   'vm-service-config' {return @{host='mac';user='pouya';root='/';members=@('Library/LaunchAgents','Library/LaunchDaemons','opt/homebrew/etc')}}
+  # Original Darwin service/client code and local tools, not an active PC
+  # replacement. PostgreSQL's protected data and Library remain open gaps.
+  'physical-service-code' {return @{host='bench-mac';user='oracova';root='/';members=@(
+   'Library/PostgreSQL/16/StackBuilder_3rd_party_licenses.txt','Library/PostgreSQL/16/commandlinetools_3rd_party_licenses.txt',
+   'Library/PostgreSQL/16/bin','Library/PostgreSQL/16/debug_symbols','Library/PostgreSQL/16/doc','Library/PostgreSQL/16/include',
+   'Library/PostgreSQL/16/installation_summary.log','Library/PostgreSQL/16/installer','Library/PostgreSQL/16/lib',
+   'Library/PostgreSQL/16/pgAdmin 4.app','Library/PostgreSQL/16/pgAdmin_3rd_party_licenses.txt','Library/PostgreSQL/16/pgAdmin_license.txt',
+   'Library/PostgreSQL/16/pg_env.sh','Library/PostgreSQL/16/scripts','Library/PostgreSQL/16/server_license.txt','Library/PostgreSQL/16/share',
+   'Library/PostgreSQL/16/stackbuilder.app','Library/PostgreSQL/16/uninstall-postgresql.app',
+   'Library/PrivilegedHelperTools','Library/Frameworks/OpenVPNConnect.framework','Library/Frameworks/OVPNHelper.framework','usr/local/bin')}}
   default {throw 'Only explicitly selected migration source profiles admitted'}
  }
 }

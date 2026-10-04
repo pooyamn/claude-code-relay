@@ -23,7 +23,7 @@ try{
   Assert ($out.Length -eq 0) 'Byte bound cannot silently truncate as success'
  }finally{$bounded.Dispose();$out.Dispose()}
  try{$f=New-MigrationStreamFile (Join-Path $root 'fixture.bin');$f.Dispose();throw 'accepted'}catch{Assert ($_.Exception.Message -match 'exists') 'Existing archive never overwritten'}
- foreach($profile in @('vm-personal','vm-library','vm-extra-work','vm-owner-tools','vm-owner-tools-manifest','vm-package-caches','vm-editor-cache','vm-darwin-cad-tools','vm-codex-sqlite','vm-ai-hil-kicad-dependency','physical-projects','physical-bench-home','physical-shared','vm-shared','physical-service-config','vm-service-config')){
+ foreach($profile in @('vm-personal','vm-library','vm-extra-work','vm-owner-tools','vm-owner-tools-manifest','vm-package-caches','vm-editor-cache','vm-darwin-cad-tools','vm-codex-sqlite','vm-ai-hil-kicad-dependency','physical-projects','physical-bench-home','physical-shared','vm-shared','physical-service-config','vm-service-config','physical-service-code')){
   $source=Get-MigrationStreamSource $profile
   Assert ($source.host -in @('mac','bench-mac') -and $source.members.Count -gt 0) 'Explicit pinned source profiles only'
  }
@@ -49,6 +49,10 @@ try{
  $physicalConfig=Get-MigrationStreamSource 'physical-service-config';$vmConfig=Get-MigrationStreamSource 'vm-service-config'
  Assert ($physicalConfig.host -eq 'bench-mac' -and $physicalConfig.user -eq 'oracova' -and $physicalConfig.root -eq '/' -and ($physicalConfig.members -join '|') -ceq 'Library/LaunchAgents|Library/LaunchDaemons|opt/homebrew/etc') 'Physical system configuration has three exact cohorts, not database or arbitrary root authority'
  Assert ($vmConfig.host -eq 'mac' -and $vmConfig.user -eq 'pouya' -and $vmConfig.root -eq '/' -and ($vmConfig.members -join '|') -ceq 'Library/LaunchAgents|Library/LaunchDaemons|opt/homebrew/etc') 'VM system configuration uses its exact separate identity and same bounded cohorts'
+ $serviceCode=Get-MigrationStreamSource 'physical-service-code'
+ $expectedCode=@('StackBuilder_3rd_party_licenses.txt','commandlinetools_3rd_party_licenses.txt','bin','debug_symbols','doc','include','installation_summary.log','installer','lib','pgAdmin 4.app','pgAdmin_3rd_party_licenses.txt','pgAdmin_license.txt','pg_env.sh','scripts','server_license.txt','share','stackbuilder.app','uninstall-postgresql.app')|ForEach-Object{'Library/PostgreSQL/16/'+$_}
+ $expectedCode+=@('Library/PrivilegedHelperTools','Library/Frameworks/OpenVPNConnect.framework','Library/Frameworks/OVPNHelper.framework','usr/local/bin')
+ Assert ($serviceCode.host -eq 'bench-mac' -and $serviceCode.user -eq 'oracova' -and $serviceCode.root -eq '/' -and $serviceCode.members.Count -eq 22 -and ($serviceCode.members -join '|') -ceq ($expectedCode -join '|')) 'Original installed service code uses exactly observed literal cohorts; no live database, private Library or whole installation grant'
  try{Get-MigrationStreamSource '../';throw 'accepted'}catch{Assert ($_.Exception.Message -match 'explicitly selected') 'No arbitrary source/root injection'}
  Assert ((ConvertTo-MigrationNativeArgument 'a"b\') -eq '"a\"b\\"') 'Embedded quote and final backslash literal'
  Assert ((ConvertTo-MigrationNativeArgument 'literal$(name);&') -eq '"literal$(name);&"') 'Arguments do not use a local shell'
