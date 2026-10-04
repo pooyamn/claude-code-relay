@@ -48,6 +48,14 @@ public static class BubbleBoundaryTests
         await Flush(); await Flush();
         Check(bot.Sends == 4 && bot.Messages[903].Contains("THIRD-FINAL") && bot.Messages[904].Contains("FOURTH-FINAL"), "Two turns completed between editor ticks both retain a new final message");
         Check(bot.Messages.Values.All(t => t.Length <= 3900), "Every per-response bubble stays within Telegram bounds");
+        Check(bot.BubbleSends == bot.Sends && bot.BubbleEdits > 0, "Real rolling editor uses formatted send and amend paths");
+        var response = (ResponseMessage)sessionType.GetField("Response")!.GetValue(session)!;
+        response.LastRendered = ""; // Restart restores the message receipt, not this in-memory rendering cache.
+        sessionType.GetField("Dirty")!.SetValue(session, true);
+        var edits = bot.BubbleEdits;
+        await Flush();
+        Check(bot.Sends == 4 && bot.BubbleEdits == edits + 1 && response.Message == 904,
+            "Restart restyles a retained bubble in place without a new message or model action");
         Start("unknown"); bot.UnknownSend = true; await Flush();
         Finish("unknown", "UNKNOWN-FINAL"); Start("after-unknown"); Finish("after-unknown", "NOT-REPLAYED"); await Flush();
         Check(bot.Sends == 5 && !bot.Messages.Values.Any(t => t.Contains("NOT-REPLAYED")), "Uncertain send is not replayed or bypassed by a later response");
@@ -69,6 +77,7 @@ public static class BubbleBoundaryTests
     private sealed class FixtureBot : IBot
     {
         public int Sends;
+        public int BubbleSends, BubbleEdits;
         public bool UnknownSend;
         public Action? BeforeSend;
         public readonly Dictionary<int, string> Messages = new();
@@ -82,5 +91,9 @@ public static class BubbleBoundaryTests
             return Task.FromResult(Json(new { message_id = id }));
         }
         public Task Edit(long chat, int message, string text, CancellationToken stop) { Messages[message] = text; return Task.CompletedTask; }
+        public Task<JsonElement> SendBubble(long chat, int topic, string text, CancellationToken stop)
+        { BubbleSends++; return Send(chat, topic, text, stop); }
+        public Task EditBubble(long chat, int message, string text, CancellationToken stop)
+        { BubbleEdits++; return Edit(chat, message, text, stop); }
     }
 }

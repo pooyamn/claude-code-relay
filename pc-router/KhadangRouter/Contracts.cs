@@ -14,6 +14,8 @@ public interface IBot
     Task<JsonElement> Call(string method, object parameters, CancellationToken stop, bool effect = false);
     Task<JsonElement> Send(long chat, int topic, string text, CancellationToken stop);
     Task Edit(long chat, int message, string text, CancellationToken stop);
+    Task<JsonElement> SendBubble(long chat, int topic, string text, CancellationToken stop) => Send(chat, topic, text, stop);
+    Task EditBubble(long chat, int message, string text, CancellationToken stop) => Edit(chat, message, text, stop);
     Task Download(AttachmentReference file, Stream target, CancellationToken stop) =>
         throw new NotSupportedException("This transport has no attachment download implementation");
 }

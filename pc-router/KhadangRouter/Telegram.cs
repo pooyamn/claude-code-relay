@@ -96,6 +96,52 @@ public sealed class Telegram : IBot, IDisposable
             link_preview_options = new { is_disabled = true } }, stop, effect: true); }
         finally { outbound.Release(); }
     }
+    // Format only the rolling native bubble. Controls and questions stay plain.
+    // Explicit entities keep literal backticks/HTML safe and consume no text budget.
+    internal static Dictionary<string, object> BubbleSendParameters(long chat, int topic, string text)
+    {
+        var parameters = SendParameters(chat, topic, text);
+        parameters["entities"] = BubbleEntities(text);
+        return parameters;
+    }
+    internal static Dictionary<string, object> BubbleEditParameters(long chat, int message, string text) => new() {
+        ["chat_id"] = chat, ["message_id"] = message, ["text"] = text,
+        ["entities"] = BubbleEntities(text), ["link_preview_options"] = new { is_disabled = true }
+    };
+    internal sealed record BubbleEntity(string type, int offset, int length);
+    internal static BubbleEntity[] BubbleEntities(string text)
+    {
+        var entities = new List<BubbleEntity>();
+        int block = 0, line = 0;
+        while (line < text.Length)
+        {
+            var end = text.IndexOf('\n', line);
+            if (end < 0) end = text.Length;
+            // Remote Control links must remain outside a pre entity to be tappable.
+            if (text.AsSpan(line, end - line).StartsWith("Claude app: https://claude.ai/code/", StringComparison.Ordinal))
+            {
+                if (line > block) entities.Add(new("pre", block, line - block));
+                var url = line + "Claude app: ".Length;
+                entities.Add(new("url", url, end - url));
+                block = Math.Min(end + 1, text.Length);
+            }
+            line = end < text.Length ? end + 1 : text.Length;
+        }
+        if (block < text.Length) entities.Add(new("pre", block, text.Length - block));
+        return entities.ToArray(); // .NET indices and Telegram offsets are both UTF-16.
+    }
+    public async Task<JsonElement> SendBubble(long chat, int topic, string text, CancellationToken stop)
+    {
+        await outbound.WaitAsync(stop);
+        try { return await Call("sendMessage", BubbleSendParameters(chat, topic, text), stop, effect: true); }
+        finally { outbound.Release(); }
+    }
+    public async Task EditBubble(long chat, int message, string text, CancellationToken stop)
+    {
+        await outbound.WaitAsync(stop);
+        try { await Call("editMessageText", BubbleEditParameters(chat, message, text), stop, effect: true); }
+        finally { outbound.Release(); }
+    }
     public static string DownloadPath(JsonElement result, AttachmentReference file)
     {
         if (result.ValueKind != JsonValueKind.Object) throw new AttachmentFailure("Malformed Telegram file metadata");

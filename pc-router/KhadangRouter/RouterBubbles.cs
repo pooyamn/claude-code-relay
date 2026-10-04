@@ -64,10 +64,10 @@ public sealed partial class Router
                 if (message == null)
                 {
                     lock (session.Gate) { response.SendUnknown = true; Persist(session); }
-                    var sent = await telegram.Send(session.Binding.Chat, session.Binding.Topic, text, stop);
+                    var sent = await telegram.SendBubble(session.Binding.Chat, session.Binding.Topic, text, stop);
                     lock (session.Gate) { response.Message = sent.GetProperty("message_id").GetInt32(); response.SendUnknown = false; Persist(session); }
                 }
-                else await telegram.Edit(session.Binding.Chat, message.Value, text, stop);
+                else await telegram.EditBubble(session.Binding.Chat, message.Value, text, stop);
                 lock (session.Gate) { Delivered(); }
             }
             catch (TelegramFailure failure)
