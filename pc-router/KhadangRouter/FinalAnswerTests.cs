@@ -87,7 +87,7 @@ public static class FinalAnswerTests
         ClaudeEvent(new { type = "result", session_id = claudeBinding.ThreadId, subtype = "success", result = "**Claude final**" });
         await ClaudeFlush();
         Check(bot.Answers.Count == 1 && !bot.Progress.Contains("Done ("), "Claude result alone is not final delivery before native idle");
-        Check(bot.Progress.Split("Read board.kicad_pcb").Length == 2 && bot.Progress.Contains("✓ Read") && !bot.Progress.Contains("PRIVATE-TOOL"), "Claude tool start/assistant/result amend one descriptive row without raw output");
+        Check(bot.Progress.Split("Read(board.kicad_pcb)").Length == 2 && bot.Progress.Contains("⎿ Done") && !bot.Progress.Contains("PRIVATE-TOOL"), "Claude tool start/assistant/result amend one terminal-style row without raw file output");
         ClaudeEvent(new { type = "system", session_id = claudeBinding.ThreadId, subtype = "session_state_changed", state = "idle" });
         await ClaudeFlush(); await ClaudeFlush();
         Check(bot.Answers.Count == 2 && bot.Answers[^1].Text == "Claude final" && bot.Progress.Contains("Done ("), "Claude authoritative result delivered once, separately, after actual idle");

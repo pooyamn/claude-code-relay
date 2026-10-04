@@ -25,6 +25,9 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         public string ClaudeMessageId = "";
         public int ClaudeMessageSequence;
         public readonly Dictionary<string, JsonElement> ClaudeTools = new();
+        public readonly Dictionary<string, string> ClaudeToolStatuses = new();
+        public readonly Dictionary<string, string> ClaudeToolCompletions = new();
+        public readonly Dictionary<int, ClaudeToolInput> ClaudePartialTools = new();
         public string? ClaudeResultStatus;
         public readonly object Gate = new();
         public readonly SemaphoreSlim Dispatch = new(1, 1);

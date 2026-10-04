@@ -1,5 +1,36 @@
 # Native Telegram command menus
 
+## Claude terminal-like stream bubble
+
+Claude's PC bubble is reconstructed from its native `stream-json` events, not
+an interactive TUI or a transcript poll. Assistant text uses `⏺` rows; tools use
+`⏺ Tool(description)` with an indented `⎿` running/result row. Bash prefers the
+native description over a long command; file tools show a basename and search
+tools a short pattern. Incremental tool arguments update the same row.
+
+Consecutive tool activity shows the last three calls plus failures, with an
+explicit count of earlier calls. Plain Bash output is limited to two short
+lines. File/MCP contents and detected credential/structured output are not
+dumped into Telegram. This is deliberately a compact terminal-like view, not
+every byte or every screen feature of Claude Code.
+
+Text supplied in a block-start event is retained with subsequent deltas.
+Rolling trims retain the tail of a long text block instead of dropping the
+whole block when a tool arrives. Late authoritative tool metadata preserves
+completed status and its bounded result excerpt. Pending questions remain
+pinned. One silent code-block message is amended within each response, bounded
+to 3,900 UTF-16 characters including the bottom Working/goal footer; clean final
+answers remain separate notifying messages. Commands, native dispatch,
+approvals, model switching and exact session IDs are unchanged.
+
+Deployed October 4 as generation `27b1fd8a83f54356a0233a67b6aa7aef`:
+1,046 Linux and 1,049 sealed Windows checks passed. Fresh live verification at
+17:14:11 UTC confirmed all 12 original routes, seven Claude connections, restored
+startup supervision and zero unknown native/send actions. No synthetic model
+turn was used to demonstrate the view; the next owner response is the remaining
+phone-rendering acceptance. Existing frozen bubbles are not rebuilt from old
+transcripts. Details are in the migration record.
+
 ## Topic typing: receipt and active work
 
 The PC router now sends a topic-specific typing pulse immediately after a

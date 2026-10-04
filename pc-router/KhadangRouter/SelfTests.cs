@@ -65,6 +65,7 @@ public static class SelfTests
         using (var ledger = new Ledger(Path.Combine(root, "display-timeouts.db")))
             Check(ledger.Unknown == 3 && ledger.PresentationUnknown == 1, "Restart keeps uncertain native/send/dispatch holds and separate display audit");
         checks += NativeViewTests.Run();
+        checks += ClaudeTerminalTests.Run(root, policy);
         checks += NativeChannelTests.Run(root).GetAwaiter().GetResult();
         checks += LinuxCodexRuntimeTests.Run(policy).GetAwaiter().GetResult();
         checks += LinuxClaudeRuntimeTests.Run(policy, root).GetAwaiter().GetResult();

@@ -170,10 +170,28 @@ public sealed record Binding(long Chat, int Topic, string Name, string Workspace
 public sealed class RollingBubble
 {
     private readonly object gate = new();
-    private sealed record Entry(string? Id, string Text);
+    private sealed record Entry(string? Id, string Text, bool Important = false);
     private readonly List<Entry> entries = [];
-    public string Tail { get { lock (gate) return Body(); } }
+    public string Tail { get { lock (gate) return Display(entries); } }
     private string Body() => string.Join("\n\n", entries.Select(e => e.Text));
+    private static string Display(IEnumerable<Entry> values)
+    {
+        var rows = values.ToArray(); var output = new List<string>();
+        for (var index = 0; index < rows.Length; index++)
+        {
+            var row = rows[index];
+            if (row.Id?.StartsWith("ctool:", StringComparison.Ordinal) ?? false)
+            {
+                var tools = new List<Entry> { row };
+                while (index + 1 < rows.Length && (rows[index + 1].Id?.StartsWith("ctool:", StringComparison.Ordinal) ?? false)) tools.Add(rows[++index]);
+                var shown = tools.Where((entry, position) => entry.Important || position >= tools.Count - 3).ToArray();
+                if (tools.Count > shown.Length) output.Add("⏺ … " + (tools.Count - shown.Length) + " earlier tool calls");
+                output.AddRange(shown.Select(entry => entry.Text));
+            }
+            else output.Add((row.Id?.StartsWith("cagent:", StringComparison.Ordinal) ?? false) ? "⏺ " + row.Text.TrimStart() : row.Text);
+        }
+        return string.Join("\n\n", output);
+    }
     public void Append(string text)
     {
         lock (gate)
@@ -182,13 +200,13 @@ public sealed class RollingBubble
             entries.Add(new(null, NativeGoal.Redact(text))); Trim();
         }
     }
-    public void Upsert(string id, string text, bool delta = false)
+    public void Upsert(string id, string text, bool delta = false, bool important = false)
     {
         lock (gate)
         {
             var index = entries.FindIndex(e => e.Id == id);
             var value = NativeGoal.Redact(delta && index >= 0 ? entries[index].Text + text : text);
-            if (index < 0) entries.Add(new(id, value)); else entries[index] = new(id, value);
+            if (index < 0) entries.Add(new(id, value, important)); else entries[index] = new(id, value, important || entries[index].Important);
             Trim();
         }
     }
@@ -198,10 +216,24 @@ public sealed class RollingBubble
     }
     private void Trim()
     {
-        while (entries.Count > 1 && Body().Length > 7000)
+        // Bound retained raw tool history independently of the compact view.
+        // Tool spam must not evict recent assistant text before it is rendered.
+        while (Body().Length > 30000)
+        {
+            var tool = entries.FindIndex(e => (e.Id?.StartsWith("ctool:", StringComparison.Ordinal) ?? false) && !e.Important);
+            if (tool < 0) break;
+            entries.RemoveAt(tool);
+        }
+        while (entries.Count > 1 && Display(entries).Length > 7000)
         {
             var index = entries.FindIndex(e => !(e.Id?.StartsWith("question:", StringComparison.Ordinal) ?? false));
             if (index < 0) index = 0;
+            var excess = Display(entries).Length - 7000;
+            if (entries[index].Text.Length > excess + 80)
+            {
+                entries[index] = entries[index] with { Text = LineTail(entries[index].Text, entries[index].Text.Length - excess - 4) };
+                continue;
+            }
             entries.RemoveAt(index);
         }
         if (entries.Count == 1 && entries[0].Text.Length > 7000)
@@ -216,11 +248,11 @@ public sealed class RollingBubble
             var footer = "\n\n" + state + " (" + duration + ")";
             if (!string.IsNullOrWhiteSpace(goal)) footer += "\nGoal: " + SafeTail(goal, 160);
             var available = 3900 - footer.Length;
-            var body = NativeEventView.CompactLegacyBubble(Body().Trim());
+            var body = NativeEventView.CompactLegacyBubble(Display(entries).Trim());
             var pending = string.Join("\n\n", entries.Where(e => e.Id?.StartsWith("question:", StringComparison.Ordinal) ?? false).Select(e => e.Text));
             if (pending.Length > 0)
             {
-                var activity = string.Join("\n\n", entries.Where(e => !(e.Id?.StartsWith("question:", StringComparison.Ordinal) ?? false)).Select(e => e.Text)).Trim();
+                var activity = Display(entries.Where(e => !(e.Id?.StartsWith("question:", StringComparison.Ordinal) ?? false))).Trim();
                 // Pending owner action remains visible even as later tools roll.
                 var question = LineTail(pending, Math.Min(1800, available));
                 body = LineTail(activity, Math.Max(0, available - question.Length - 2)) + "\n\n" + question;

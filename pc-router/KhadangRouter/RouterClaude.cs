@@ -210,7 +210,7 @@ public sealed partial class Router
     private void StartClaudeWork(Session session)
     {
         session.ClaudeWorkRevision++; session.ClaudeHasDelta = false; session.ClaudeResultStatus = null;
-        session.ClaudeMessageId = ""; session.ClaudeTools.Clear();
+        session.ClaudeMessageId = ""; session.ClaudeTools.Clear(); session.ClaudeToolStatuses.Clear(); session.ClaudeToolCompletions.Clear(); session.ClaudePartialTools.Clear();
         BeginBubble(session); session.Elapsed.Restart(); session.Carried = TimeSpan.Zero;
         session.DeltaItems.Clear(); session.CompletedItems.Clear(); session.CompletedOrder.Clear();
         session.Busy = true; session.Status = "Working"; Touch(session);
@@ -289,8 +289,13 @@ public sealed partial class Router
                         foreach (var block in content.EnumerateArray())
                             if (block.TryGetProperty("type", out var blockType) && blockType.GetString() == "tool_result" &&
                                 block.TryGetProperty("tool_use_id", out var toolId) && session.ClaudeTools.TryGetValue(toolId.GetString()!, out var tool))
-                                session.Bubble.Upsert("tool:" + toolId.GetString(), NativeEventView.ClaudeTool(tool,
-                                    block.TryGetProperty("is_error", out var failed) && failed.ValueKind == JsonValueKind.True ? "failed" : "completed"));
+                            {
+                                var status = block.TryGetProperty("is_error", out var failed) && failed.ValueKind == JsonValueKind.True ? "failed" : "completed";
+                                session.ClaudeToolStatuses[toolId.GetString()!] = status;
+                                var completed = ClaudeTerminalView.Tool(tool, status, block);
+                                session.ClaudeToolCompletions[toolId.GetString()!] = completed;
+                                session.Bubble.Upsert("ctool:" + toolId.GetString(), completed, important: status == "failed");
+                            }
                     var preview = ClaudeInput.Preview(content);
                     if (preview.Length > 0) session.Bubble.Append("\n↪ " + preview + "\n");
                 }
@@ -300,6 +305,7 @@ public sealed partial class Router
                     if (e.GetProperty("type").GetString() == "message_start")
                     {
                         session.ClaudeHasDelta = false;
+                        session.ClaudePartialTools.Clear();
                         session.ClaudeMessageId = e.TryGetProperty("message", out var message) && message.TryGetProperty("id", out var messageId) ? messageId.GetString()! :
                             "stream-" + ++session.ClaudeMessageSequence;
                     }
@@ -307,10 +313,22 @@ public sealed partial class Router
                     if (e.GetProperty("type").GetString() == "content_block_delta" && e.TryGetProperty("delta", out var delta) &&
                         delta.TryGetProperty("type", out var deltaType) && deltaType.GetString() == "text_delta" &&
                         delta.TryGetProperty("text", out var text) && text.ValueKind == JsonValueKind.String)
-                    { session.ClaudeHasDelta = true; session.Bubble.Upsert("agent:" + session.ClaudeMessageId + ":" + index, text.GetString()!, delta: true); }
+                    { session.ClaudeHasDelta = true; session.Bubble.Upsert("cagent:" + session.ClaudeMessageId + ":" + index, text.GetString()!, delta: true); }
                     if (e.GetProperty("type").GetString() == "content_block_start" && e.TryGetProperty("content_block", out var block) &&
                         block.GetProperty("type").GetString() == "tool_use")
+                    {
+                        if (session.ClaudePartialTools.Count < 128) session.ClaudePartialTools[index] = new ClaudeToolInput(block);
                         DisplayClaudeTool(session, block);
+                    }
+                    if (e.GetProperty("type").GetString() == "content_block_start" && e.TryGetProperty("content_block", out var initialText) &&
+                        initialText.TryGetProperty("type", out var initialType) && initialType.GetString() == "text" &&
+                        initialText.TryGetProperty("text", out var initialValue) && initialValue.ValueKind == JsonValueKind.String && initialValue.GetString()!.Length > 0)
+                        session.Bubble.Upsert("cagent:" + session.ClaudeMessageId + ":" + index, initialValue.GetString()!);
+                    if (e.GetProperty("type").GetString() == "content_block_delta" && e.TryGetProperty("delta", out var inputDelta) &&
+                        inputDelta.TryGetProperty("type", out var inputType) && inputType.GetString() == "input_json_delta" &&
+                        inputDelta.TryGetProperty("partial_json", out var partial) && partial.ValueKind == JsonValueKind.String &&
+                        session.ClaudePartialTools.TryGetValue(index, out var pendingTool) && pendingTool.Append(partial.GetString()!) is { } updatedTool)
+                        DisplayClaudeTool(session, updatedTool);
                 }
                 else if (kind == "assistant")
                 {
@@ -325,7 +343,7 @@ public sealed partial class Router
                         if (block.GetProperty("type").GetString() == "text")
                         {
                             var text = block.GetProperty("text").GetString()!;
-                            session.Bubble.Upsert("agent:" + messageId + ":" + index, text); answer.Add(text);
+                            session.Bubble.Upsert("cagent:" + messageId + ":" + index, text); answer.Add(text);
                         }
                         else if (block.GetProperty("type").GetString() == "tool_use") DisplayClaudeTool(session, block);
                         index++;
@@ -335,7 +353,7 @@ public sealed partial class Router
                 else if (kind == "tool_progress")
                 {
                     var id = frame.TryGetProperty("tool_use_id", out var toolId) ? toolId.GetString()! : frame.GetProperty("tool_name").GetString()!;
-                    if (!session.ClaudeTools.ContainsKey(id)) session.Bubble.Upsert("tool:" + id, "⏳ " + NativeGoal.Literal(frame.GetProperty("tool_name").GetString()!));
+                    if (!session.ClaudeTools.ContainsKey(id)) session.Bubble.Upsert("ctool:" + id, "⏺ " + NativeGoal.Literal(frame.GetProperty("tool_name").GetString()!) + "\n  ⎿ Running…");
                 }
                 else if (kind == "result")
                 {
@@ -362,9 +380,10 @@ public sealed partial class Router
     private static void DisplayClaudeTool(Session session, JsonElement block)
     {
         var id = block.GetProperty("id").GetString()!;
-        if (session.ClaudeTools.Count >= 128 && !session.ClaudeTools.ContainsKey(id)) session.ClaudeTools.Clear();
+        if (session.ClaudeTools.Count >= 128 && !session.ClaudeTools.ContainsKey(id)) { session.ClaudeTools.Clear(); session.ClaudeToolStatuses.Clear(); session.ClaudeToolCompletions.Clear(); }
         session.ClaudeTools[id] = block.Clone();
-        session.Bubble.Upsert("tool:" + id, NativeEventView.ClaudeTool(block));
+        var status = session.ClaudeToolStatuses.GetValueOrDefault(id, "started");
+        session.Bubble.Upsert("ctool:" + id, session.ClaudeToolCompletions.GetValueOrDefault(id) ?? ClaudeTerminalView.Tool(block, status), important: status == "failed");
     }
     private static bool RememberClaudeDisplay(Session session, string id)
     {

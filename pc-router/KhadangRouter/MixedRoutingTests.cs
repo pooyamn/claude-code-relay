@@ -212,7 +212,7 @@ public static class MixedRoutingTests
                     message = new { content = new[] { new { type = "thinking", thinking = "PRIVATE-THINKING" } } } });
                 claude.Emit(new { type = "result", session_id = Pin, subtype = "success" });
                 claude.Emit(new { type = "system", session_id = Pin, subtype = "session_state_changed", state = "idle" });
-                await Wait(() => bot.Edits.TryGetValue(bindings[2].Address, out var t) && t.Contains("Done (") && t.Contains("PHONE-OWNER") && t.Contains("⏳ Read"), stop.Token);
+                await Wait(() => bot.Edits.TryGetValue(bindings[2].Address, out var t) && t.Contains("Done (") && t.Contains("PHONE-OWNER") && t.Contains("⏺ Read"), stop.Token);
                 await Wait(() => bot.Sends >= 3, stop.Token); // The editor visits independent sessions; one topic's terminal edit is not all-topic delivery.
                 Check(bot.Sends >= 3 && bot.MaxPolls == 1 && bot.Edits.Values.All(t => t.Length <= 3900 && !t.Contains("FOREIGN-SOURCE") && !t.Contains("SUBAGENT-PRIVATE") && !t.Contains("PRIVATE-THINKING")),
                     "Each new native response gets a bounded bubble without foreign events, subagent text or thinking; sends=" + bot.Sends + ", polls=" + bot.MaxPolls +

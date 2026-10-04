@@ -2813,3 +2813,38 @@ writer/database fencing, protected account/Library access, checked handoffs for
 all projects, the remaining two topics, hardware relocation, outside-LAN cold-boot
 and secure sign-in acceptance, and encrypted off-machine clean restoration
 remain unresolved. The goal remains active and the Mac is not ready to erase.
+
+### Claude terminal-like stream bubble, October 4 at 10:14 AM PDT
+
+Owner requested the old terminal-like presentation reconstructed from the stream,
+not a TUI runtime switch. Generation `27b1fd8a83f54356a0233a67b6aa7aef` is live:
+initial block text and partial tool arguments are retained; completed tool
+excerpts survive late metadata; long narration is trimmed by tail rather than
+whole-block deletion. Consecutive tools compact to the last three plus failures,
+with an earlier-call count. Short descriptions/basenames replace verbose command
+and path dumps. Plain Bash excerpts have at most two short lines; private file/MCP
+results and detected credential/structured output are not mirrored. The silent
+rolling code-block, bottom timer, pinned questions and separate notifying clean
+final messages remain. Commands/native dispatch/approval authority are unchanged.
+
+All 1,046 Linux and 1,049 sealed Windows offline checks passed. Installed DLL
+SHA256 is `C4E43DBC313C44D9C33FBBA1F8C4F5F597DA7A952C39A4C80ADD2153BA006DFE`;
+policy SHA256 is `F353990AF7284352B30BC4FFDCC3C8B42C7197015F69545F0684968A4041CD59`.
+Protected release, preimages and SQLite snapshot remain under
+`C:\ProgramData\KhadangRouter\release-27b1fd8a83f54356a0233a67b6aa7aef`.
+The unchanged native connectors were copied verbatim, with seven fresh quiescent
+exact-ID history checkpoints. Fresh no-model OS/credential/code-denial proof was
+written at 17:11:36Z; unchanged Claude launch/tool-owner/continuity acceptance was
+explicitly reused. A fresh two-topic typing API proof passed at 17:12:22Z.
+
+Live verification at 17:14:11Z confirmed all 12 unchanged bindings, seven Claude
+connections, native PIDs 2141/21424, global unknown 0, retained presentation unknown
+1, existing owner/participant policy and restored startup supervision. No unknown
+native input/external effect was replayed. This is a stream reconstruction, not
+every byte of the interactive terminal. Frozen old bubbles are not reconstructed;
+the next owner response is the remaining phone-rendering check. Weekly quota was
+11% at 17:09:35Z, above the owner's 5% stop threshold. This UI task does not close
+the remaining migration, recovery or Mac-erasure gates.
+
+Independent exact-controller observation at 17:15:25Z confirmed its original turn
+and active goal were preserved, with the startup task Ready.
