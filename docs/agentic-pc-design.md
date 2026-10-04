@@ -11,6 +11,17 @@ preserved worktrees. Resuming old Mac session IDs is optional, not a migration
 gate. Record the new PC IDs for normal operation and recovery; this does not
 authorize silent fresh-session fallback after an uncertain failure.
 
+Current migration evidence, 2026-10-03 at 10:17 PM PDT: Khadang runs seven PC
+routes, including six of the fourteen original topics. All five Oracova PCBA
+topics are connected; eight original routes, bench relocation and independent
+remote recovery remain. Schematic Pipeline and Mimic Fast PCB passed actual
+native handoff/tool-owner and exact-ID continuity checks and have confirmed
+same-topic bubbles and Claude app enrollment. Router code and the paired Linux
+Codex daemon are unchanged. Phone round trips, unattended restart/checkpoint
+refresh and daily off-machine restoration are not yet accepted. Earlier dated
+milestones below retain their historical scope; the larger infrastructure is
+still deferred. [Latest migration record](mac-to-pc-migration.md#schematic-pipeline-and-mimic-fast-pcb-connected-october-3-at-10-17-pm-pdt).
+
 Status: v9, decisions in progress (2026-10-02). Incorporates Pouya's review decisions on local identities, relay update authorization, daily disaster recovery, tool-switch repair, evidence-based memory maintenance with passive inconsistency reporting, a builder in the first rollout with demand-driven management, a three-active-session cap with task-wide progress monitoring, subscription-aware pacing with a 10% owner reserve, evaluated GStack/GBrain integration, source-evaluated AX/Paperclip launch, ownership and continuity patterns, company-scoped human employees interacting with Khadang, and native Codex goal controls with a rolling-bubble indicator. Remaining review questions are listed in §15. These are target requirements, not claims that the live Mac relay already implements them. Owner: Pouya.
 Target: Windows PC, WSL2 Ubuntu 24.04. Agent roles run under separate local security identities with private homes and runtime state; the router runs as `relay`. Pouya remains the owner and uses one GitHub account. The existing Mac deployment remains a migration source.
 
@@ -638,7 +649,7 @@ Then measure, weekly: tasks completed per agent, manual interventions by Pouya (
 
 ## 15. Open items
 
-1. Build on the Mac VM and migrate, or directly on the Windows PC.
+1. Resolved 2026-10-03: execute migration on the Windows PC; defer the new infrastructure until existing topics and bench are moved and verified.
 2. Remaining review decisions: numerical task/delegation budgets and checkpoint deadlines (retain the initial watchdog for now: three active sessions, evidence-based progress monitoring across chains, and diagnosis after three completed handoffs without progress); independent build/test validation against the current merge target; version-pinned adapters and upgrade compatibility checks.
 3. Reconcile separate local role identities with subscription authentication and Codex daemon/remote-control topology before implementing the WSL launcher. Cross-role access to a common daemon is not an accepted identity boundary; preserve the existing Mac daemon during migration.
 4. Select the production full-system encryption format and an owner-controlled location for the off-PC recovery key/bootstrap instructions; then prove restoration without the original PC. PR 12's offline prototype uses native age public recipients so packaging needs no private recovery key, but §10 currently specifies AES-256/7z: the prototype does not approve or silently replace that format. Existing transcript backups remain unchanged. The daily recovery target and broad data coverage are already approved. [Prototype evidence and remaining gates](pr12-system-backup.md).

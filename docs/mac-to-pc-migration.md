@@ -19,8 +19,8 @@ is authorized until the exact target is resolved and verified copies exist.
 ## Current inventory
 
 The original OpenClaw configuration contained 14 bindings: eight topics in Ai
-Dispatch, five in Oracova, and the standalone Startup Ideas group. Three now
-route to the PC; eleven remain on the source. Keep their chat and topic IDs
+Dispatch, five in Oracova, and the standalone Startup Ideas group. Six now
+route to the PC; eight remain on the source. Keep their chat and topic IDs
 unchanged. The existing PC LG topic remains intact.
 
 | Project | Chat | Topic |
@@ -63,15 +63,17 @@ now also have a protected, checksum-verified PC archive. That archive is not an
 activated bench environment or a final checkpoint.
 
 The protected Windows Khadang service now routes the existing PC LG topic plus
-Web, Base board and Marginal Requests in their original forums. The personal
+Web, Base board, Marginal Requests, DUT, Schematic Pipeline and Mimic Fast PCB
+in their original forums. All five original Oracova PCBA topics are connected. The personal
 router supports full chat/topic addresses, an explicit whole-group route and
 distinct Windows Codex, Linux Codex and Claude paths. Linux Codex's exact
 Windows-to-WSL launcher passed acceptance against the connected, separately
 paired PC managed daemon and is now activated. Only Web has a genuine
 owner-message round trip verified so far; the new PCBA routes have exact native
-resume and confirmed connection notices. A standalone Claude client previously
-passed native input and reply acceptance, but live Claude topic routing remains
-pending and current Linux Claude subscription login needs renewal.
+resume and confirmed connection notices. Linux Claude subscription login is
+established; DUT and both lab topics have live native streams and Claude app
+enrollment. The lab topics passed actual handoff/tool-owner and exact-session
+continuity checks, not yet genuine owner phone-message round trips.
 Claude's pinned streaming control interface now also connects and disconnects
 authenticated native Remote Control on the PC through an explicit control
 request. A phone-message round trip and live Telegram steering remain unverified.
@@ -1528,3 +1530,71 @@ later restart remain to be accepted. Console-only owner selection and automatic
 checkpoint refresh on recovery remain separate outstanding mechanisms.
 Original-topic routing stays **4 of 14**; this app fix does not complete the
 remaining migration or authorize erasing the Mac.
+
+### Schematic Pipeline and Mimic Fast PCB connected October 3 at 10 17 PM PDT
+
+All five original Oracova PCBA topics are now routed on PC. Schematic Pipeline
+retains topic **2697**, with fresh native Claude conversation
+`6159472a-7878-42e4-b497-ffbb64a7e2d6`; Mimic Fast PCB retains topic **3315**,
+with `10ab0d8a-f31c-49ca-ab99-1a6152ae4ee2`. Chat remains
+`-1004395661179`. Their private project handoffs and original CAD/lab worktrees
+are preserved. Recursive checksum comparisons found no differing project
+content; Git indexes differed after status refresh and were not overwritten.
+Dirty `tools/schcentre.py`, untracked schematic media and Mimic `.history/`
+remain intact. The source schematic notes' `/tmp` experiment file is absent;
+its committed findings are preserved, not falsely labeled a copied experiment.
+
+Four actual native checks succeeded as the verified non-elevated Windows owner
+and Linux UID 1000: each fresh conversation read its entire checked handoff,
+ran the exact UID/checksum command, then a separate exact-ID resume recalled
+the previous marker without being supplied its answer. Hooks and MCP were
+disabled only for these bootstrap checks; production uses the unchanged
+accepted native connector and ordinary project profile. All checks ended idle
+and stopped, with no uncertain input or project writes. Nine focused synthetic
+evidence/source-fencing tests passed; those are separate from the native checks
+and do not represent a rerun of the earlier 809 router fixtures.
+
+The policy-only cutover preserved the five prior routes and unrelated ledger
+content. It required an idle router, retained config/probe/task/database
+preimages, and freshly captured all three stopped Claude histories. Exact
+Windows owner/credential/code/sandbox and Linux native checks passed at
+`2026-10-04T05:14:29.256403+00:00`. The probe service retained its running SCM
+state after writing success; its actual process was inspected, then the
+completed diagnostic was stopped normally, not relaunched after timeout.
+
+Only the two source bindings were removed and their fallback ingress disabled;
+source pointers were moved to recoverable private preimages. The Mac gateway's
+hot reload was observed at `2026-10-04T05:16:30.308Z`. Eight source bindings
+and unrelated configuration remain. No shared Mac or Linux Codex daemon was
+restarted. Production launched at `2026-10-04T05:16:52.9198743Z`; the new
+bubbles **4815** (Schematic) and **4814** (Mimic) have confirmed message IDs in
+their original topics. All seven routes were unheld, idle and without unknown
+or pending effects at `2026-10-04T05:17:00.478675Z`. Startup supervision was
+restored Ready with its exact original quoted service path.
+
+Both new native Claude streams enrolled in Remote Control, with confirmed
+cloud mappings. DUT's existing mapping also reported ready after this idle
+restart; exact same-cloud identity and phone interaction still need comparison,
+so readiness alone is not declared full phone/recovery acceptance.
+
+Current policy SHA-256 is
+`FD0C4A5D7C44F9F7BC8FC542F083A533062C7153C9C9E043AC8021C1F7C4C76F`.
+Router code remains
+`94111E96E68F5D935FAA3DF94085E81F06AC3867E28A75DF290A744048D55841`.
+Protected policy/database/probe preimages are in
+`C:\ProgramData\KhadangRouter\release-fe1651ed3a1c4e9bbde0509dcf819a9b`;
+the unchanged connector files and three new reviewed checkpoints are in
+`C:\ProgramData\OracovaNativeRemote\claude-connector-fe1651ed3a1c4e9bbde0509dcf819a9b`.
+Those checkpoints are consumed; another restart needs fresh reviewed captures.
+
+The source preimage archive was independently checksum/read/ACL verified on PC:
+`C:\ProgramData\OracovaMigration\fe1651ed3a1c4e9bbde0509dcf819a9b\lab-topic-cutover-20261003-sftp.tar.gz`,
+**5,909 bytes**, SHA-256
+`efc63f2a6026ae747f6e9c5f45f771e4baa4f8fdcad919795f9dced4d3859f16`.
+The first copy failed before reservation because its protected run directory
+was missing. The same retained archive was transferred after creating that
+exact protected directory; no native/model action was repeated. This remains a
+local migration recovery copy, not the daily off-machine disaster backup.
+
+Original routing is **6 of 14**, with eight remaining. The Mac is not erased;
+bench relocation, independent remote recovery and full-system restore remain.
