@@ -59,6 +59,7 @@ public static class SelfTests
         checks += BubbleBoundaryTests.Run(root, policy).GetAwaiter().GetResult();
         checks += BubbleFormatTests.Run();
         checks += FinalAnswerTests.Run(root, policy).GetAwaiter().GetResult();
+        checks += ActiveAttachmentTests.Run(root, policy).GetAwaiter().GetResult();
         checks += GoalTests.Run(root, policy).GetAwaiter().GetResult();
         checks += QuotaTests.Run(root, policy).GetAwaiter().GetResult();
         checks += AttachmentTests.Run(root, policy).GetAwaiter().GetResult();

@@ -32,6 +32,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         public Stopwatch Elapsed = new();
         public TimeSpan Carried;
         public string? Turn;
+        public long NativeStateRevision;
         public NativeGoal Goal = new(binding.ThreadId);
         public ResponseMessage Response = new();
         public readonly Queue<ResponseMessage> PendingBubbles = new();
@@ -90,6 +91,10 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             }
         try
         {
+        // Subscribe before attachment: a newly mapped native conversation may
+        // already be running. Never miss completion while reading its snapshot.
+        rpc.Notification += OnNative;
+        if (linuxRpc != null) linuxRpc.Notification += OnLinuxNative;
         foreach (var binding in bindings)
         {
             var native = binding.Runtime == "linux" && binding.Backend == "codex" ? linuxRpc! : rpc;
@@ -100,15 +105,6 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 ownedClaude.Add(session.Claude);
                 if (!session.Claude.Connected || session.Claude.SessionId != binding.ThreadId)
                     throw new InvalidDataException("Claude adapter does not own the exact selected session");
-            }
-            else
-            {
-            // Native context still loads in full; only the historical turn
-            // payload is excluded from the transport response. Migrated threads
-            // can have hundreds of MB of history, beyond the frame bound.
-            var resumed = await native.Call("thread/resume", new { threadId = binding.ThreadId, cwd = binding.Workspace, excludeTurns = true,
-                approvalPolicy = policy.NativeApprovalPolicy, approvalsReviewer = "user", permissions = policy.NativePermissionProfile }, stop);
-            VerifyThread(resumed, binding.Workspace, binding.ThreadId, binding.Runtime);
             }
             if (ledger.Get("bubble/" + binding.ThreadId) is { } saved)
             {
@@ -124,6 +120,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 session.Dirty = true;
             }
             sessions[binding.Address] = session;
+            if (session.Claude == null) await ResumeCodex(session, stop);
             if (session.Claude is { } claude)
             {
                 session.ClaudeHandler = message => OnClaude(session, message);
@@ -141,8 +138,6 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 }
             }
         }
-        rpc.Notification += OnNative;
-        if (linuxRpc != null) linuxRpc.Notification += OnLinuxNative;
         if (sessions.Count == 0) await CreateLg(stop);
         foreach (var session in sessions.Values.Where(s => s.Claude == null)) await ReadGoal(session, stop);
         edits = Task.Run(() => EditLoop(stop), stop);
@@ -551,6 +546,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         if (session == null) return;
         lock (session.Gate)
         {
+            if (method is "turn/started" or "turn/completed") session.NativeStateRevision++;
             if (parameters.TryGetProperty("turnId", out var eventTurn) && eventTurn.GetString() != session.Turn) return;
             if (message.TryGetProperty("id", out var requestId))
             {
