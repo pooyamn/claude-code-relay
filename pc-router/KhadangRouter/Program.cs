@@ -4,8 +4,8 @@ using KhadangRouter;
 try
 {
     if (args.SequenceEqual(new[] { "--self-test" })) { SelfTests.Run(); return; }
-    if (args.Length != 3 || args[0] is not ("--service" or "--probe-service" or "--canary-service") || args[1] != "--config")
-        throw new InvalidOperationException("KhadangRouter --service|--probe-service|--canary-service --config PATH; or --self-test");
+    if (args.Length != 3 || args[0] is not ("--service" or "--probe-service" or "--canary-service" or "--typing-probe-service") || args[1] != "--config")
+        throw new InvalidOperationException("KhadangRouter --service|--probe-service|--canary-service|--typing-probe-service --config PATH; or --self-test");
     var policy = RouterPolicy.Load(args[2]);
     var probe = args[0] == "--probe-service";
     WindowsService.Run(async stop =>
@@ -30,6 +30,28 @@ try
                 throw new InvalidOperationException("Wrong Telegram bot");
             var webhook = await telegram.Call("getWebhookInfo", new { }, stop);
             if (!string.IsNullOrEmpty(webhook.GetProperty("url").GetString())) throw new InvalidOperationException("Webhook present; refuse to change or compete");
+            if (args[0] == "--typing-probe-service")
+            {
+                // Explicit deployment test: ephemeral UI only, no forged input,
+                // Telegram poller, native process, model turn or chat message.
+                var targets = bindings.Where(b => b.Chat == -1004395661179 && b.Topic == 53 ||
+                    b.Chat == -1003550185469 && b.Topic == 816).ToArray();
+                if (targets.Length != 2) throw new InvalidOperationException("Exact DUT and controller typing probe routes required");
+                foreach (var target in targets)
+                {
+                    using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stop);
+                    deadline.CancelAfter(TimeSpan.FromSeconds(2));
+                    if (!await telegram.Typing(target.Chat, target.Topic, deadline.Token))
+                        throw new InvalidOperationException("Telegram typing was not confirmed; no automatic retry");
+                }
+                File.WriteAllText(Path.Combine(policy.StateDirectory, "typing-proof.json"), JsonSerializer.Serialize(new {
+                    testedAt = DateTimeOffset.UtcNow, bot = policy.BotUsername, confirmed = true,
+                    targets = targets.Select(b => new { chat = b.Chat, topic = b.Topic }),
+                    telegramPolling = false, nativeProcessesStarted = false, modelInference = false, chatMessagesSent = false,
+                    routerSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(typeof(Router).Assembly.Location))),
+                    policySha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(args[2]))) }));
+                return;
+            }
             if (probe)
             {
                 await using var rpc = new NativeRpc(WindowsOwnerProcess.Start(policy, policy.WorkspaceRoot + "\\lg-magic"), ledger);

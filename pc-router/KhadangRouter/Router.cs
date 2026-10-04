@@ -60,6 +60,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
     private readonly SemaphoreSlim starts = new(1, 1);
     private readonly ConcurrentDictionary<string, IClaudeNative> switchedClaude = new();
     private readonly NativeQuota quota = new();
+    private readonly ReceiptTyping receiptTyping = new(telegram);
     private readonly NativeRemote remote = nativeRemote ?? new();
     private readonly NativeQuota linuxQuota = new();
     private readonly NativeRemote linuxRemote = new();
@@ -72,6 +73,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         stop = lifetime.Token;
         var ownedClaude = new List<IClaudeNative>();
         Task edits = Task.CompletedTask;
+        Task typing = Task.CompletedTask;
         var bindings = ledger.Bindings();
         // Validate the WHOLE registry and bubble destinations before the first
         // native resume. A bad later row must not leave earlier tasks resumed.
@@ -163,6 +165,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 }
         }
         edits = Task.Run(() => EditLoop(stop), stop);
+        typing = Task.Run(() => TypingLoop(stop), stop);
             await Menus(stop);
             if (canary && ledger.Get("native-canary") == null)
             {
@@ -210,7 +213,8 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 }
             await Task.WhenAll(ownedClaude.Distinct<IClaudeNative>(ReferenceEqualityComparer.Instance).Select(c => c.DisposeAsync().AsTask()));
             await Task.WhenAll(switchedClaude.Values.Distinct<IClaudeNative>(ReferenceEqualityComparer.Instance).Select(c => c.DisposeAsync().AsTask()));
-            try { await Task.WhenAll(handlers.Values.Append(edits)); } catch (OperationCanceledException) { }
+            try { await Task.WhenAll(handlers.Values.Append(edits).Append(typing)); } catch (OperationCanceledException) { }
+            await receiptTyping.Drain();
         }
     }
 
@@ -289,6 +293,11 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 ledger.Finish(updateId, "unbound"); return;
             }
             target = session;
+            // The update is durably claimed and the human/topic authenticated.
+            // Pulse before dispatch locks, downloads, quotas or either native
+            // backend. Synthetic deployment inputs and service events are quiet.
+            if (updateId >= 0 && new[] { "text", "photo", "document", "audio", "video", "voice", "animation", "sticker", "video_note" }
+                .Any(key => message.TryGetProperty(key, out _))) receiptTyping.Observe(address, stop);
             if (message.TryGetProperty("text", out var modelText) && modelText.ValueKind == JsonValueKind.String &&
                 !new[] { "photo", "document", "audio", "video", "voice", "animation", "sticker", "video_note", "media_group_id" }.Any(key => message.TryGetProperty(key, out _)) &&
                 ModelCommand.TryParse(modelText.GetString()!, policy.BotUsername, out var requestedModel))
@@ -724,6 +733,27 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             await Task.Delay(3000, stop);
         }
     }
+    private void RefreshTyping(CancellationToken stop)
+    {
+        foreach (var session in sessions.Values)
+        {
+            bool working;
+            lock (session.Gate) working = session.Busy && !session.Held && session.Status == "Working" &&
+                session.Claude is not { Connected: false };
+            receiptTyping.Refresh(session.Binding.Address, working, stop);
+        }
+    }
+    private async Task TypingLoop(CancellationToken stop)
+    {
+        // Independent of slow bubble edits/final sends and native dispatch.
+        // One-second burst coalescing plus a two-second tick renews within the
+        // Telegram five-second lifetime, without an always-on idle indicator.
+        while (!stop.IsCancellationRequested)
+        {
+            RefreshTyping(stop);
+            await Task.Delay(2000, stop);
+        }
+    }
     private async Task Menus(CancellationToken stop)
     {
         var common = new[] { ("help", "PC session controls"), ("status", "Exact PC session status"), ("cancel", "Interrupt the active native turn"),
@@ -773,7 +803,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
     }
     private void StatusFile() => File.WriteAllText(Path.Combine(policy.StateDirectory, "status.json"), JsonSerializer.Serialize(new {
         host = Environment.MachineName, pcOnly = true, bot = policy.BotUsername, nativePid = rpc.Pid, offset = ledger.Offset,
-        unknown = ledger.Unknown, presentationUnknown = ledger.PresentationUnknown,
+        unknown = ledger.Unknown, presentationUnknown = ledger.PresentationUnknown, receiptTyping = receiptTyping.Snapshot,
         bindings = sessions.Values.Select(s => s.Binding), nativeQuota = quota.Snapshot,
         nativeRemote = remote.Snapshot, nativeLinuxPid = linuxRpc?.Pid, nativeLinuxQuota = linuxQuota.Snapshot,
         nativeLinuxRemote = linuxRemote.Snapshot,

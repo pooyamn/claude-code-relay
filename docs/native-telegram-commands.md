@@ -1,5 +1,43 @@
 # Native Telegram command menus
 
+## Topic typing: receipt and active work
+
+The PC router now sends a topic-specific typing pulse immediately after a
+durably claimed input passes human authorization and resolves to its mapped
+session. This happens before model/dispatch locks or attachment downloads, for
+both Claude and Codex. Unauthorized senders/controls, unmapped topics, synthetic
+deployment inputs and service events do not produce receipt pulses.
+
+An independent two-second activity loop renews typing only for actual busy,
+Working sessions that are neither held nor disconnected. Idle, completed,
+stopped and waiting-for-owner sessions are not renewed. An active goal alone
+does not keep typing alive. Goal pause does not interrupt a current tool/turn;
+typing follows that actual work until it stops. This loop is independent of
+slow bubble edits, final-message sends and the native dispatch lock.
+
+Typing uses `sendChatAction` with the exact chat and `message_thread_id` (omitted
+for non-forum topic0). Telegram clears it on bot messages and otherwise expires
+it within about five seconds, so a stopped session can briefly retain the last
+pulse. [Telegram chat-action behavior](https://core.telegram.org/bots/api#sendchataction).
+
+One-second burst coalescing, eight-request concurrency bound, a two-second
+per-request deadline and Telegram `retry_after` cooldown keep this cosmetic
+signal bounded. Failures never block native delivery, hold a session, create a
+durable action/unknown record or automatically retry an incoming message.
+Typing acknowledges the bridge or active work, not model acceptance or proof of
+progress. The rolling code-block bubble and separate final messages are unchanged.
+Sanitized `receiptTyping` status counters record attempts, confirmations,
+failures, suppressions and the last confirmed destination/time—never input text,
+credentials or URL-bearing errors.
+
+Deployed on the PC as generation `3000aa7f68e14bb093b6fe0a86d51496` on
+October 4: 1,025 Linux and 1,028 sealed Windows fixture checks passed. Real
+Telegram typing API calls succeeded for DUT53 and CC816; the live router's
+confirmed activity count increased from26 to51 to102, with zero typing failures.
+All12 routes and seven exact-ID Claude sessions recovered. Phone rendering has
+not been independently observed. Deployment/recovery evidence is in
+[the migration record](mac-to-pc-migration.md#topic-receipt-and-working-typing-october-4-at-721-am-pdt).
+
 ## Current PC Khadang model switching — 2026-10-04
 
 The protected PC router restores **only** the requested legacy model syntax:

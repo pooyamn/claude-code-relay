@@ -27,8 +27,10 @@ public sealed class Telegram : IBot, IDisposable
     }
     public async Task<JsonElement> Call(string method, object parameters, CancellationToken stop, bool effect = false)
     {
-        if (!new[] { "getMe", "getWebhookInfo", "getChat", "getChatMember", "getUpdates", "getFile", "sendMessage", "editMessageText", "createForumTopic", "setMyCommands", "getMyCommands", "answerCallbackQuery" }.Contains(method))
+        if (!new[] { "getMe", "getWebhookInfo", "getChat", "getChatMember", "getUpdates", "getFile", "sendMessage", "editMessageText", "createForumTopic", "setMyCommands", "getMyCommands", "answerCallbackQuery", "sendChatAction" }.Contains(method))
             throw new InvalidOperationException("Unknown Telegram method");
+        if (method == "sendChatAction" && effect)
+            throw new InvalidOperationException("Ephemeral typing must not create a durable action or replay hold");
         string? attempt = effect ? ledger.Attempt("telegram/" + method, parameters) : null;
         try
         {
@@ -71,6 +73,20 @@ public sealed class Telegram : IBot, IDisposable
             if (attempt != null) ledger.Outcome(attempt, "unknown");
             throw;
         }
+    }
+    internal static Dictionary<string, object> TypingParameters(long chat, int topic)
+    {
+        if (topic < 0) throw new InvalidDataException("Invalid Telegram topic");
+        var parameters = new Dictionary<string, object> { ["chat_id"] = chat, ["action"] = "typing" };
+        if (topic > 0) parameters["message_thread_id"] = topic;
+        return parameters;
+    }
+    public async Task<bool> Typing(long chat, int topic, CancellationToken stop)
+    {
+        // A receipt pulse bypasses the message/edit queue. Failure is cosmetic;
+        // never turn it into an unknown native input or durable send operation.
+        var result = await Call("sendChatAction", TypingParameters(chat, topic), stop);
+        return result.ValueKind == JsonValueKind.True;
     }
     public async Task<JsonElement> Send(long chat, int topic, string text, CancellationToken stop)
     {

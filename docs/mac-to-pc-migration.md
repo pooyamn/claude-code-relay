@@ -2559,3 +2559,60 @@ data and final deltas still need source access. The Mac is not ready to erase.
 Administrator maintenance SSH closed cleanly at13:41:09Z with exit0; no export
 or test process remains pending. Native weekly quota is13% available, above the
 owner's5% pause threshold. The migration goal remains active and incomplete.
+
+### Topic receipt and Working typing, October 4 at 7:21 AM PDT
+
+The PC router previously did not send Telegram `sendChatAction`. Generation
+`3000aa7f68e14bb093b6fe0a86d51496` adds topic-specific typing immediately after
+authorized, durably claimed receipt, before dispatch locks/downloads, for both
+native tools. An independent two-second loop refreshes it for Busy/Working
+sessions, excluding held, disconnected, idle and waiting-for-owner sessions.
+An active goal alone does not imply activity. The current rolling code-block
+bubble and separate final answers remain unchanged. See
+[typing behavior and bounds](native-telegram-commands.md#topic-typing-receipt-and-active-work).
+
+All1,025 Linux and1,028 sealed Windows fixture checks passed, including forum
+targeting, receipt before locked dispatch for both providers, held/idle
+suppression, independence from locked bubble output, authorization, bounded
+concurrency, two-second deadlines, Telegram cooldown and exclusion from the
+durable effect ledger. No real model or credential was used by those fixtures.
+
+Installed router DLL SHA256:
+`EF28C0A3AA87146EFCE0F5DEB2429F32CE7EE17341FEA0A391311628A3EB30D3`.
+Policy SHA256:
+`63923EDE9313E0C1C9A4D6706656FEC11CC38929ABA3B8AFDDD3168EBE279478`.
+Candidate archive SHA256:
+`b06f1cd7e5236ddc55c722c6ce7beadacb8e1ff038c0127543fa8b5917723f1a`.
+The reviewed deployment helper SHA256 is
+`cc310911a1c71e3748b1f591da072365fb80de7f3985461e68d6e0d964247668`.
+Protected release/preimages/SQLite snapshot/proofs are retained under
+`C:\ProgramData\KhadangRouter\release-3000aa7f68e14bb093b6fe0a86d51496`.
+
+The initial fence correctly refused to interrupt a busy DUT; deployment waited
+for it to finish. A fresh-process helper lacked the read-only `RouterReceipts`
+definition: this was corrected in a distinct sealed v2 helper before staging
+code/policy. Both the initial helper and diagnostics remain unchanged. The
+isolated no-model OS probe wrote its verified proof at14:15:16.522985Z; normal
+service stop completed its transport disposal before acceptance. Native Claude
+tool/continuity evidence was explicitly reused because native executables,
+launchers and connectors were unchanged, with seven fresh quiescent exact-ID
+history checkpoints. No uncertain input/external action was replayed.
+
+An isolated SYSTEM-service API probe confirmed `sendChatAction:true` in both
+DUT chat-1004395661179/topic53 and CC relay chat-1003550185469/topic816 at
+14:18:25.0454068Z. It sent no chat message and started no native process, polling
+or model turn. This is Telegram API acceptance, not independently observed phone
+rendering. Live activity confirmations subsequently increased from26 to51 to102,
+showing ongoing renewal rather than only the probe.
+
+Activation verification completed14:21:48.2010215Z. Independent observation at
+14:23:09.308655Z showed Running, all12 unchanged routes, seven connected Claude
+streams, Linux native PID2141 unchanged and Windows native PID20968. Exact active
+controller turn/goal, owner110123423 and normal participant199200674 were
+preserved. Global unknown0 and retained presentation unknown1 remain unchanged;
+the older unknown edit was not relabeled. Typing counters were102 attempted,
+102 confirmed, zero failed/suppressed/in-flight, last confirmed in CC816 at
+14:23:09.0442681Z. Startup supervision was restored Enabled/Ready. No Mac, Hamal,
+VPN, SSH or LG configuration was changed. Administrator maintenance SSH closed
+cleanly at14:27:14.3854032Z, exit0. Future router changes still require fresh
+quiescent Claude checkpoints; this release is not a reusable restart shortcut.
