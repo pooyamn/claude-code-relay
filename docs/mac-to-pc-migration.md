@@ -68,9 +68,10 @@ inside the same router; it is not yet deployed. A working native Linux transport
 Codex now passes isolated Windows-to-Linux native acceptance, including shared
 events and actual tool identity. A standalone Claude client now also passes
 authenticated native input and reply acceptance on the PC. Linux Codex's launch
-path is now wired into the router candidate, but has not passed that version's
-Windows/WSL acceptance or been deployed. A persistent shared daemon and live
-routing for both tools are still required for the new PC sessions.
+path is now wired into the router candidate. Its exact Windows-to-WSL launcher
+has passed live acceptance against the connected, separately paired PC managed
+daemon (October 3, 6:53 PM PDT), but has not been activated for topic routing.
+Live routing for both tools is still required for the new PC sessions.
 Claude's pinned streaming control interface now also connects and disconnects
 authenticated native Remote Control on the PC through an explicit control
 request. A phone-message round trip and live Telegram steering remain unverified.
@@ -1123,3 +1124,39 @@ increments its epoch; a second worker attachment could supersede the working
 one. It is not a non-owning Telegram client. No worker attach, replacement
 conversation or inert Telegram topic was created. A non-owning client route to
 the exact live `cse_*` conversation is still required.
+
+### Actual router-to-managed-Codex launch acceptance
+
+At `2026-10-04T01:53:10Z`, the current router candidate's real
+`LinuxCodexChannel.ConnectVerified` passed on the PC. The fixed, protected
+one-shot SYSTEM diagnostic used the existing launcher to create a **limited
+Windows pou process in session 1**, then Linux UID 1000, and attached to the
+existing daemon PID 2141 / generation 229385. It verified the exact native
+package, Unix peer/socket alias, literal `ai-hil/web` workspace, authenticated
+ChatGPT account and actual fixed native tool executor UID. The connector and
+Windows launcher verified real denial of the protected Khadang credential.
+
+Native status remained connected to the distinct PC environment, with one
+registered phone and zero loaded threads. No project was resumed, no model was
+started, no Telegram poller was created, and no live binding or production
+router code/configuration changed. The diagnostic task
+`Oracova-ManagedCodexProof-c2853fc76b074dfbbcdf638be6035c04` completed with result
+zero and was disabled after receipt. Its protected evidence is
+`C:\ProgramData\OracovaNativeRemote\codex-connector-c2853fc76b074dfbbcdf638be6035c04\proof\result.json`.
+The tested candidate DLL SHA-256 is
+`305c17b8ea11bdb296de2b1644b54b1e8cc77b592daa8dbf854f32d9e8478ae6`;
+the diagnostic policy SHA-256 is
+`a3e3f27a9710278087dc1e1bca57d6eb3de21883672f39ef1644c72ea90c4243`.
+This proves the native connector, not acceptance of a future production policy
+or a completed Telegram cutover.
+
+The first diagnostic had already passed launch/account/tool identity but
+explicitly rejected `remoteControl/client/list`: the probe omitted required
+`environmentId`. The query was corrected using the working native pairing
+observer's exact parameters, and a separate, fresh diagnostic run passed; the
+failed receipt is retained and its task disabled. No uncertain operation or
+original project was replayed. The installer also passed Windows parsing, its
+fixed read-method guards passed on Windows, and all **787 PC-router fixtures**
+passed in an OS sandbox excluding credentials and network. The next operational
+step is checked fresh PC session creation from a source handoff, then the same
+original topic binding. Original-topic cutovers remain **0 of 14**.
