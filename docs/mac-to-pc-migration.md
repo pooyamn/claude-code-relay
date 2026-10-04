@@ -3109,3 +3109,53 @@ approval authority. Khadang remains Stopped in fresh SCM inspection. Backend
 choice/topic access, guarded router recovery approval, protected Mac account
 data, final source fences, real hardware, off-network and encrypted independent
 restore gates remain open. Migration is active, incomplete and not erasure-ready.
+
+### Complete selected Shared-folder cohorts preserved, October 4
+
+Read-only follow-up found additional FPGA scripts/bitstreams, Nucleo and LG
+bridge files, firmware and relocated items outside the account-home archives.
+The capture helper now admits two literal, separately pinned profiles:
+`physical-shared` selects bench-mac/oracova `/Users/Shared`; `vm-shared` selects
+mac/pouya `/Users/Shared`. Neither admits an arbitrary account or disk root.
+All38 actual Windows stream-helper fixtures passed before capture. The sealed
+executed helper SHA256 is
+`a2d3600a91f1b18055a48b7636ca2a4a6022b6d4fdc0b48083a22eee4b6d66f9`.
+
+Both new archives reside beneath protected
+`C:\ProgramData\OracovaMigration`, with their producer/reader logs and receipts:
+
+- Physical run `2b2d3a5af5e74d1b9a470380aac0acb6`, `physical-shared.tar.gz`:
+  completed21:17:14Z,546447360 compressed bytes, SHA256
+  `a56382216e93d00ed0d283eeddc55181139df9a70c30ade1b58d8ac2ddba091f`.
+- VM run `9e7e0855a7434988acffd67dbec10436`, `vm-shared.tar.gz`:
+  completed21:17:49Z,30720 compressed bytes, SHA256
+  `5dae616bd414286791ac3a16c50105ee2b2797acf9455c88ef4d9e2884780e58`.
+
+For each run the source-stream/PC archive hashes matched, producer/transport/
+archive-reader exits were0 and producer warnings were absent. Independent
+saved-archive verification read and hashed every regular member without
+extracting files or following symlinks. Physical results:4241 entries,
+3966 regular files,1313060719 logical file bytes,29 symlinks and62 firmware
+files by suffix. VM results:24 entries,11 regular files,588244 logical file
+bytes and1 symlink. Both contained the expected selected cohort. Private member
+reports remain beside the archives, not in git. Five critical member hashes
+(supervisor firmware, FPGA server and bitstream, scratch PCB and project)
+matched independently observed source digests.
+
+At21:23:34Z all10 saved evidence files had protected Admin/SYSTEM-only ACLs
+and Administrators ownership. A separate ordinary UID1000 process was denied
+opening both archives and both member reports, before reading any byte.
+The Administrator SSH session then closed. Fresh SCM inspection still showed
+Khadang Stopped; no router checkpoint, authorization policy, credential,
+source process, topic or application was changed or activated.
+
+These are additional preservation seeds, not a globally consistent final
+snapshot, ACL/xattr backup, resolved symlink-target coverage or encrypted
+off-machine recovery. The live source was not frozen. Protected owner-account
+data, final writer/database fences and deltas, reviewed project/topic activation,
+guarded Khadang reboot-recovery approval, physical hardware qualification,
+off-network access and independent encrypted backup/restore remain open.
+Nothing was deleted and neither Mac nor VM is approved for erasure. The full
+migration goal remains active and incomplete. Native account-scoped read-only
+quota observation at21:25:27Z showed7% weekly remaining, above the owner's
+5% pause gate.

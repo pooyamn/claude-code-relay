@@ -1,5 +1,5 @@
 param(
- [Parameter(Mandatory=$true)][ValidateSet('vm-personal','vm-library','vm-extra-work','vm-owner-tools','vm-owner-tools-manifest','vm-package-caches','vm-editor-cache','vm-darwin-cad-tools','vm-codex-sqlite','vm-ai-hil-kicad-dependency','vm-dirty-work-manifest','physical-projects','physical-bench-home')][string]$Profile,
+ [Parameter(Mandatory=$true)][ValidateSet('vm-personal','vm-library','vm-extra-work','vm-owner-tools','vm-owner-tools-manifest','vm-package-caches','vm-editor-cache','vm-darwin-cad-tools','vm-codex-sqlite','vm-ai-hil-kicad-dependency','vm-dirty-work-manifest','physical-projects','physical-bench-home','physical-shared','vm-shared')][string]$Profile,
  [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-f]{32}$')][string]$RunId,
  [ValidatePattern('^[0-9a-f]{64}$')][string]$SqliteProducerSha256,
  [ValidatePattern('^[0-9a-f]{64}$')][string]$OwnerToolsProducerSha256,
@@ -59,6 +59,10 @@ function Get-MigrationStreamSource([string]$Name){
   'vm-dirty-work-manifest' {return @{host='mac';user='pouya';root='/Users/pouya/.openclaw/workspace';members=@();captureMode='observed-exact-leaf-content'}}
   'physical-projects' {return @{host='bench-mac';user='oracova';root='/Users/pouya';members=@('Codes','Developer','Sources','flutter_blue_plus','flutter_bluetooth')}}
   'physical-bench-home' {return @{host='bench-mac';user='oracova';root='/Users/oracova';members=@('.')}}
+  # Operational projects also exist outside the account homes. Preserve the
+  # complete Shared cohort, including relocated items, without activating it.
+  'physical-shared' {return @{host='bench-mac';user='oracova';root='/Users';members=@('Shared')}}
+  'vm-shared' {return @{host='mac';user='pouya';root='/Users';members=@('Shared')}}
   default {throw 'Only explicitly selected migration source profiles admitted'}
  }
 }
