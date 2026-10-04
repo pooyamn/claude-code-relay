@@ -1,5 +1,5 @@
 param(
- [Parameter(Mandatory=$true)][ValidateSet('vm-personal','vm-library','vm-extra-work','vm-owner-tools','vm-owner-tools-manifest','vm-package-caches','vm-editor-cache','vm-darwin-cad-tools','vm-codex-sqlite','vm-ai-hil-kicad-dependency','vm-dirty-work-manifest','physical-projects','physical-bench-home','physical-shared','vm-shared')][string]$Profile,
+ [Parameter(Mandatory=$true)][ValidateSet('vm-personal','vm-library','vm-extra-work','vm-owner-tools','vm-owner-tools-manifest','vm-package-caches','vm-editor-cache','vm-darwin-cad-tools','vm-codex-sqlite','vm-ai-hil-kicad-dependency','vm-dirty-work-manifest','physical-projects','physical-bench-home','physical-shared','vm-shared','physical-service-config','vm-service-config')][string]$Profile,
  [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-f]{32}$')][string]$RunId,
  [ValidatePattern('^[0-9a-f]{64}$')][string]$SqliteProducerSha256,
  [ValidatePattern('^[0-9a-f]{64}$')][string]$OwnerToolsProducerSha256,
@@ -63,6 +63,10 @@ function Get-MigrationStreamSource([string]$Name){
   # complete Shared cohort, including relocated items, without activating it.
   'physical-shared' {return @{host='bench-mac';user='oracova';root='/Users';members=@('Shared')}}
   'vm-shared' {return @{host='mac';user='pouya';root='/Users';members=@('Shared')}}
+  # Preserve only these three selected system-level configuration cohorts.
+  # This does not grant database data, root account or whole-machine capture.
+  'physical-service-config' {return @{host='bench-mac';user='oracova';root='/';members=@('Library/LaunchAgents','Library/LaunchDaemons','opt/homebrew/etc')}}
+  'vm-service-config' {return @{host='mac';user='pouya';root='/';members=@('Library/LaunchAgents','Library/LaunchDaemons','opt/homebrew/etc')}}
   default {throw 'Only explicitly selected migration source profiles admitted'}
  }
 }

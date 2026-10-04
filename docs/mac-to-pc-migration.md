@@ -38,6 +38,13 @@ consumed-Claude-checkpoint guard. Stored bindings and pre-boot status do not
 establish live topic delivery. Guarded automatic recovery is awaiting owner
 security review; the guard has not been bypassed.
 
+System-service inspection on October4 additionally found a live PostgreSQL16
+server on the physical bench Mac. Its protected data directory is not part of
+the accepted account/workspace/Shared preservation cohorts. Configuration
+preservation is now verified, but an authenticated consistent database export,
+PC restore/validation and service cutover remain required. Do not infer that
+migrated Telegram bindings or VPN services cover this database.
+
 | Project | Chat | Topic |
 | --- | --- | --- |
 | startup-ideas | -5238984877 | Whole group |
@@ -3159,3 +3166,65 @@ Nothing was deleted and neither Mac nor VM is approved for erasure. The full
 migration goal remains active and incomplete. Native account-scoped read-only
 quota observation at21:25:27Z showed7% weekly remaining, above the owner's
 5% pause gate.
+
+### System service configuration preservation and PostgreSQL gap, October 4
+
+The preceding goal turn made concrete progress by preserving both complete
+selected Shared cohorts. Fresh read-only inspection now found physical system
+launch configuration, including PostgreSQL16 and OpenVPN, outside those
+archives. The two new literal profiles preserve only `/Library/LaunchAgents`,
+`/Library/LaunchDaemons` and `/opt/homebrew/etc`, with separate pinned physical
+oracova and VM pouya identities. This is not a whole-root or database grant.
+
+All42 actual Windows capture fixtures passed. The executed helper, sealed under
+`C:\ProgramData\OracovaMigration\stream-helper-ca81c2e1ed784ec09f45f86c768365c5`,
+has SHA256 `4df4aa042c2fea1ef060205d734dad1e395ed1a26bd4ef435e9271a82960d758`.
+Preparation initially lacked WSL UNC initialization and then encountered the
+script execution-policy launch refusal. No source capture ran in those failed
+preparation steps. After an explicit read-only WSL initialization, the empty
+package was populated with hash-checked bytes. The sealed fixture/capture
+processes used process-local execution policy; system policy was not changed.
+
+Accepted captures under protected `C:\ProgramData\OracovaMigration`:
+
+- Physical run `3c3d78b33c7f426092612c62b13d6d6a`,
+  `physical-service-config.tar.gz`, completed21:29:05Z,153600 compressed bytes,
+  SHA256 `77d165305b5f91a3947fce653ffeca7f2fcb69667a1577bd02589fa15389949f`.
+- VM run `f2ee3c82f95a4e07828b484b87822ee6`,
+  `vm-service-config.tar.gz`, completed21:29:07Z,215040 compressed bytes,
+  SHA256 `855422fccdafa99dcf6abbe8dd01e98be8fe1d3ee8a8ace254826addc28cc688`.
+
+Both source-stream and independently hashed PC archive digests matched;
+producer/transport/archive-reader exits were0, with no source warnings.
+Independent saved-content verification finished21:30:13Z without extraction,
+symlink following or activation. Physical:33 entries,22 regular files,
+270050 logical file bytes,4 symlinks. VM:78 entries,44 regular files,
+423916 logical file bytes,18 symlinks. Both had0 hardlinks. Every regular file
+was read and hashed, member roots were bounded to the three selected cohorts,
+and the physical PostgreSQL launch plist was required. Its archived SHA256
+`64357f491360feb48881adcd96fa11b662525d207da161f804f5552156ac4624`
+matched a fresh source read. Private member inventories remain beside the
+archives. Verifier SHA256:
+`b800d27f0fbb7ede35a4e1e9b1044d0e814b96288441d50fe9f54eb6c1a4a908`.
+
+At21:30:45Z all10 evidence files passed Admin/SYSTEM-only protected ACL and
+Administrators-owner checks. Separate ordinary UID1000 opens of both archives
+and member reports were denied before any byte read. Khadang remained Stopped
+in fresh SCM inspection; the Administrator SSH session closed cleanly.
+
+The physical PostgreSQL16 data directory is postgres-owned mode0700; the
+current source account cannot read its PG_VERSION file. One postgres process
+was observed and `pg_isready` reported127.0.0.1:5432 accepting connections.
+A same-OS-account noninteractive read-only connection probe returned exit2,
+so authenticated database access is not established. No database credentials
+were guessed, permissions weakened, server stopped or live database files
+tarred. Consistent export, roles/configuration capture, PC restoration and
+dependent-application cutover remain open; configuration alone does not
+preserve the database. Installed service binaries, Applications, unresolved
+symlink targets and the broader protected accounts are not covered by these
+new cohorts. Source writer fences/final deltas, pending topic/backend choices,
+guarded router-recovery approval, physical hardware and independent encrypted
+off-machine restore acceptance also remain required. No Mac/VM erasure or
+source service retirement occurred. Migration stays active and incomplete.
+Native account-scoped read-only quota at21:31:03Z showed7% weekly remaining,
+above the owner's5% pause gate.
