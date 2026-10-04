@@ -23,13 +23,16 @@ try{
   Assert ($out.Length -eq 0) 'Byte bound cannot silently truncate as success'
  }finally{$bounded.Dispose();$out.Dispose()}
  try{$f=New-MigrationStreamFile (Join-Path $root 'fixture.bin');$f.Dispose();throw 'accepted'}catch{Assert ($_.Exception.Message -match 'exists') 'Existing archive never overwritten'}
- foreach($profile in @('vm-personal','vm-library','vm-extra-work','vm-owner-tools','vm-package-caches','vm-editor-cache','vm-darwin-cad-tools','vm-codex-sqlite','physical-projects','physical-bench-home')){
+ foreach($profile in @('vm-personal','vm-library','vm-extra-work','vm-owner-tools','vm-owner-tools-manifest','vm-package-caches','vm-editor-cache','vm-darwin-cad-tools','vm-codex-sqlite','physical-projects','physical-bench-home')){
   $source=Get-MigrationStreamSource $profile
   Assert ($source.host -in @('mac','bench-mac') -and $source.members.Count -gt 0) 'Explicit pinned source profiles only'
  }
  $tools=Get-MigrationStreamSource 'vm-owner-tools'
  Assert ($tools.members.Count -eq 29 -and $tools.members -contains '.aspnet' -and $tools.members -contains '.azure' -and $tools.members -contains '.ssh') 'Original private tool identities are preserved, never regenerated or activated'
  Assert (@($tools.members|Where-Object {$_ -in @('.claude','.codex','.openclaw','.Trash','.oracova','.cache','.npm','.vscode-server')}).Count -eq 0) 'Separate large/native cohorts do not get silently recaptured inside owner-tools'
+ $manifest=Get-MigrationStreamSource 'vm-owner-tools-manifest'
+ Assert ($manifest.captureMode -eq 'file-bytes-and-socket-metadata' -and (($manifest.members -join '|') -ceq ($tools.members -join '|'))) 'Manifest profile preserves exactly the same selected roots, not a smaller regular-only substitute'
+ Assert ($manifest.host -eq 'mac' -and $manifest.user -eq 'pouya' -and $manifest.root -eq '/Users/pouya') 'Socket metadata profile cannot capture a different identity/root'
  $caches=Get-MigrationStreamSource 'vm-package-caches';$editor=Get-MigrationStreamSource 'vm-editor-cache'
  Assert ($caches.members.Count -eq 2 -and $caches.members[0] -eq '.cache' -and $caches.members[1] -eq '.npm' -and $editor.members.Count -eq 1 -and $editor.members[0] -eq '.vscode-server') 'Package and editor caches are explicit non-overlapping cohorts, not discarded'
  $cad=Get-MigrationStreamSource 'vm-darwin-cad-tools'

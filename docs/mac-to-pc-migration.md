@@ -2315,7 +2315,7 @@ The respective SHA256 values are
 `62ac5402bb061d81280e7c4d93b8c1b31f51a8836579ea2d9c736930d61a6e29`
 and `f579571d709eb4a990e38d8e8c8906babeb8830af36dc486b2b7aaf8b3390a4a`.
 The extra-work archive SHA256 is
-`2823e651948a653b04bfeb2c9baee1a1594f5b12b537c3f4be6b11af57769f2c1`.
+`2823e651948a653b04bfeb2c9baee1a1594f5b12b537c3f4be6b1af57769f2c1`.
 All three producer/transport/reader statuses are0; source/PC digests match, source
 diagnostics are empty and target ACLs are protected. Actual ordinary Linux
 UID1000 opens of all three archives were denied before reading any byte.
@@ -2334,7 +2334,7 @@ Retained failures, not accepted backups:
   literal-argument fixture added. The old zero-byte run was not overwritten.
 - `26e0e3edc680444f84695b80c6b4734b`: physical Pouya project subset,
   900075520bytes, digest
-  `fd77168d7a2901177445e90c0297ecffb59741487450daa1be58c14de4a4125cf`.
+  `fd77168d7a2901177445e90c0297ecffb59741487450da1be58c14de4a4125cf`.
   The transferred bytes match and the archive lists, but the source producer
   exited1. Keep it as partial recovery evidence; do not count these projects as
   fully backed up. This early helper retained a diagnostic digest, not its text.
@@ -2373,7 +2373,7 @@ may initialize tiny WAL/SHM companions. Source writers remain live.
 The accepted archive is
 `C:\ProgramData\OracovaMigration\8aaf9a4e85aa4154aa199d0066743cf7\vm-codex-sqlite.tar.gz`:
 174526546bytes, SHA256
-`92c1bc8e8cadabd69a63a4733850af1d465e416b892c86917447d1295c6a7c930`.
+`92c1bc8e8cadabd69a63a4733850af1d465e416b892c8691747d1295c6a7c930`.
 Its six standalone snapshots total742313984bytes. Source producer, SSH/WSL
 transport and GNU tar reader all exited0 with no producer warnings; source and
 independent PC archive hashes match, and ACLs are SYSTEM/Administrators-only.
@@ -2417,7 +2417,7 @@ private, not in Git; public path hash is
 `6cd71e0e7fac7f296cdc4dd602d6da8555a8633819d7bfce9a743b297ea5c9e5`.
 The private report is under
 `C:\ProgramData\OracovaMigration\6eda757be8cc41f1b62222533c4d6829`, SHA256
-`255fb8211ff04009a001349674e0a9b1ec1d5b66d4ba6e6129baf41f3dacf8f31`.
+`255fb8211f04009a001349674e0a9b1ec1d5b66d4ba6e6129baf41f3dacf8f31`.
 The original readable Library data/failed archive are still retained. Mac
 `sudo -n -l` denied noninteractive elevation; no password was guessed, permission
 weakened or source data removed. Controlled source administrator access is
@@ -2437,7 +2437,7 @@ All28 actual Windows argument/binary/bounds/profile/ACL fixtures passed.
 
 Package-cache run`6aa41918b4704c4fbdc4e6368442ce3d` finished at12:43:19Z:
 6822553600 compressed bytes, SHA256
-`b8415b86fd67f98111611c8bca7079914ba0b3bd6d2d772e6c711388e8e785def`.
+`b8415b86fd67f98111611c8bca7079914ba0b3bd6d2d72e6c711388e8e785def`.
 Source producer/transport/PC archive reader all exited0, with no source warnings;
 source digest and independent PC file hash matched. Actual ordinary Linux
 UID1000 archive open was denied before reading any bytes.
@@ -2455,7 +2455,7 @@ installation was not activated over the existing PC Linux CAD tools.
 
 Owner/tool run`cbfcde4fe50745ecb84ac3630c7a5fab` is retained **unaccepted**:
 2837524480 bytes, SHA256
-`853be4b8916195f62b36b0af3669b4e5ad60d7718719ca5ea111bb0c715d21ba6`.
+`853be4b8916195f62b36b0af3669b4e5ad60d7718719ca5ea11bb0c715d21ba6`.
 Producer/transport/reader exited0/1/0: tar itself completed but its152-byte
 diagnostic references an unarchivable socket. The archive digest/readability/ACL
 checks passed, but the no-warning gate correctly refused acceptance. No warning
@@ -2616,3 +2616,66 @@ the older unknown edit was not relabeled. Typing counters were102 attempted,
 VPN, SSH or LG configuration was changed. Administrator maintenance SSH closed
 cleanly at14:27:14.3854032Z, exit0. Future router changes still require fresh
 quiescent Claude checkpoints; this release is not a reusable restart shortcut.
+
+### Verified owner/tool file manifest, October 4 at 7:52 AM PDT
+
+A distinct `vm-owner-tools-manifest` capture preserves the same29 owner/tool
+roots as the earlier failed BSD tar cohort. `scripts/stream_owner_tools.py`
+streams file contents, directory records and symbolic links into a PAX archive,
+with per-file SHA256 and a private manifest. Unix sockets are explicitly
+represented by metadata and a recreate-via-owning-application instruction;
+they are not omitted silently or replaced by empty regular files. Kernel socket
+state is not portable and is not claimed preserved. Directory traversal uses
+no-follow descriptors, file identity/change checks and bounded entry/byte/time
+limits. Unsupported special objects and changed files fail the capture.
+
+Run`9950c2b932cb4f658199fd4ed0eee4bc` finished14:52:06.8060901Z. Archive:
+`C:\ProgramData\OracovaMigration\9950c2b932cb4f658199fd4ed0eee4bc\vm-owner-tools-manifest.tar.gz`,
+2958182454 compressed bytes, SHA256
+`0f1f9ab481eaa1426b50def8eb4939074fe2567947ebc7d4ec14a13e88fc0451`.
+The manifest covers156116 entries,7954977506 logical file bytes and two socket
+metadata entries. Source producer, transport, archive reader and controller all
+exited0, with zero warnings. The PC independently streamed every file and
+matched its content digest, size, mode, owner and exact modification timestamp,
+plus directory/link records and manifest coverage. No filesystem extraction or
+active-profile replacement occurred. Independent saved-archive hash/size and
+Administrator/SYSTEM-only folder/file ACL readback passed14:55:15Z. Actual
+ordinary Linux UID1000 open was denied before any byte was read.
+
+The reviewed producer SHA256 is
+`1528328a504677981049e881f990e342dae6e5f8981724b98519082d5890bc9b`;
+receiver SHA256 is
+`68c9d470ce02e928fdea9f1dd6c9b97bcd00ecfb54fa96c6dca2e039756266ef`.
+Both were sealed under
+`C:\ProgramData\OracovaMigration\stream-helper-89855759650f4e86bd32d4a5f4e7acbb`.
+Twelve new producer/verifier tests and31 actual Windows receiver fixtures passed.
+Tests cover sockets, binary contents, nanosecond timestamps, hard-link bytes,
+no-follow links, unsupported objects, source mutation, bounds, manifest mismatch,
+false final-snapshot claims, literal argument transport and private ACLs.
+The initial Windows fixture invocation was rejected by execution policy before
+tests ran; the reviewed sealed test subsequently ran with a process-local
+execution-policy argument, without changing system policy.
+
+The old `cbfcde4fe50745ecb84ac3630c7a5fab` archive and its unaccepted receipt
+remain unchanged and were independently rehashed against that private receipt.
+This new capture does not reinterpret its warning or certify its old contents.
+Six65-character public checksum transcription errors were found and corrected
+from saved-file hashes/private receipts. Accepted caches, SQLite and extra-work
+archives, unaccepted owner/physical-project archives and the Library gap report
+were checked; acceptance classifications did not change. The separately checked
+Library archive also matches its still-unaccepted private receipt. Private audit
+records are under`f8db07cf41054f78973416559740cd88`; the physical partial was
+independently rechecked15:01:52Z. A structural regression now rejects malformed
+recorded SHA256 fields; it is not a substitute for hashing real artifacts.
+
+Post-capture router observation14:54:51Z remained Running,12 routes/seven Claude
+streams, native PIDs2141/20968, global unknown0 and retained presentation unknown1.
+Router code/policy digests remained unchanged. No model turn, native restart,
+source temporary archive, source permission change or deletion occurred. All
+capture/audit jobs and both administrator SSH connections are terminal.
+Weekly usage remained12% available at14:58:55Z, above the owner's5% pause gate.
+The goal remains active and incomplete. Source writers are not frozen; source
+final deltas, Mac ACL/xattr closure, protected personal/Library data, remaining
+two topics, hardware relocation, remote cold-boot/auto-login acceptance and
+encrypted off-machine clean restore remain unresolved. The Mac is not ready
+to erase.

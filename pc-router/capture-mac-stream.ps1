@@ -1,7 +1,8 @@
 param(
- [Parameter(Mandatory=$true)][ValidateSet('vm-personal','vm-library','vm-extra-work','vm-owner-tools','vm-package-caches','vm-editor-cache','vm-darwin-cad-tools','vm-codex-sqlite','physical-projects','physical-bench-home')][string]$Profile,
+ [Parameter(Mandatory=$true)][ValidateSet('vm-personal','vm-library','vm-extra-work','vm-owner-tools','vm-owner-tools-manifest','vm-package-caches','vm-editor-cache','vm-darwin-cad-tools','vm-codex-sqlite','physical-projects','physical-bench-home')][string]$Profile,
  [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-f]{32}$')][string]$RunId,
- [ValidatePattern('^[0-9a-f]{64}$')][string]$SqliteProducerSha256
+ [ValidatePattern('^[0-9a-f]{64}$')][string]$SqliteProducerSha256,
+ [ValidatePattern('^[0-9a-f]{64}$')][string]$OwnerToolsProducerSha256
 )
 # One-shot source -> private PC stream. No Mac archive/temp file, extraction,
 # activation, source freeze, deletion or retry. Selected live data is a SEED,
@@ -46,6 +47,7 @@ function Get-MigrationStreamSource([string]$Name){
   # gaps, including caches. Never infer that an inaccessible/cache file is
   # disposable; preserve bytes without activating Darwin tools on the PC.
   'vm-owner-tools' {return @{host='mac';user='pouya';root='/Users/pouya';members=@('.CFUserTextEncoding','.DS_Store','.anydesk','.aspnet','.azure','.bun','.cargo','.claude.json','.claude.json.bak-trust-20260924-190310','.config','.copilot','.dotnet','.gitconfig','.homebrew','.kimi-code','.local','.matplotlib','.net','.nuget','.rustup','.ssh','.templateengine','.webos','.zcompdump','.zprofile','.zsh_history','.zsh_sessions','.zshrc','.zshrc.bak-opus5-20260727-192500')}}
+  'vm-owner-tools-manifest' {$spec=Get-MigrationStreamSource 'vm-owner-tools';$spec.captureMode='file-bytes-and-socket-metadata';return $spec}
   'vm-package-caches' {return @{host='mac';user='pouya';root='/Users/pouya';members=@('.cache','.npm')}}
   'vm-editor-cache' {return @{host='mac';user='pouya';root='/Users/pouya';members=@('.vscode-server')}}
   'vm-darwin-cad-tools' {return @{host='mac';user='pouya';root='/Users/pouya';members=@('oss-cad-suite')}}
@@ -125,6 +127,8 @@ end
 $encoded=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($producer))
 $spec=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($source | ConvertTo-Json -Compress)))
 $remote="/usr/bin/ruby -rbase64 -e 'eval(Base64.strict_decode64(ARGV.shift))' '$encoded' '$spec'"
+if($SqliteProducerSha256 -and $OwnerToolsProducerSha256){throw 'Exactly one explicit producer grant allowed'}
+if($OwnerToolsProducerSha256 -and $Profile -ne 'vm-owner-tools-manifest'){throw 'Owner-tools producer grant cannot apply to a different profile'}
 if($Profile -eq 'vm-codex-sqlite'){
  if(-not $SqliteProducerSha256 -or $PSScriptRoot -notmatch '^C:\\ProgramData\\OracovaMigration\\stream-helper-[0-9a-f]{32}$'){throw 'Independently reviewed sealed SQLite producer required'}
  Assert-MigrationStreamParent $PSScriptRoot
@@ -136,6 +140,17 @@ if($Profile -eq 'vm-codex-sqlite'){
  $encoded=[Convert]::ToBase64String($codeBytes)
  $remote="/opt/homebrew/bin/python3.14 -I -B -c 'import base64,sys; p=base64.b64decode(sys.argv.pop()); exec(p)' '$encoded'"
 }elseif($SqliteProducerSha256){throw 'SQLite producer grant cannot apply to a different profile'}
+if($Profile -eq 'vm-owner-tools-manifest'){
+ if(-not $OwnerToolsProducerSha256 -or $PSScriptRoot -notmatch '^C:\\ProgramData\\OracovaMigration\\stream-helper-[0-9a-f]{32}$'){throw 'Independently reviewed sealed owner-tools producer required'}
+ Assert-MigrationStreamParent $PSScriptRoot
+ $ownerToolsCode=Join-Path $PSScriptRoot 'stream_owner_tools.py'
+ if((Get-Item -LiteralPath $ownerToolsCode).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Literal sealed producer required'}
+ $codeBytes=[IO.File]::ReadAllBytes($ownerToolsCode)
+ $codeHash=[BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($codeBytes)).Replace('-','').ToLowerInvariant()
+ if($codeHash -ne $OwnerToolsProducerSha256){throw 'Owner-tools producer bytes differ from reviewed hash'}
+ $encoded=[Convert]::ToBase64String($codeBytes)
+ $remote="/opt/homebrew/bin/python3.14 -I -B -c 'import base64,sys; p=base64.b64decode(sys.argv.pop()); exec(p)' '$encoded'"
+}
 $wsl='C:\Windows\System32\wsl.exe'
 $migrationArguments=@('-d','Ubuntu-24.04','-u','pou','--exec','/usr/bin/timeout','--signal=TERM','--kill-after=15s','900s',
  '/usr/bin/ssh','-F','/Users/pouya/.ssh/config','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','ConnectTimeout=10','-T',$source.host,$remote)
@@ -148,6 +163,7 @@ $report=[ordered]@{schema='ccrelay.mac_to_pc_direct_stream.v1';profile=$Profile;
  destination=$archive;sourceMacTemporaryArchive=$false;producerExit=$null;transportExit=$null;archiveReaderExit=$null;
  bytes=[long]0;sha256=$null;producerDigestMatched=$false;sourceWarningBytes=$null;sourceWarningTruncated=$null;targetProtected=$false;seedAccepted=$false;
  sqliteConsistentPerDatabase=$false;sqliteDatabaseCount=$null;sqliteSnapshotBytes=$null;sqliteSourcePeakRssBytes=$null;sqliteTargetVerified=$false;
+ fileManifestTargetVerified=$false;fileManifestEntries=$null;fileManifestBytes=$null;socketMetadataCount=$null;socketKernelStatePreserved=$false;
  sourceWritersFrozen=$false;consistentFinalSnapshot=$false;fullMacBackup=$false;encryptedAtRest=$false;extracted=$false;errorType=$null}
 try{
  $child=[Diagnostics.Process]::Start($info);$child.StandardInput.Close()
@@ -177,6 +193,9 @@ if(-not $report.errorType){
    $report.sqliteConsistentPerDatabase=($receipt.consistentPerDatabase -eq $true)
    $report.sqliteDatabaseCount=$receipt.databaseCount;$report.sqliteSnapshotBytes=$receipt.databaseBytes;$report.sqliteSourcePeakRssBytes=$receipt.peakRssBytes
   }
+  if($Profile -eq 'vm-owner-tools-manifest'){
+   $report.fileManifestEntries=$receipt.fileManifestEntries;$report.fileManifestBytes=$receipt.fileBytes;$report.socketMetadataCount=$receipt.socketCount
+  }
   $report.producerDigestMatched=($receipt.schema -eq 'ccrelay.mac_archive_producer.v1' -and $receipt.bytes -eq $report.bytes -and $receipt.sha256 -eq $report.sha256)
   Assert-MigrationStreamParent $folder
   $a=Get-Acl -LiteralPath $archive
@@ -202,12 +221,33 @@ if(-not $report.errorType){
      $checked.consistentPerDatabase -eq $true -and $checked.consistentFinalSnapshot -eq $false -and $checked.activeProfileChanged -eq $false -and $checked.extractedToFilesystem -eq $false)
    }finally{$checkLog.Dispose();$checkChild.Dispose()}
   }
+  if($Profile -eq 'vm-owner-tools-manifest' -and $report.transportExit -eq 0 -and $report.producerDigestMatched){
+   $checker='/mnt/c/'+$ownerToolsCode.Substring(3).Replace('\','/')
+   $checkArgs=@('-d','Ubuntu-24.04','-u','pou','--exec','/usr/bin/timeout','900s','/usr/bin/python3','-I','-B',$checker,'--verify',('/mnt/c/ProgramData/OracovaMigration/'+$RunId+'/'+$Profile+'.tar.gz'))
+   $checkInfo=[Diagnostics.ProcessStartInfo]::new($wsl,(($checkArgs|ForEach-Object {ConvertTo-MigrationNativeArgument $_}) -join ' '))
+   $checkInfo.UseShellExecute=$false;$checkInfo.RedirectStandardOutput=$true;$checkInfo.RedirectStandardError=$true
+   $checkChild=[Diagnostics.Process]::Start($checkInfo);$checkOut=$checkChild.StandardOutput.ReadToEndAsync()
+   $checkLog=New-MigrationStreamFile (Join-Path $folder 'file-manifest-check.private.log')
+   try{
+    $checkErrors=$checkChild.StandardError.BaseStream.CopyToAsync($checkLog);$checkChild.WaitForExit();$checkErrors.GetAwaiter().GetResult()|Out-Null
+    $checked=$checkOut.GetAwaiter().GetResult()|ConvertFrom-Json
+    $report.fileManifestTargetVerified=($checkChild.ExitCode -eq 0 -and $checked.schema -eq 'ccrelay.owner_tools_target_verification.v1' -and
+     $checked.verified -eq $true -and $checked.fileManifestEntries -eq $report.fileManifestEntries -and $checked.fileBytes -eq $report.fileManifestBytes -and
+     $checked.socketCount -eq $report.socketMetadataCount -and $checked.socketKernelStatePreserved -eq $false -and $checked.consistentFinalSnapshot -eq $false -and
+     $checked.activeProfileChanged -eq $false -and $checked.extractedToFilesystem -eq $false)
+   }finally{$checkLog.Dispose();$checkChild.Dispose()}
+  }
   $report.seedAccepted=($report.transportExit -eq 0 -and $report.producerExit -eq 0 -and $receipt.warningBytes -eq 0 -and
    $report.producerDigestMatched -and $report.targetProtected -and $report.archiveReaderExit -eq 0 -and (Get-FileHash -LiteralPath $archive).Hash.ToLowerInvariant() -eq $report.sha256)
   if($Profile -eq 'vm-codex-sqlite'){
    $report.seedAccepted=($report.seedAccepted -and $report.sqliteTargetVerified -and $report.sqliteConsistentPerDatabase -and
     $receipt.snapshotSchema -eq 'ccrelay.memory_sqlite_snapshot.v1' -and $report.sqliteDatabaseCount -ge 1 -and $report.sqliteDatabaseCount -le 32 -and
     $receipt.consistentFinalSnapshot -eq $false -and $receipt.sourceTemporaryDatabaseFiles -eq $false)
+  }
+  if($Profile -eq 'vm-owner-tools-manifest'){
+   $report.seedAccepted=($report.seedAccepted -and $report.fileManifestTargetVerified -and $receipt.fileManifestSchema -eq 'ccrelay.owner_tools_file_manifest.v1' -and
+    $report.fileManifestEntries -ge 29 -and $report.fileManifestEntries -le 750000 -and $report.socketMetadataCount -ge 0 -and
+    $receipt.socketKernelStatePreserved -eq $false -and $receipt.consistentFinalSnapshot -eq $false -and $receipt.sourceTemporaryFiles -eq $false)
   }
  }catch{$report.errorType=$_.Exception.GetType().Name}
 }
