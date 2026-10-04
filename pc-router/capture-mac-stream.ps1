@@ -1,5 +1,5 @@
 param(
- [Parameter(Mandatory=$true)][ValidateSet('vm-personal','vm-library','vm-extra-work','vm-owner-tools','vm-owner-tools-manifest','vm-package-caches','vm-editor-cache','vm-darwin-cad-tools','vm-codex-sqlite','vm-ai-hil-kicad-dependency','vm-dirty-work-manifest','physical-projects','physical-bench-home','physical-shared','vm-shared','physical-service-config','vm-service-config','physical-service-code')][string]$Profile,
+ [Parameter(Mandatory=$true)][ValidateSet('vm-personal','vm-library','vm-extra-work','vm-owner-tools','vm-owner-tools-manifest','vm-package-caches','vm-editor-cache','vm-darwin-cad-tools','vm-codex-sqlite','vm-ai-hil-kicad-dependency','vm-dirty-work-manifest','physical-projects','physical-bench-home','physical-shared','vm-shared','physical-service-config','vm-service-config','physical-service-code','vm-system-applications')][string]$Profile,
  [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-f]{32}$')][string]$RunId,
  [ValidatePattern('^[0-9a-f]{64}$')][string]$SqliteProducerSha256,
  [ValidatePattern('^[0-9a-f]{64}$')][string]$OwnerToolsProducerSha256,
@@ -67,6 +67,9 @@ function Get-MigrationStreamSource([string]$Name){
   # This does not grant database data, root account or whole-machine capture.
   'physical-service-config' {return @{host='bench-mac';user='oracova';root='/';members=@('Library/LaunchAgents','Library/LaunchDaemons','opt/homebrew/etc')}}
   'vm-service-config' {return @{host='mac';user='pouya';root='/';members=@('Library/LaunchAgents','Library/LaunchDaemons','opt/homebrew/etc')}}
+  # System Applications is distinct from the already preserved owner's
+  # Applications directory. Copy bytes/links only, never activate Mac apps.
+  'vm-system-applications' {return @{host='mac';user='pouya';root='/';members=@('Applications')}}
   # Original Darwin service/client code and local tools, not an active PC
   # replacement. PostgreSQL's protected data and Library remain open gaps.
   'physical-service-code' {return @{host='bench-mac';user='oracova';root='/';members=@(

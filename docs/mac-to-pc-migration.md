@@ -3349,3 +3349,44 @@ project/topic activation, pending guarded-router approval, physical bench,
 outside-LAN/power recovery and independent encrypted restore remain open.
 The Mac is not erasure-ready and the complete migration goal remains active.
 Read-only native weekly quota was7% remaining at21:49:47Z, above the5% pause gate.
+
+### VM system Applications preserved
+
+On October 4, 2026, the separately bounded `vm-system-applications` profile
+preserved VM `/Applications`, not the already archived home Applications folder.
+Exactly one capture completed at21:57:52Z without source warnings; producer,
+transport and archive-reader exits were0. The source-stream digest matched the
+PC archive and a fresh independent PC hash. Run
+`f2fa7860405544e3898a60968a987398` contains3596390400 compressed bytes; SHA256:
+`354a24df4b6b1b3b438ce81a2b9db219c73c0da199545e4994f51bc8a31ec86d`.
+
+An independent bounded streaming reader completed at22:00:38Z:54385 entries,
+49519 regular files,9386331831 file bytes,275 symlinks and0 hardlinks. Every
+regular-file payload was read and hashed; all member paths remained under
+Applications, with no duplicate paths. The nine immediate members match the
+observed source counts: six directories, two regular files and one link.
+Nothing was extracted, activated or followed through a link. Private member
+index SHA256:
+`565786c2cabc243839b223998dee86eb77f837dec71851373c3dc4a2b28408db`.
+Reader SHA256:
+`708c456bd75008cee319675a692bde4fcff8c06ff6f375f0f4f83671f2ed92f0`.
+
+The sealed helper package is
+`C:\ProgramData\OracovaMigration\stream-helper-05ad71e71c9e4d15a26d49c5596615e1`.
+Capture helper SHA256:
+`200c1538958d959e0d00d3cd2391cb7548aa268af7c474e5052acfa8e227fe9e`.
+All46 actual Windows capture fixtures, four isolated in-memory reader fixtures
+and two structural digest regression tests passed. At21:59:16Z all nine
+helper/evidence files passed protected Admin/SYSTEM-only ACL and owner checks;
+independent ordinary UID1000 opens were denied before any byte read.
+The owned reader was observed terminal and disposed, then maintenance SSH
+closed cleanly. Khadang remained Stopped at22:00:52Z; no consumed checkpoint,
+router policy, source service or existing app configuration changed.
+
+This is a live preservation seed, not native Windows app qualification, an
+encrypted backup or a final writer-fenced snapshot. Protected database/personal
+data, remaining system cohorts, final deltas, project/topic activation, pending
+guarded-router recovery approval, physical bench/outside-LAN power recovery and
+independent encrypted restore remain open. The Mac is not erasure-ready; the
+full migration goal remains active. Read-only weekly quota was7% at22:00:01Z,
+above the owner's5% pause threshold.
