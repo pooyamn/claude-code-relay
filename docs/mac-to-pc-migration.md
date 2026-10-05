@@ -42,6 +42,18 @@ file is excluded OS state, not a reason to seek elevated Mac access. Existing
 mixed archives remain retained, with their original acceptance status intact.
 Remaining PC wiring is deferred while useful source files are being checked.
 
+Latest owner clarification, October4: the physical Mac's Pouya account is
+already backed up by the owner and is **excluded from further capture**.
+The current file-preservation scope is physical `/Users/Shared`, physical
+`/Users/oracova` and useful files in the Mac VM (including its Shared folder).
+Legitimate sudo access is authorized only as needed for those useful files;
+it is not permission to import the other account, bulk OS state or downloadable
+apps. Earlier Pouya-account access and whole-VM-image blockers are superseded.
+Physical system PostgreSQL data outside these locations is not automatically
+part of this narrowed file task; establish a project dependency before expanding
+scope. Existing archives remain intact. Final scoped checks and recovery proof
+are still required; this clarification is not approval to erase the source.
+
 Owner approved guarded Claude checkpoint recovery on October 4. Enable it only
 in protected PC policy. Renew exact history hashes under the native writer lease
 and verified ordinary-owner process; keep the same binding, workspace, session
@@ -71,11 +83,12 @@ hardware, unregistered-topic or full disaster-recovery acceptance gates. The
 Web topic's existing interrupted-work hold remains intact pending reconciliation.
 
 System-service inspection on October4 additionally found a live PostgreSQL16
-server on the physical bench Mac. Its protected data directory is not part of
-the accepted account/workspace/Shared preservation cohorts. Configuration
-preservation is now verified, but an authenticated consistent database export,
-PC restore/validation and service cutover remain required. Do not infer that
-migrated Telegram bindings or VPN services cover this database.
+server on the physical bench Mac. Its protected system data directory is not
+part of the accepted account/workspace/Shared preservation cohorts. Configuration
+preservation is verified, but database content/restore is not. The latest narrowed
+file scope does not automatically include this system database; determine any
+in-scope project dependency before treating its export/cutover as required.
+Do not infer that migrated Telegram bindings or VPN services cover it.
 
 | Project | Chat | Topic |
 | --- | --- | --- |
@@ -3741,3 +3754,67 @@ open. Recent handoff/document digest transcription errors were corrected from
 the authoritative protected receipts using32-character chunks; the actual
 archives were unchanged. The documented-digest length check now rejects such
 console-wrap duplication.
+
+### Owner-narrowed Shared/Oracova scope verified, October5 00:50Z
+
+The owner confirmed that the physical Pouya account is independently backed up
+and requested only Shared, Oracova and useful VM files. That account was not
+accessed. Fresh ordinary-owner observations covered both Shared folders and61
+literal Oracova project, credential, custom-tool and user-data roots. No source
+permission change or sudo was necessary: all selected files were readable.
+Downloadable SDK/app trees and cache/log directories were excluded from new
+bulk capture; existing mixed archives were neither erased nor overwritten.
+
+The independent PC reader first rehashed each original compressed archive,
+then compared current source file hashes/link targets against saved members.
+Only the original tar's leading `./` prefix was normalized; no extraction or
+symlink traversal occurred. Source observations and archive readers exited0,
+with no diagnostic errors or unresolved selected hardlinks.
+
+| Selected cohort | Current file/link leaves | Result |
+| --- | --- | --- |
+| Physical Shared | 3995 | All4241 entries matched;1313060719 logical file bytes |
+| VM Shared | 12 | All24 entries matched;588244 logical file bytes |
+| Oracova useful roots | 23200 | No missing entries; only five VPN runtime files changed |
+
+The Oracova observation hashed2530168698 logical file bytes;26948 of26953
+entries matched the existing home archive. Differences were only four VPN logs
+and one status JSON file, not missing project/configuration/credential files.
+The first five-file capture rejected a changed source version and remains an
+unaccepted377671-byte attempt in run`a2fd985de3ad472298a8a27b65696629`.
+It was not promoted or automatically retried. A distinct bounded run reobserved
+the exact five files immediately before capture using the reviewed no-follow
+observer and manifest producer, without stopping their source services.
+
+The fresh delta at00:49:30Z is run`00202f466de1452698b7f6dbc505c01f`,
+`physical-vpn-runtime-delta.tar.gz`:392531 compressed bytes,4459286 file bytes.
+SHA256:
+`402a6b58e6b66e89d7d2eec4f2362a1fdfa35fecb13fe84a4570febd70ed486e`.
+Producer exit0, warningBytes0; source/PC compressed digest and byte count matched.
+An independent PC archive reader verified all five file hashes and manifest
+metadata against the fresh observation at00:50:10Z. This is a recovery seed,
+not a transactionally consistent database or final source-writer fence.
+
+Protected source observations:
+
+- Physical run`c7e40947d54247188e9412955d4b3ed2`, SHA256
+  `12a5651012544c42fe0e0923f6b3f9e22e3397f0cf94e1633bc57be9db739c00`.
+- VM Shared run`a4a00c0452554843b896d480a58a31fe`, SHA256
+  `c564ccfbf68544182b8de2fbad2ce012d7b91b868a75493e066ee63f52c69f69`.
+
+Protected independent comparisons:
+
+- Physical run`d1226a0aeb5646908fa47d192dd5201f`, SHA256
+  `59ce65eec6a1b9f224bdd890c912a240d55c1dbd8715537863ae54f72e002785`.
+- VM Shared run`e0165f671d8147b5ad008072beb75837`, SHA256
+  `3d3b2fc7563a686821b07751d6feffccffbc8211d66bbb0bc3f11810ecc265a7`.
+
+At00:50:38Z all20 new evidence files had explicit administrator/SYSTEM-only
+ACLs, Administrators ownership and literal non-reparse destinations. An actual
+ordinary Linux UID1000 open was denied for both observations, both comparisons
+and the accepted delta archive, before reading any bytes. Original archives
+were unchanged. No router/session/topic/VPN configuration or startup policy
+was changed, and remaining PC wiring stays deferred. The revised scope removes
+the old physical-Pouya access blocker; it does not imply all unselected VM data,
+final deltas, ACL/xattr restoration, portable Keychain recovery or independent
+encrypted/off-machine restore is qualified. Mac/VM erasure remains unauthorized.
