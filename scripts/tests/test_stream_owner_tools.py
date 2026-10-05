@@ -141,17 +141,24 @@ class OwnerToolsStreamTests(unittest.TestCase):
                 native_selection(raw)
 
     def test_useful_library_scope_matches_independent_audit_and_excludes_os_caches(self):
-        from scripts.audit_useful_vm_library import ROOTS, EXCLUDED_DIRS
-        self.assertEqual(USEFUL_LIBRARY_ROOTS, ROOTS)
+        from scripts.audit_useful_vm_library import ROOTS, ADDITIONAL_ROOTS, EXCLUDED_DIRS
+        self.assertEqual(USEFUL_LIBRARY_ROOTS, ROOTS + ADDITIONAL_ROOTS)
         self.assertEqual(USEFUL_LIBRARY_CACHE_DIRS, EXCLUDED_DIRS)
         for name in ('Library/Keychains/login.keychain-db', 'Library/Preferences/org.kicad.kicad.plist',
-                     'Library/Application Support/Autodesk/Autodesk Fusion 360/MyScripts/custom.py'):
+                     'Library/Application Support/Autodesk/Autodesk Fusion 360/MyScripts/custom.py',
+                     'Library/Application Support/Fusion 360 CAM/Settings/custom-tool.json',
+                     'Library/Application Support/Google/Chrome/Local State',
+                     'Library/Application Scripts/custom/saved-script.scpt',
+                     'Library/Containers/com.apple.TextEdit/Data/Library/Autosave Information/Untitled'):
             raw = json.dumps({'schema': 'ccrelay.dirty_source_selection.v1',
                               'entries': [{'name': name, 'kind': 'file'}]}).encode()
             self.assertEqual(list(library_selection(raw)), [name])
         for name in ('Library/Group Containers/group.com.apple.secure-control-center-preferences/file',
                      'Library/Caches/file', 'Library/Application Support/Autodesk/webdeploy/binary',
-                     'Library/Application Support/jlcone/Code Cache/file', 'Library/Keychains-evil/file'):
+                     'Library/Application Support/jlcone/Code Cache/file', 'Library/Keychains-evil/file',
+                     'Library/Application Support/Microsoft/DeveloperTools/vendor-package',
+                     'Library/Application Support/Google/Chrome/optimization_guide_model_store/model',
+                     'Library/Containers/com.apple.TextEdit/Data/Library/Caches/file'):
             raw = json.dumps({'schema': 'ccrelay.dirty_source_selection.v1',
                               'entries': [{'name': name, 'kind': 'file'}]}).encode()
             with self.subTest(name=name), self.assertRaises(ValueError):

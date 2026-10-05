@@ -33,6 +33,23 @@ ROOTS = tuple('Library/' + name for name in (
     'Preferences/com.autodesk.fusion360.plist', 'Preferences/com.google.Chrome.plist',
     'Preferences/com.jlcpcb.www.plist', 'Preferences/org.kicad.eeschema.plist',
     'Preferences/org.kicad.kicad.plist'))
+ADDITIONAL_ROOTS = tuple('Library/' + name for name in (
+    'Application Support/Fusion 360 CAM/Settings', 'Application Support/Adobe/Acrobat',
+    'Application Support/Google/Chrome/Local State', 'Application Support/Google/Chrome/NativeMessagingHosts',
+    'Application Support/Google/Chrome/External Extensions', 'Preferences/Adobe',
+    'Preferences/com.adobe.Acrobat.Pro.plist', 'Preferences/com.adobe.Synchronizer.DC.plist',
+    'Preferences/com.autodesk.AdskIdentityManager.plist', 'Preferences/com.philandro.anydesk.plist',
+    'Preferences/org.python.python.plist', 'Autosave Information', 'Services', 'Application Scripts',
+    'Group Containers/group.com.apple.Journal', 'Group Containers/group.com.apple.VoiceMemos.shared',
+    'Group Containers/group.com.apple.shortcuts', 'Group Containers/group.is.workflow.my.app',
+    'Group Containers/group.is.workflow.shortcuts', 'Group Containers/group.com.apple.contacts',
+    'Group Containers/group.com.apple.mail', 'Group Containers/com.apple.MessagesLegacyTransferArchive',
+    'Group Containers/group.com.apple.iCloudDrive',
+    'Containers/com.apple.TextEdit/Data/Library/Autosave Information',
+    'Containers/com.apple.Preview/Data/Library/Autosave Information',
+    'Containers/com.apple.ScriptEditor2/Data/Library/Autosave Information',
+    'Containers/com.apple.QuickTimePlayerX/Data/Library/Autosave Information',
+    'Containers/com.adobe.Acrobat.Pro/Data/Documents'))
 EXCLUDED_DIRS = frozenset(('Cache', 'Caches', 'Code Cache', 'GPUCache', 'DawnCache',
                          'DawnGraphiteCache', 'DawnWebGPUCache', 'ShaderCache', 'GrShaderCache',
                          'GraphiteDawnCache', 'Crashpad', 'logs', 'Logs', 'webdeploy',
@@ -172,6 +189,11 @@ def observe(root, *, roots=ROOTS, max_entries=MAX_ENTRIES, max_bytes=MAX_BYTES, 
                     os.close(fd)
             elif stat.S_ISLNK(before.st_mode):
                 row.update(kind='symlink', target=os.readlink(base, dir_fd=parent))
+            elif stat.S_ISSOCK(before.st_mode):
+                row.update(kind='socket', representation='metadata-only',
+                           uid=before.st_uid, gid=before.st_gid,
+                           socketKernelStatePreserved=False,
+                           restore='recreate via its owning application; kernel state is not portable')
             elif stat.S_ISREG(before.st_mode):
                 if before.st_size > max_bytes - total:
                     raise TimeoutError('Useful library logical byte bound')
@@ -216,7 +238,8 @@ def observe(root, *, roots=ROOTS, max_entries=MAX_ENTRIES, max_bytes=MAX_BYTES, 
             'roots': list(roots), 'entries': rows, 'issues': issues, 'absentRoots': absent,
             'excludedCacheDirectories': excluded, 'fileBytesHashed': total,
             'sourceWritersFrozen': False, 'consistentFinalSnapshot': False,
-            'sourceModified': False, 'macAclAndXattrClosure': False}
+            'sourceModified': False, 'macAclAndXattrClosure': False,
+            'socketKernelStatePreserved': False}
 
 
 def compare(archive_path, source, *, timeout=300):
@@ -302,10 +325,11 @@ if __name__ == '__main__':
         with open(stored, 'rb') as stream:
             checked = verify_opaque(stream.read(16385), expected)
         print(json.dumps(checked, separators=(',', ':')))
-    elif sys.argv[1:] == ['--source']:
+    elif sys.argv[1:] in (['--source'], ['--additional-source']):
         if sys.platform != 'darwin' or os.geteuid() != 501 or pwd.getpwuid(501).pw_name != 'pouya':
             raise SystemExit('Literal ordinary VM owner required')
-        print(json.dumps(observe('/Users/pouya'), separators=(',', ':')))
+        selected = ADDITIONAL_ROOTS if sys.argv[1] == '--additional-source' else ROOTS
+        print(json.dumps(observe('/Users/pouya', roots=selected), separators=(',', ':')))
     elif len(sys.argv) == 3 and sys.argv[1] == '--compare':
         source_path = sys.argv[2]
         if sys.platform != 'linux' or os.geteuid() != 1000 or not re.fullmatch(

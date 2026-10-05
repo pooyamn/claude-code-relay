@@ -20,6 +20,12 @@ def invalid_digests(value, path=""):
 
 
 class MigrationEvidenceDigestTests(unittest.TestCase):
+    def test_documented_digest_tokens_are_64_digits_not_console_wrap_duplicates(self):
+        path = Path(__file__).resolve().parents[2] / 'docs' / 'mac-to-pc-migration.md'
+        tokens = re.findall(r'(?<![0-9A-Za-z])[0-9a-fA-F]{61,}(?![0-9A-Za-z])', path.read_text())
+        self.assertTrue(tokens)
+        self.assertEqual([value for value in tokens if len(value) != 64], [])
+
     def test_recorded_sha256_strings_are_not_truncated_or_console_wrap_duplicates(self):
         path = Path(__file__).resolve().parents[2] / "pc-router" / "deployment-status.json"
         with path.open() as source:

@@ -39,6 +39,17 @@ function ConvertTo-MigrationNativeArgument([string]$Value){
  if($Value -match '^[A-Za-z0-9_./:=@+-]+$'){return $Value}
  return '"'+[regex]::Replace([regex]::Replace($Value,'(\\*)"','$1$1\"'),'(\\+)$','$1$1')+'"'
 }
+function Compress-MigrationProducer([byte[]]$Bytes){
+ # Only already hash-reviewed code, not private selections/file data. Keep the
+ # argv below Windows' process-launch limit; never materialize code on the Mac.
+ if(-not $Bytes -or $Bytes.Length -gt 256KB){throw 'Reviewed producer code byte bound'}
+ $buffer=[IO.MemoryStream]::new()
+ try{
+  $gzip=[IO.Compression.GZipStream]::new($buffer,[IO.Compression.CompressionLevel]::Optimal,$true)
+  try{$gzip.Write($Bytes,0,$Bytes.Length)}finally{$gzip.Dispose()}
+  return [Convert]::ToBase64String($buffer.ToArray())
+ }finally{$buffer.Dispose()}
+}
 function Get-MigrationStreamSource([string]$Name){
  switch($Name){
   'vm-personal' {return @{host='mac';user='pouya';root='/Users/pouya';members=@('Documents','Downloads')}}
@@ -185,8 +196,8 @@ if($Profile -eq 'vm-codex-sqlite'){
  $codeBytes=[IO.File]::ReadAllBytes($sqliteCode)
  $codeHash=[BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($codeBytes)).Replace('-','').ToLowerInvariant()
  if($codeHash -ne $SqliteProducerSha256){throw 'SQLite producer bytes differ from reviewed hash'}
- $encoded=[Convert]::ToBase64String($codeBytes)
- $remote="/opt/homebrew/bin/python3.14 -I -B -c 'import base64,sys; p=base64.b64decode(sys.argv.pop()); exec(p)' '$encoded'"
+ $encoded=Compress-MigrationProducer $codeBytes
+ $remote="/opt/homebrew/bin/python3.14 -I -B -c 'import base64,gzip,sys; p=gzip.decompress(base64.b64decode(sys.argv.pop())); exec(p)' '$encoded'"
 }elseif($SqliteProducerSha256){throw 'SQLite producer grant cannot apply to a different profile'}
 if($Profile -in @('vm-owner-tools-manifest','vm-dirty-work-manifest','vm-native-history-delta','vm-useful-library-delta')){
  if(-not $OwnerToolsProducerSha256 -or $PSScriptRoot -notmatch '^C:\\ProgramData\\OracovaMigration\\stream-helper-[0-9a-f]{32}$'){throw 'Independently reviewed sealed owner-tools producer required'}
@@ -196,8 +207,8 @@ if($Profile -in @('vm-owner-tools-manifest','vm-dirty-work-manifest','vm-native-
  $codeBytes=[IO.File]::ReadAllBytes($ownerToolsCode)
  $codeHash=[BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($codeBytes)).Replace('-','').ToLowerInvariant()
  if($codeHash -ne $OwnerToolsProducerSha256){throw 'Owner-tools producer bytes differ from reviewed hash'}
- $encoded=[Convert]::ToBase64String($codeBytes)
- $remote="/opt/homebrew/bin/python3.14 -I -B -c 'import base64,sys; p=base64.b64decode(sys.argv.pop()); exec(p)' '$encoded'"
+ $encoded=Compress-MigrationProducer $codeBytes
+ $remote="/opt/homebrew/bin/python3.14 -I -B -c 'import base64,gzip,sys; p=gzip.decompress(base64.b64decode(sys.argv.pop())); exec(p)' '$encoded'"
  if($Profile -in @('vm-dirty-work-manifest','vm-native-history-delta','vm-useful-library-delta')){
   if(-not $DirtySelectionSha256){throw 'Independently reviewed exact dirty selection required'}
   $selectionFile=Join-Path $PSScriptRoot 'dirty-selection.json'
@@ -205,7 +216,7 @@ if($Profile -in @('vm-owner-tools-manifest','vm-dirty-work-manifest','vm-native-
   if((Get-FileHash $selectionFile).Hash.ToLowerInvariant() -ne $DirtySelectionSha256){throw 'Sealed dirty selection differs from reviewed hash'}
   $selectionBytes=[IO.File]::ReadAllBytes($selectionFile)
   $selectionMode=$(if($Profile -eq 'vm-native-history-delta'){'--native-selection'}elseif($Profile -eq 'vm-useful-library-delta'){'--library-selection'}else{'--dirty-selection'})
-  $remote="/opt/homebrew/bin/python3.14 -I -B -c 'import base64,sys; p=base64.b64decode(sys.argv.pop()); sys.argv.append(`"$selectionMode`"); exec(p)' '$encoded'"
+  $remote="/opt/homebrew/bin/python3.14 -I -B -c 'import base64,gzip,sys; p=gzip.decompress(base64.b64decode(sys.argv.pop())); sys.argv.append(`"$selectionMode`"); exec(p)' '$encoded'"
  }
 }
 $wsl='C:\Windows\System32\wsl.exe'
@@ -223,6 +234,7 @@ $report=[ordered]@{schema='ccrelay.mac_to_pc_direct_stream.v1';profile=$Profile;
  fileManifestTargetVerified=$false;fileManifestEntries=$null;fileManifestBytes=$null;socketMetadataCount=$null;socketKernelStatePreserved=$false;
  sourceWritersFrozen=$false;consistentFinalSnapshot=$false;fullMacBackup=$false;encryptedAtRest=$false;extracted=$false;errorType=$null}
 try{
+ if($info.Arguments.Length -gt 30000){throw 'Reviewed producer transport argument bound exceeded; retain failed run'}
  $child=[Diagnostics.Process]::Start($info)
  $copy=$child.StandardOutput.BaseStream.CopyToAsync($sink);$errorCopy=$child.StandardError.BaseStream.CopyToAsync($errors)
  if($Profile -in @('vm-dirty-work-manifest','vm-native-history-delta','vm-useful-library-delta')){

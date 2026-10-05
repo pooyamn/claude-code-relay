@@ -10,6 +10,16 @@ $root=Join-Path ([IO.Path]::GetTempPath()) ('mac-stream-fixture-'+[Guid]::NewGui
 [IO.Directory]::CreateDirectory($root,(New-MigrationStreamAcl $true)) | Out-Null
 try{
  Assert-MigrationStreamParent $root
+ $codeFixture=[Text.Encoding]::UTF8.GetBytes(('# safe Python comment fixture'+[char]10)*2000)
+ $encoded=Compress-MigrationProducer $codeFixture
+ Assert ($encoded.Length -lt 2000 -and [Convert]::ToBase64String($codeFixture).Length -gt 32767) 'Reviewed code is transported below Windows argv limit, not truncated'
+ $packed=[IO.MemoryStream]::new([Convert]::FromBase64String($encoded))
+ $decoded=[IO.MemoryStream]::new();$gzip=[IO.Compression.GZipStream]::new($packed,[IO.Compression.CompressionMode]::Decompress)
+ try{
+  $gzip.CopyTo($decoded)
+  Assert ($decoded.Length -eq $codeFixture.Length -and [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($decoded.ToArray())) -eq [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($codeFixture))) 'All reviewed producer bytes survive gzip transport exactly'
+ }finally{$gzip.Dispose();$decoded.Dispose();$packed.Dispose()}
+ try{Compress-MigrationProducer ([byte[]]::new(262145))|Out-Null;throw 'accepted'}catch{Assert ($_.Exception.Message -match 'code byte bound') 'Oversize code rejected, never silently shortened'}
  $file=New-MigrationStreamFile (Join-Path $root 'fixture.bin');$sink=[MigrationStreamSink]::new($file,8)
  try{
   $b=[byte[]]@(0,255,10,13,128,1,2,3);$sink.Write($b,0,8);$sink.Seal();$file.Flush($true)

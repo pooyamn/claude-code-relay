@@ -3600,7 +3600,7 @@ administrator/SYSTEM-only `C:\ProgramData\OracovaMigration` parent:
 Settings archive SHA256:
 `2b4ae045688c0d10c630a2cdd5235640bad1e8310c8511e20b705ad4819bac21`.
 Native-delta archive SHA256:
-`e5f0992c358eb92ac70ff4654fe1c9c91dd29e51a5d931e3fa3b298a2760aaf10`.
+`e5f0992c358eb92ac70ff4654fe1c9c91d29e51a5d931e3fa3b298a2760aaf10`.
 Both passed source/PC compressed hashes, zero-warning producer/transport exits,
 archive readers and fresh saved-file hash/length/protected-ACL readback.
 
@@ -3613,7 +3613,7 @@ against that selection; archive metadata also matched the producer manifest.
 Only ten fixed native-history namespaces
 are admitted; no arbitrary home/root capture or recursive cache import.
 Selection SHA256:
-`0a1b99647ced6276d0eb5b996a35c5b12bc9cee978149c225446359c97cc91f2b`.
+`0a1b99647ced6276d0eb5b96a35c5b12bc9cee978149c225446359c97cc91f2b`.
 The timestamp-selected delta may overlap original seeds; it is not a complete
 all-history comparison. Database/journal bytes are recovery seeds, not new
 backup-API or cross-database consistency evidence.
@@ -3669,7 +3669,7 @@ is now represented in separately protected PC artifacts:
 Data archive SHA256:
 `de7faad0c30a27827e14dafda651345db687e27db952b7859b41c6c7a4ca8d07`.
 Settings archive SHA256:
-`03ec8a65e088a42fb64c47bbf58f4dd9455cc881c8f5df6034b46ac09226a92ae`.
+`03ec8a65e088a42fb64c47bbf58f4dd9455cc81c8f5df6034b46ac09226a92ae`.
 Opaque representation SHA256:
 `10f1f693d8d45bce85fa138a1e77dab0ee06cc54ea1cb8b3353a920736088cc5`.
 Both archives passed zero-warning producer/transport/reader exits, exact source
@@ -3697,3 +3697,47 @@ This closes the selected34-root byte-preservation gap only: not all Library
 roots, a final writer fence, live database consistency, portable Keychain login,
 Mac ACL/xattr restoration or independent encrypted/off-machine recovery. No
 router/session/VPN/startup policy was changed, and the Mac is not erasure-ready.
+
+### Additional useful VM settings and app data, October5 00:34Z
+
+A read-only app/container catalog identified28 additional literal useful roots:
+Fusion CAM settings, Acrobat user state/preferences, Chrome shared profile
+settings and native-host/extension manifests, custom scripts/autosaves and
+selected contact/mail/Journal/VoiceMemos/Shortcuts/iCloud app state. No bulk
+backup of all containers, vendor app installation, model store or OS image was added.
+The fresh source observation checked913 entries, including100 file/link leaves
+and two live Acrobat sockets, with zero source issues. Four optional roots were
+absent. Cache/log directories remain excluded; empty script/autosave directories
+do not get presented as recovered documents.
+
+The additional91 regular files and nine links,11562532 logical file bytes,
+are verified in run`a1d3a15599d949fb8df71a887fb56c10`,1080293 compressed bytes.
+Archive SHA256:
+`2e7b4488d8e4a4a205ddc6cd45e868100bad031786efb5acd4b5be1f5443c2de`.
+Source observation `4058dd120e2547a1b2524964324bd1c5` SHA256:
+`d6cd7fb6d1a54bb18042116b0160a12bba0684a44dd796b8ff25e3ccd78c4db0`.
+Sealed selection SHA256:
+`c3a905ec76b2c37654e47994db9967bef9888972240c90d15f536d68e63cb51a`.
+Both sockets are explicitly preserved as metadata in the protected source and
+coverage records, not fake empty files or portable kernel state. Producer,
+transport, archive reader and controller exited0 with no warnings; independent
+per-leaf hashes/links and manifest metadata matched the observed selection.
+Fresh saved-file hash/length and administrator/SYSTEM-only ACL checks passed
+at00:34:38Z. Ordinary Linux UID1000 could not open the archive. Coverage SHA256:
+`e646c90637d13236ad1c711faa94734924c1eb0ae72d2efac1bab6c2d29326bb`.
+
+An earlier attempt never launched its source transport: its33108-character
+code argument alone exceeded [Windows' documented process-command limit](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessw). It
+remains a failed zero-byte run, not an accepted recovery artifact. The receiver
+now compresses already hash-reviewed Python code in memory, then reconstructs
+the exact bytes in the isolated source interpreter. Selections still travel
+over stdin, with unchanged pinning, authorization, no-follow and private-storage
+guards; an explicit launch-length bound prevents another oversized attempt.
+The fresh corrected capture is a distinct reviewed run, not automatic retry.
+Fifty-seven actual Windows receiver/argv/ACL/compression fixtures and42 Python
+regressions passed. No live PC profile, router, native host, VPN or scheduler
+was changed. Wiring remains deferred and full retirement/recovery gates remain
+open. Recent handoff/document digest transcription errors were corrected from
+the authoritative protected receipts using32-character chunks; the actual
+archives were unchanged. The documented-digest length check now rejects such
+console-wrap duplication.

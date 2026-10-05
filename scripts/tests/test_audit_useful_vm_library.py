@@ -3,6 +3,7 @@ import base64
 import hashlib
 import json
 import os
+import socket
 from pathlib import Path
 import tarfile
 import tempfile
@@ -55,6 +56,22 @@ class UsefulLibraryAuditTests(unittest.TestCase):
         self.assertEqual(source['excludedCacheDirectories'], ['Library/Preferences/kicad/Caches'])
         self.assertNotIn('downloadable', repr(source['entries']))
         self.assertEqual((cache / 'downloadable').read_bytes(), b'not useful')
+
+    def test_live_sockets_are_explicit_metadata_not_lost_files_or_fake_payloads(self):
+        endpoint = socket.socket(socket.AF_UNIX)
+        endpoint.bind(str(self.path / 'app.sock'))
+        try:
+            source = self.source()
+            self.assertEqual(source['issues'], [])
+            row = next(r for r in source['entries'] if r['name'].endswith('/app.sock'))
+            self.assertEqual(row['kind'], 'socket')
+            self.assertEqual(row['representation'], 'metadata-only')
+            self.assertNotIn('sha256', row)
+            self.assertNotIn('bytes', row)
+            self.assertFalse(row['socketKernelStatePreserved'])
+            self.assertFalse(source['socketKernelStatePreserved'])
+        finally:
+            endpoint.close()
 
     def test_symlinks_not_followed_and_parent_alias_not_admitted(self):
         (self.path / 'external').symlink_to('/not/followed', target_is_directory=True)
