@@ -1,5 +1,5 @@
 param(
- [Parameter(Mandatory=$true)][ValidateSet('vm-personal','vm-library','vm-extra-work','vm-owner-tools','vm-owner-tools-manifest','vm-package-caches','vm-editor-cache','vm-darwin-cad-tools','vm-codex-sqlite','vm-ai-hil-kicad-dependency','vm-dirty-work-manifest','vm-agent-settings-current','vm-native-history-delta','physical-projects','physical-bench-home','physical-shared','vm-shared','physical-service-config','vm-service-config','physical-service-code','vm-system-applications','physical-system-applications')][string]$Profile,
+ [Parameter(Mandatory=$true)][ValidateSet('vm-personal','vm-library','vm-extra-work','vm-owner-tools','vm-owner-tools-manifest','vm-package-caches','vm-editor-cache','vm-darwin-cad-tools','vm-codex-sqlite','vm-ai-hil-kicad-dependency','vm-dirty-work-manifest','vm-agent-settings-current','vm-native-history-delta','vm-useful-library-delta','physical-projects','physical-bench-home','physical-shared','vm-shared','physical-service-config','vm-service-config','physical-service-code','vm-system-applications','physical-system-applications')][string]$Profile,
  [Parameter(Mandatory=$true)][ValidatePattern('^[0-9a-f]{32}$')][string]$RunId,
  [ValidatePattern('^[0-9a-f]{64}$')][string]$SqliteProducerSha256,
  [ValidatePattern('^[0-9a-f]{64}$')][string]$OwnerToolsProducerSha256,
@@ -60,6 +60,7 @@ function Get-MigrationStreamSource([string]$Name){
   # Separately sealed exact leaves, restricted by the producer to ten fixed
   # native-history roots. No recursive home/caches or live DB consistency grant.
   'vm-native-history-delta' {return @{host='mac';user='pouya';root='/Users/pouya';members=@();captureMode='observed-exact-native-leaf-content'}}
+  'vm-useful-library-delta' {return @{host='mac';user='pouya';root='/Users/pouya';members=@();captureMode='observed-exact-useful-library-content'}}
   # Current unique settings/credentials/memory after the earlier seed. No
   # downloadable apps, packages, model caches or active-PC import. Retired
   # memory/task journals stay together; no live SQLite consistency is claimed.
@@ -174,8 +175,8 @@ $encoded=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($producer))
 $spec=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($source | ConvertTo-Json -Compress)))
 $remote="/usr/bin/ruby -rbase64 -e 'eval(Base64.strict_decode64(ARGV.shift))' '$encoded' '$spec'"
 if($SqliteProducerSha256 -and $OwnerToolsProducerSha256){throw 'Exactly one explicit producer grant allowed'}
-if($OwnerToolsProducerSha256 -and $Profile -notin @('vm-owner-tools-manifest','vm-dirty-work-manifest','vm-native-history-delta')){throw 'File-manifest producer grant cannot apply to a different profile'}
-if($DirtySelectionSha256 -and $Profile -notin @('vm-dirty-work-manifest','vm-native-history-delta')){throw 'Dirty selection grant cannot apply to a different profile'}
+if($OwnerToolsProducerSha256 -and $Profile -notin @('vm-owner-tools-manifest','vm-dirty-work-manifest','vm-native-history-delta','vm-useful-library-delta')){throw 'File-manifest producer grant cannot apply to a different profile'}
+if($DirtySelectionSha256 -and $Profile -notin @('vm-dirty-work-manifest','vm-native-history-delta','vm-useful-library-delta')){throw 'Dirty selection grant cannot apply to a different profile'}
 if($Profile -eq 'vm-codex-sqlite'){
  if(-not $SqliteProducerSha256 -or $PSScriptRoot -notmatch '^C:\\ProgramData\\OracovaMigration\\stream-helper-[0-9a-f]{32}$'){throw 'Independently reviewed sealed SQLite producer required'}
  Assert-MigrationStreamParent $PSScriptRoot
@@ -187,7 +188,7 @@ if($Profile -eq 'vm-codex-sqlite'){
  $encoded=[Convert]::ToBase64String($codeBytes)
  $remote="/opt/homebrew/bin/python3.14 -I -B -c 'import base64,sys; p=base64.b64decode(sys.argv.pop()); exec(p)' '$encoded'"
 }elseif($SqliteProducerSha256){throw 'SQLite producer grant cannot apply to a different profile'}
-if($Profile -in @('vm-owner-tools-manifest','vm-dirty-work-manifest','vm-native-history-delta')){
+if($Profile -in @('vm-owner-tools-manifest','vm-dirty-work-manifest','vm-native-history-delta','vm-useful-library-delta')){
  if(-not $OwnerToolsProducerSha256 -or $PSScriptRoot -notmatch '^C:\\ProgramData\\OracovaMigration\\stream-helper-[0-9a-f]{32}$'){throw 'Independently reviewed sealed owner-tools producer required'}
  Assert-MigrationStreamParent $PSScriptRoot
  $ownerToolsCode=Join-Path $PSScriptRoot 'stream_owner_tools.py'
@@ -197,13 +198,13 @@ if($Profile -in @('vm-owner-tools-manifest','vm-dirty-work-manifest','vm-native-
  if($codeHash -ne $OwnerToolsProducerSha256){throw 'Owner-tools producer bytes differ from reviewed hash'}
  $encoded=[Convert]::ToBase64String($codeBytes)
  $remote="/opt/homebrew/bin/python3.14 -I -B -c 'import base64,sys; p=base64.b64decode(sys.argv.pop()); exec(p)' '$encoded'"
- if($Profile -in @('vm-dirty-work-manifest','vm-native-history-delta')){
+ if($Profile -in @('vm-dirty-work-manifest','vm-native-history-delta','vm-useful-library-delta')){
   if(-not $DirtySelectionSha256){throw 'Independently reviewed exact dirty selection required'}
   $selectionFile=Join-Path $PSScriptRoot 'dirty-selection.json'
   if((Get-Item $selectionFile).Attributes -band [IO.FileAttributes]::ReparsePoint -or (Get-Item $selectionFile).Length -gt 4MB){throw 'Literal bounded sealed selection required'}
   if((Get-FileHash $selectionFile).Hash.ToLowerInvariant() -ne $DirtySelectionSha256){throw 'Sealed dirty selection differs from reviewed hash'}
   $selectionBytes=[IO.File]::ReadAllBytes($selectionFile)
-  $selectionMode=$(if($Profile -eq 'vm-native-history-delta'){'--native-selection'}else{'--dirty-selection'})
+  $selectionMode=$(if($Profile -eq 'vm-native-history-delta'){'--native-selection'}elseif($Profile -eq 'vm-useful-library-delta'){'--library-selection'}else{'--dirty-selection'})
   $remote="/opt/homebrew/bin/python3.14 -I -B -c 'import base64,sys; p=base64.b64decode(sys.argv.pop()); sys.argv.append(`"$selectionMode`"); exec(p)' '$encoded'"
  }
 }
@@ -224,7 +225,7 @@ $report=[ordered]@{schema='ccrelay.mac_to_pc_direct_stream.v1';profile=$Profile;
 try{
  $child=[Diagnostics.Process]::Start($info)
  $copy=$child.StandardOutput.BaseStream.CopyToAsync($sink);$errorCopy=$child.StandardError.BaseStream.CopyToAsync($errors)
- if($Profile -in @('vm-dirty-work-manifest','vm-native-history-delta')){
+ if($Profile -in @('vm-dirty-work-manifest','vm-native-history-delta','vm-useful-library-delta')){
   $selectionWrite=$child.StandardInput.BaseStream.WriteAsync($selectionBytes,0,$selectionBytes.Length)
   if(-not $selectionWrite.Wait(30000)){throw 'Owned selection transfer deadline exceeded'}
   $selectionWrite.GetAwaiter().GetResult()|Out-Null
@@ -255,7 +256,7 @@ if(-not $report.errorType){
    $report.sqliteConsistentPerDatabase=($receipt.consistentPerDatabase -eq $true)
    $report.sqliteDatabaseCount=$receipt.databaseCount;$report.sqliteSnapshotBytes=$receipt.databaseBytes;$report.sqliteSourcePeakRssBytes=$receipt.peakRssBytes
   }
-  if($Profile -in @('vm-owner-tools-manifest','vm-dirty-work-manifest','vm-native-history-delta')){
+  if($Profile -in @('vm-owner-tools-manifest','vm-dirty-work-manifest','vm-native-history-delta','vm-useful-library-delta')){
    $report.fileManifestEntries=$receipt.fileManifestEntries;$report.fileManifestBytes=$receipt.fileBytes;$report.socketMetadataCount=$receipt.socketCount
   }
   $report.producerDigestMatched=($receipt.schema -eq 'ccrelay.mac_archive_producer.v1' -and $receipt.bytes -eq $report.bytes -and $receipt.sha256 -eq $report.sha256)
@@ -283,13 +284,13 @@ if(-not $report.errorType){
      $checked.consistentPerDatabase -eq $true -and $checked.consistentFinalSnapshot -eq $false -and $checked.activeProfileChanged -eq $false -and $checked.extractedToFilesystem -eq $false)
    }finally{$checkLog.Dispose();$checkChild.Dispose()}
   }
-  if($Profile -in @('vm-owner-tools-manifest','vm-dirty-work-manifest','vm-native-history-delta') -and $report.transportExit -eq 0 -and $report.producerDigestMatched){
+  if($Profile -in @('vm-owner-tools-manifest','vm-dirty-work-manifest','vm-native-history-delta','vm-useful-library-delta') -and $report.transportExit -eq 0 -and $report.producerDigestMatched){
    $checker='/mnt/c/'+$ownerToolsCode.Substring(3).Replace('\','/')
    $checkArgs=@('-d','Ubuntu-24.04','-u','pou','--exec','/usr/bin/timeout','900s','/usr/bin/python3','-I','-B',$checker,'--verify',('/mnt/c/ProgramData/OracovaMigration/'+$RunId+'/'+$Profile+'.tar.gz'))
-   if($Profile -in @('vm-dirty-work-manifest','vm-native-history-delta')){
+   if($Profile -in @('vm-dirty-work-manifest','vm-native-history-delta','vm-useful-library-delta')){
     if((Get-FileHash $selectionFile).Hash.ToLowerInvariant() -ne $DirtySelectionSha256){throw 'Selection changed before independent verification'}
     $selectionLinux='/mnt/c/'+$selectionFile.Substring(3).Replace('\','/')
-    $verificationMode=$(if($Profile -eq 'vm-native-history-delta'){'--verify-native'}else{'--verify-dirty'})
+    $verificationMode=$(if($Profile -eq 'vm-native-history-delta'){'--verify-native'}elseif($Profile -eq 'vm-useful-library-delta'){'--verify-library'}else{'--verify-dirty'})
     $checkArgs=@('-d','Ubuntu-24.04','-u','pou','--exec','/usr/bin/timeout','900s','/usr/bin/python3','-I','-B',$checker,$verificationMode,$selectionLinux,('/mnt/c/ProgramData/OracovaMigration/'+$RunId+'/'+$Profile+'.tar.gz'))
    }
    $checkInfo=[Diagnostics.ProcessStartInfo]::new($wsl,(($checkArgs|ForEach-Object {ConvertTo-MigrationNativeArgument $_}) -join ' '))
@@ -303,7 +304,7 @@ if(-not $report.errorType){
      $checked.verified -eq $true -and $checked.fileManifestEntries -eq $report.fileManifestEntries -and $checked.fileBytes -eq $report.fileManifestBytes -and
      $checked.socketCount -eq $report.socketMetadataCount -and $checked.socketKernelStatePreserved -eq $false -and $checked.consistentFinalSnapshot -eq $false -and
      $checked.activeProfileChanged -eq $false -and $checked.extractedToFilesystem -eq $false)
-    if($Profile -in @('vm-dirty-work-manifest','vm-native-history-delta')){$report.fileManifestTargetVerified=($report.fileManifestTargetVerified -and $checked.expectedSelectionMatched -eq $true)}
+    if($Profile -in @('vm-dirty-work-manifest','vm-native-history-delta','vm-useful-library-delta')){$report.fileManifestTargetVerified=($report.fileManifestTargetVerified -and $checked.expectedSelectionMatched -eq $true)}
    }finally{$checkLog.Dispose();$checkChild.Dispose()}
   }
   $report.seedAccepted=($report.transportExit -eq 0 -and $report.producerExit -eq 0 -and $receipt.warningBytes -eq 0 -and
@@ -313,13 +314,13 @@ if(-not $report.errorType){
     $receipt.snapshotSchema -eq 'ccrelay.memory_sqlite_snapshot.v1' -and $report.sqliteDatabaseCount -ge 1 -and $report.sqliteDatabaseCount -le 32 -and
     $receipt.consistentFinalSnapshot -eq $false -and $receipt.sourceTemporaryDatabaseFiles -eq $false)
   }
-  if($Profile -in @('vm-owner-tools-manifest','vm-dirty-work-manifest','vm-native-history-delta')){
-   $minimumEntries=$(if($Profile -in @('vm-dirty-work-manifest','vm-native-history-delta')){1}else{29})
+  if($Profile -in @('vm-owner-tools-manifest','vm-dirty-work-manifest','vm-native-history-delta','vm-useful-library-delta')){
+   $minimumEntries=$(if($Profile -in @('vm-dirty-work-manifest','vm-native-history-delta','vm-useful-library-delta')){1}else{29})
    $report.seedAccepted=($report.seedAccepted -and $report.fileManifestTargetVerified -and $receipt.fileManifestSchema -eq 'ccrelay.owner_tools_file_manifest.v1' -and
     $report.fileManifestEntries -ge $minimumEntries -and $report.fileManifestEntries -le 750000 -and $report.socketMetadataCount -ge 0 -and
     $receipt.socketKernelStatePreserved -eq $false -and $receipt.consistentFinalSnapshot -eq $false -and $receipt.sourceTemporaryFiles -eq $false)
   }
-  if($Profile -in @('vm-dirty-work-manifest','vm-native-history-delta')){$report.seedAccepted=($report.seedAccepted -and (Get-FileHash $selectionFile).Hash.ToLowerInvariant() -eq $DirtySelectionSha256)}
+  if($Profile -in @('vm-dirty-work-manifest','vm-native-history-delta','vm-useful-library-delta')){$report.seedAccepted=($report.seedAccepted -and (Get-FileHash $selectionFile).Hash.ToLowerInvariant() -eq $DirtySelectionSha256)}
  }catch{$report.errorType=$_.Exception.GetType().Name}
 }
 $report.finishedAt=[DateTime]::UtcNow.ToString('o')

@@ -31,6 +31,17 @@ The owner explicitly authorized continuing below the previous 5% weekly quota
 pause threshold; the active goal now pauses at **1% remaining weekly usage**.
 This does not expand credential, deletion or wipe authority.
 
+Owner clarification, October4: **useful files only**, especially the VM's
+unique work and data. Do not capture the full macOS VM disk/image, OS files,
+downloadable app installations or caches. Prioritize source/Git/dirty work,
+custom scripts and CAD assets, agent history/memory/action records, credentials,
+custom configuration and personal files. Whole-disk/bootable-VM preservation is
+not an acceptance requirement after this clarification; older image-related
+audit notes remain historical. A known root-owned Control Center preferences
+file is excluded OS state, not a reason to seek elevated Mac access. Existing
+mixed archives remain retained, with their original acceptance status intact.
+Remaining PC wiring is deferred while useful source files are being checked.
+
 Owner approved guarded Claude checkpoint recovery on October 4. Enable it only
 in protected PC policy. Renew exact history hashes under the native writer lease
 and verified ordinary-owner process; keep the same binding, workspace, session
@@ -3622,6 +3633,67 @@ Twenty-five source-format/SQLite regressions and53 actual Windows receiver,
 profile, argv and ACL checks passed. Reviewed helpers/selection remain sealed
 under `stream-helper-8b8a3ffafce64501b08a3a487efaaa4b`. No Mac temporary archive,
 permission bypass, deletion, extraction or automatic capture retry occurred.
-The whole powered-down VM image, final writer fence, inaccessible physical
-account/database data and independent encrypted restore remain unqualified.
+This observation preceded the owner's useful-files-only clarification: a whole
+powered-down VM image is no longer a retirement requirement. The final writer
+fence, inaccessible useful physical account/database data and independent
+encrypted restore remain unqualified.
 Do not erase the Mac or its VM store on the strength of these seeds.
+
+### Missing useful VM Library data preserved, October5 00:13Z
+
+The owner explicitly requested useful files, not macOS junk or a disk image.
+The new read-only audit selects34 literal Library roots for custom CAD settings,
+scripts/add-ins, Fusion local project/recovery data, Keychains, browser/personal
+data, fonts and custom app state. It excludes cache/log directories, downloadable
+deployment trees and extension installations. It does not discard the original
+mixed archive or modify the Mac. Remaining PC wiring is deferred.
+
+The original Library archive was incomplete in a materially broader way than
+the earlier source-readability audit established. Hashing the selected source
+files and comparing archived contents found3613 missing/changed file or link
+leaves,2359658764 logical bytes. An independent GNU tar pass also found only
+the root directory entries for Keychains, Preferences and Application Support.
+That pass completed with warnings retained privately; it does not upgrade the
+old archive's acceptance. Readable source metadata alone never proved coverage.
+
+A fresh bounded source observation at00:10:57Z hashed3640 regular files plus
+four links,2364308344 file bytes, with no source issues. Every selected leaf
+is now represented in separately protected PC artifacts:
+
+| Selected cohort | Run | File/link leaves | Stored bytes |
+| --- | --- | --- | --- |
+| Useful Library data, excluding two changing settings files | `0a4bd7698b704d0e8a4d6d66b9a120d4` | 3641 | 1598137230 |
+| Two freshly reobserved Fusion settings files | `ff4a6766f66c44c69ed3a9a4cd9a2b6d` | 2 | 4428 |
+| One Mac-only filename, raw bytes plus reversible name mapping | `15ad8c03ffd449539cbc45b5d8181efe` | 1 | 858 |
+
+Data archive SHA256:
+`de7faad0c30a27827e14dafda651345db687e27db952b7859b41c6c7a4ca8d07`.
+Settings archive SHA256:
+`03ec8a65e088a42fb64c47bbf58f4dd9455cc881c8f5df6034b46ac09226a92ae`.
+Opaque representation SHA256:
+`10f1f693d8d45bce85fa138a1e77dab0ee06cc54ea1cb8b3353a920736088cc5`.
+Both archives passed zero-warning producer/transport/reader exits, exact source
+and PC compressed digests and independent per-leaf expected hashes/link targets
+and manifest metadata. The299-byte opaque file passed independent content-hash
+and original-name-mapping verification; no unsafe Windows/tar name was enabled,
+no source file renamed, and no payload extracted or activated.
+
+The initial all-leaf attempt rejected that filename before any archive bytes.
+A separate attempt then stopped on source-version drift; its bytes, failed
+receipt and independent partial comparison remain retained and unaccepted.
+The two small changing files were explicitly reobserved and captured separately,
+not silently omitted or accepted from a stale selection. All operations were
+bounded one-shot captures, with no automatic retry.
+
+Exact coverage receipts, source observations, sealed selections and private
+diagnostics stay in administrator/SYSTEM-only PC storage, not Git. Forty Python
+regressions and54 actual Windows receiver/profile/argv/ACL checks passed.
+Fresh Windows saved-file hashes/lengths and protected file/folder ACLs passed
+at00:14:04Z; ordinary Linux UID1000 could not open any of the three artifacts.
+The private coverage receipt under source-observation run
+`fe30d22622b5471b8805e8ddc369b945` has SHA256
+`9e405511da36dcfcb31c9dbbd3e2961842a5e24612767e15f4648b1f6824b4e6`.
+This closes the selected34-root byte-preservation gap only: not all Library
+roots, a final writer fence, live database consistency, portable Keychain login,
+Mac ACL/xattr restoration or independent encrypted/off-machine recovery. No
+router/session/VPN/startup policy was changed, and the Mac is not erasure-ready.

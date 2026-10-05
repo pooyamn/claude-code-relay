@@ -9,7 +9,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from scripts.stream_owner_tools import capture, verify, DigestReader, dirty_selection, native_selection, NATIVE_HISTORY_ROOTS
+from scripts.stream_owner_tools import (capture, verify, DigestReader, dirty_selection, native_selection,
+    NATIVE_HISTORY_ROOTS, library_selection, USEFUL_LIBRARY_ROOTS, USEFUL_LIBRARY_CACHE_DIRS)
 
 
 class OwnerToolsStreamTests(unittest.TestCase):
@@ -138,6 +139,23 @@ class OwnerToolsStreamTests(unittest.TestCase):
                               'entries': [{'name': name, 'kind': 'file'}]}).encode()
             with self.subTest(name=name), self.assertRaises(ValueError):
                 native_selection(raw)
+
+    def test_useful_library_scope_matches_independent_audit_and_excludes_os_caches(self):
+        from scripts.audit_useful_vm_library import ROOTS, EXCLUDED_DIRS
+        self.assertEqual(USEFUL_LIBRARY_ROOTS, ROOTS)
+        self.assertEqual(USEFUL_LIBRARY_CACHE_DIRS, EXCLUDED_DIRS)
+        for name in ('Library/Keychains/login.keychain-db', 'Library/Preferences/org.kicad.kicad.plist',
+                     'Library/Application Support/Autodesk/Autodesk Fusion 360/MyScripts/custom.py'):
+            raw = json.dumps({'schema': 'ccrelay.dirty_source_selection.v1',
+                              'entries': [{'name': name, 'kind': 'file'}]}).encode()
+            self.assertEqual(list(library_selection(raw)), [name])
+        for name in ('Library/Group Containers/group.com.apple.secure-control-center-preferences/file',
+                     'Library/Caches/file', 'Library/Application Support/Autodesk/webdeploy/binary',
+                     'Library/Application Support/jlcone/Code Cache/file', 'Library/Keychains-evil/file'):
+            raw = json.dumps({'schema': 'ccrelay.dirty_source_selection.v1',
+                              'entries': [{'name': name, 'kind': 'file'}]}).encode()
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                library_selection(raw)
 
     def test_symlink_root_not_followed(self):
         link = self.root / "alias"

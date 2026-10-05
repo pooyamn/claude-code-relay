@@ -48,6 +48,8 @@ try{
  Assert (@($currentSettings.members|Where-Object {$_ -match '(^Applications|packages|cache|\.sqlite|\.db|workspace$)'}).Count -eq 0) 'Current settings never silently recapture downloadable apps, caches, live database files or the workspace'
  $nativeDelta=Get-MigrationStreamSource 'vm-native-history-delta'
  Assert ($nativeDelta.host -eq 'mac' -and $nativeDelta.user -eq 'pouya' -and $nativeDelta.root -eq '/Users/pouya' -and $nativeDelta.members.Count -eq 0 -and $nativeDelta.captureMode -eq 'observed-exact-native-leaf-content') 'Native delta requires a sealed exact selection, never recursive home or another account'
+ $usefulLibrary=Get-MigrationStreamSource 'vm-useful-library-delta'
+ Assert ($usefulLibrary.host -eq 'mac' -and $usefulLibrary.user -eq 'pouya' -and $usefulLibrary.root -eq '/Users/pouya' -and $usefulLibrary.members.Count -eq 0 -and $usefulLibrary.captureMode -eq 'observed-exact-useful-library-content') 'Useful Library delta requires an independently sealed leaf selection, never a whole Library/OS/cache grant'
  $physicalShared=Get-MigrationStreamSource 'physical-shared';$vmShared=Get-MigrationStreamSource 'vm-shared'
  Assert ($physicalShared.host -eq 'bench-mac' -and $physicalShared.user -eq 'oracova' -and $physicalShared.root -eq '/Users' -and ($physicalShared.members -join '|') -ceq 'Shared') 'Physical non-home source is exactly Shared, not another account or whole disk'
  Assert ($vmShared.host -eq 'mac' -and $vmShared.user -eq 'pouya' -and $vmShared.root -eq '/Users' -and ($vmShared.members -join '|') -ceq 'Shared') 'VM Shared keeps its own pinned host/account and complete selected cohort'

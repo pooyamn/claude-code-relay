@@ -36,6 +36,23 @@ NATIVE_HISTORY_ROOTS = ('.claude/projects', '.claude/file-history', '.claude/ses
                         '.claude/jobs', '.claude/skills', '.codex/sessions',
                         '.codex/archived_sessions', '.codex/generated_images',
                         '.openclaw/agents', '.openclaw/media')
+USEFUL_LIBRARY_ROOTS = tuple('Library/' + name for name in (
+    'Preferences/kicad', 'Preferences/.wrangler', 'Preferences/astro', 'Preferences/tscircuit-nodejs',
+    'Keychains', 'LaunchAgents', 'Shortcuts', 'Spelling', 'Fonts', 'FontCollections',
+    'Mail', 'Messages', 'Contacts', 'Safari', 'Application Support/AddressBook',
+    'Application Support/Autodesk/FusionAddins', 'Application Support/Autodesk/Neutron Platform',
+    'Application Support/Autodesk/Autodesk Fusion 360', 'Application Support/MagicRemoteBridge',
+    'Application Support/skidl', 'Application Support/fastmcp', 'Application Support/clawhub',
+    'Application Support/jlcone', 'Application Support/Google/Chrome/Default',
+    'Group Containers/group.com.apple.notes', 'Group Containers/group.com.apple.calendar',
+    'Group Containers/group.com.apple.reminders',
+    'Preferences/com.autodesk.EAGLE 9.7.0.plist', 'Preferences/com.autodesk.FusionApp.plist',
+    'Preferences/com.autodesk.fusion360.plist', 'Preferences/com.google.Chrome.plist',
+    'Preferences/com.jlcpcb.www.plist', 'Preferences/org.kicad.eeschema.plist',
+    'Preferences/org.kicad.kicad.plist'))
+USEFUL_LIBRARY_CACHE_DIRS = frozenset(('Cache', 'Caches', 'Code Cache', 'GPUCache', 'DawnCache',
+    'DawnGraphiteCache', 'DawnWebGPUCache', 'ShaderCache', 'GrShaderCache', 'GraphiteDawnCache',
+    'Crashpad', 'logs', 'Logs', 'webdeploy', 'Extensions', 'Service Worker', 'blob_storage'))
 
 
 class DigestWriter:
@@ -326,6 +343,15 @@ def native_selection(raw):
     return expected
 
 
+def library_selection(raw):
+    expected = dirty_selection(raw)
+    if any(not any(name == root or name.startswith(root + '/') for root in USEFUL_LIBRARY_ROOTS)
+           or any(part in USEFUL_LIBRARY_CACHE_DIRS for part in name.split('/')[:-1])
+           for name in expected):
+        raise ValueError('Useful Library roots without cache/vendor-directory grants required')
+    return expected
+
+
 if __name__ == "__main__":
     try:
         if len(sys.argv) == 3 and sys.argv[1] == "--verify":
@@ -334,25 +360,29 @@ if __name__ == "__main__":
                     r"/mnt/c/ProgramData/OracovaMigration/[0-9a-f]{32}/vm-owner-tools-manifest\.tar\.gz", path):
                 raise ValueError("literal PC verification archive required")
             print(json.dumps(verify(path), separators=(",", ":")))
-        elif len(sys.argv) == 4 and sys.argv[1] in ('--verify-dirty', '--verify-native'):
+        elif len(sys.argv) == 4 and sys.argv[1] in ('--verify-dirty', '--verify-native', '--verify-library'):
             selection, path = sys.argv[2:]
-            native = sys.argv[1] == '--verify-native'
-            profile = 'vm-native-history-delta' if native else 'vm-dirty-work-manifest'
+            profile, read_selection = {
+                '--verify-dirty': ('vm-dirty-work-manifest', dirty_selection),
+                '--verify-native': ('vm-native-history-delta', native_selection),
+                '--verify-library': ('vm-useful-library-delta', library_selection)}[sys.argv[1]]
             if sys.platform != 'linux' or os.geteuid() != 1000 or not re.fullmatch(
                     r'/mnt/c/ProgramData/OracovaMigration/stream-helper-[0-9a-f]{32}/dirty-selection\.json', selection) or not re.fullmatch(
                     r'/mnt/c/ProgramData/OracovaMigration/[0-9a-f]{32}/' + re.escape(profile) + r'\.tar\.gz', path):
                 raise ValueError('Literal PC dirty verification inputs required')
             with open(selection, 'rb') as source:
-                expected = (native_selection if native else dirty_selection)(source.read((4 << 20) + 1))
+                expected = read_selection(source.read((4 << 20) + 1))
             checked = verify(path, expected_leaves=expected)
             checked['expectedSelectionMatched'] = True
             print(json.dumps(checked, separators=(',', ':')))
-        elif len(sys.argv) == 2 and sys.argv[1] in ('--dirty-selection', '--native-selection'):
+        elif len(sys.argv) == 2 and sys.argv[1] in ('--dirty-selection', '--native-selection', '--library-selection'):
             if sys.platform != 'darwin' or os.geteuid() == 0 or pwd.getpwuid(os.geteuid()).pw_name != 'pouya':
                 raise ValueError('Ordinary Mac owner required')
-            native = sys.argv[1] == '--native-selection'
-            expected = (native_selection if native else dirty_selection)(sys.stdin.buffer.read((4 << 20) + 1))
-            root = '/Users/pouya' if native else '/Users/pouya/.openclaw/workspace'
+            root, read_selection = {
+                '--dirty-selection': ('/Users/pouya/.openclaw/workspace', dirty_selection),
+                '--native-selection': ('/Users/pouya', native_selection),
+                '--library-selection': ('/Users/pouya', library_selection)}[sys.argv[1]]
+            expected = read_selection(sys.stdin.buffer.read((4 << 20) + 1))
             report = capture(root, sys.stdout.buffer, owner_uid=os.geteuid(),
                              members=sorted(expected), expected_leaves=expected)
             print(json.dumps(report, separators=(',', ':')), file=sys.stderr)
