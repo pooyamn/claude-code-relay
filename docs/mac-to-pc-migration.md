@@ -3818,3 +3818,82 @@ was changed, and remaining PC wiring stays deferred. The revised scope removes
 the old physical-Pouya access blocker; it does not imply all unselected VM data,
 final deltas, ACL/xattr restoration, portable Keychain recovery or independent
 encrypted/off-machine restore is qualified. Mac/VM erasure remains unauthorized.
+
+### Wrap-up checkpoint: fresh VM databases and Claude prompt history
+
+The owner changed the active goal to **"lets wrap this up"**. This checkpoint
+finishes the work already in flight; it does not expand the audit, resume deferred
+PC wiring or certify full Mac retirement. Pouya's physical account stays excluded.
+
+All six current VM Codex databases completed a fresh backup-API-in-memory capture
+at`2026-10-05T00:55:55Z`. Run`a0d8333b45ac495e9b74c5feac9dc6af`,
+`vm-codex-sqlite.tar.gz`:174528700 compressed bytes,742313984 snapshot bytes.
+SHA256:
+`faa7e4ca2837343b0706508bb6a9cd03d882e38071df8ffe19b0badd461d752e`.
+Producer, transport, controller and archive-reader exits were0; warnings0.
+Source/PC digests matched and the independent PC verifier checked every database
+digest, size and SQLite integrity in memory. Consistency is per database, not
+an atomic cross-database or final writer-fenced snapshot. Source connections were
+SQL-read-only; SQLite may initialize small WAL/SHM companions as documented by
+the reviewed producer. No source-local archive or temporary database clone was
+created, and no snapshot was imported into a live PC profile.
+
+The sealed helper is`stream-helper-30ebef78b1e5492997524123811e54bf` under the
+protected migration parent. Producer SHA256:
+`8e9d1ad883e19ea8090d69f669652bf14548314ca3cd60e98123532d7e4e1afc`.
+Eight SQLite regressions and57 actual Windows receiver/argv/ACL fixtures passed.
+
+The earlier recent-history delta did not include the root Claude prompt index.
+An independent source hash showed that index differs from the original PC seed;
+the Codex root history still matches its preserved seed. The newer Claude index
+was captured separately without touching an active profile. Run
+`667b4f430f894b84ab9e28649bfb6034`, `vm-claude-prompt-history.tar.gz`,
+280066 compressed bytes,1350788 file bytes, SHA256:
+`e9c55895149ec978b7fd5111e27101c920220b2de0af1da168a233961026a268`.
+Source exit0/warnings0, source/PC compressed digests matched, and an independent
+PC reader verified its manifest and exact expected file digest at01:09:28Z.
+The recovered source file SHA256 is
+`4f8dfe7512174c918706b978410545f1fc8a92853231e66725a18e30e284aba1`.
+
+At01:10:40Z all17 new snapshot/helper/source-observation/history evidence files
+had explicit administrator/SYSTEM-only ACLs and Administrators ownership.
+Actual ordinary Linux UID1000 opens of both new archives and the native source
+observation were denied before any byte read. No router/session/topic/VPN/startup
+policy, source permissions, deletion or erasure changed in this checkpoint.
+
+The in-flight native-history comparison finished at01:11:04Z with reader exit0
+and no diagnostics. The ten fixed roots were observed without a timestamp filter
+at00:58:07Z:22118 entries,16467 file/link leaves,6239128608 logical file bytes,
+zero source read issues or absent roots. Only two nested downloaded-plugin Git
+log directories were excluded. Source observation run
+`73b70761d49140a0ac37d687058e8805`, SHA256:
+`aa206b7aadfeb31acb181b8ed5d80d9f29a06db76d889ed6c490230562150042`.
+
+Comparison run`ff05ca4c3003487aba3db452563e0fc7`, SHA256:
+`2805da7c75c036cfa2f16d0be3dd2d10d3e91e710041d74a5a0c364b7df2e2f6`.
+It checked the preserved Claude/Codex clones and read the existing native delta,
+media and agent-state archives to their ends, hashing selected file contents and
+checking links without extraction. Archive lengths were checked; prior receipts
+retain the original whole-compressed-archive hashes. This comparison did not
+rehash every compressed archive byte. Initially16364 leaves matched; the only
+remaining103 leaves were regular Claude file-history files totaling1184012 bytes.
+
+A bounded final capture saved precisely those103 observed versions, enforcing
+their expected content hashes while reading the source without temporary files.
+Run`f52ef3f81bd649c3b16033260fc2f4a7`,
+`vm-claude-file-history-delta.tar.gz`:369599 compressed bytes, SHA256:
+`faddffa554bec2ee9f7611aad387e60e1b6460667e15ebb1664eac049ce3e56a`.
+Producer exit0, warnings0, source/PC compressed hashes and sizes matched. A
+separate PC reader checked all103 files and manifest metadata against the
+independent source observation at01:15:37Z; reader exit0 and seedAccepted=true.
+Together, the saved copies represent all16467 selected source leaves. This is
+coverage of the observed ten roots, not all VM data or a frozen final snapshot.
+
+At01:15:53Z all eight comparison/final-delta evidence files had explicit
+administrator/SYSTEM-only ACLs, Administrators ownership and non-reparse paths.
+Actual ordinary Linux UID1000 opens of the comparison, selection, final archive
+and verification record were denied before reading bytes. Capture and reader
+processes completed and were disposed; existing failures and archives were kept.
+The owned documentation checkpoint is ready for handoff. Remaining PC wiring,
+source-writer fencing, portable credential recovery, off-machine restore testing
+and remote power/recovery acceptance remain deferred. No Mac/VM wipe is authorized.
