@@ -362,6 +362,10 @@ Global wiring (generated separately for each role's private home)
   and leave bundled, synced and plugin-managed skills with their providers.
   New/updated skills must be validated and published for both tools, not copied
   independently into one tool's home.
+- Khadang topic creation/enrollment requests from other sessions use ccrelay
+  messaging to `claude-code-relay` (CC Relay). The controller verifies the original
+  human request, creates/binds once, and replies with the result; the destination
+  remains the requesting topic's forum unless the human explicitly chose another.
 
 The personal-PC implementation is `scripts/skills-layout.json`,
 `scripts/publish_skills.py` and the `shared-skills` skill. Native Windows uses a
