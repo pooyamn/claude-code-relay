@@ -654,7 +654,15 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 var started = parameters.GetProperty("turn").GetProperty("id").GetString();
                 if (started == session.Turn) return; // Duplicate start must not resurrect/rotate a completed response.
                 if (session.RestoreTurn != null && started != session.RestoreTurn)
-                { session.Held = true; session.Status = "Held — native work changed across restart"; session.RestoreTurn = null; Touch(session); return; }
+                {
+                    if (session.Held || session.SendUnknown || ledger.Unknown != 0 ||
+                        approvals.Values.Any(a => a.Thread == session.Binding.ThreadId) || questions.Values.Any(q => q.Thread == session.Binding.ThreadId) ||
+                        session.Response.Answer.Unknown || session.PendingAnswers.Any(a => a.Unknown) ||
+                        session.PendingBubbles.Any(r => r.SendUnknown || r.Answer.Unknown))
+                    { session.Held = true; session.Status = "Held — reconcile native/transport receipts"; session.RestoreTurn = null; Touch(session); return; }
+                    session.RestoreTurn = null; session.Busy = false;
+                    session.Status = "Detached — native work advanced while bridge was offline";
+                }
                 if (!session.Busy) { BeginBubble(session); session.Elapsed.Restart(); session.Carried = TimeSpan.Zero; session.DeltaItems.Clear(); session.Items.Clear(); session.CompletedItems.Clear(); session.CompletedOrder.Clear(); }
                 session.Turn = started; session.Busy = true; session.Status = "Working";
             }
@@ -822,7 +830,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             completedItems = session.CompletedOrder.ToArray(),
             finalAnswer = session.Response.Answer,
             lastAnswer = session.LastAnswer,
-            busy = session.Busy, status = session.Status, elapsedMs = (session.Carried + session.Elapsed.Elapsed).TotalMilliseconds,
+            busy = session.Busy, status = DisplayStatus(session), elapsedMs = (session.Carried + session.Elapsed.Elapsed).TotalMilliseconds,
             turn = session.Turn,
             goal = goal.Goal, goalKnown = goal.Known, goalObservedAt = goal.ObservedAt });
     }
@@ -839,6 +847,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         bindings = sessions.Values.Select(s => s.Binding), nativeQuota = quota.Snapshot,
         nativeRemote = remote.Snapshot, nativeLinuxPid = linuxRpc?.Pid, nativeLinuxQuota = linuxQuota.Snapshot,
         nativeLinuxRemote = linuxRemote.Snapshot,
+        heldSessions = sessions.Values.Count(s => s.Held),
         nativeSessions = sessions.Values.Select(s => new { binding = s.Binding, pid = s.Claude?.Pid ?? s.Native.Pid,
-            claudeConnected = s.Claude?.Connected }), at = DateTimeOffset.UtcNow }));
+            claudeConnected = s.Claude?.Connected, held = s.Held, busy = s.Busy, status = DisplayStatus(s), turn = s.Turn }), at = DateTimeOffset.UtcNow }));
 }

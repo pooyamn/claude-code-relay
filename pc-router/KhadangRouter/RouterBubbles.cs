@@ -4,8 +4,11 @@ namespace KhadangRouter;
 
 public sealed partial class Router
 {
+    private static string DisplayStatus(Session session) => !session.Held || session.Status.StartsWith("Held", StringComparison.Ordinal)
+        ? session.Status : "Held — Telegram input blocked; inspect native/transport receipts";
+
     private string RenderBubble(Session session) => session.Bubble.Render(
-        session.Carried + session.Elapsed.Elapsed, session.Claude == null ? session.Goal.Footer : null, session.Status);
+        session.Carried + session.Elapsed.Elapsed, session.Claude == null ? session.Goal.Footer : null, DisplayStatus(session));
 
     // Called under Gate, only at a new native-work boundary, never on steering.
     private void BeginBubble(Session session)

@@ -44,18 +44,33 @@ public sealed partial class Router
         if (string.IsNullOrWhiteSpace(id) || id.Length > 200 || id.Any(char.IsControl)) throw new InvalidDataException("Invalid native active-turn identity");
         lock (session.Gate)
         {
-            if (session.NativeStateRevision != revision || session.Held || session.SendUnknown) { session.RestoreTurn = null; return; }
-            if (session.RestoreTurn != null && id != session.RestoreTurn)
-            { session.Held = true; session.Status = "Held — native work changed across restart"; Touch(session); return; }
+            if (session.NativeStateRevision != revision || session.Held || session.SendUnknown || ledger.Unknown != 0) { session.RestoreTurn = null; return; }
+            if (approvals.Values.Any(a => a.Thread == binding.ThreadId) || questions.Values.Any(q => q.Thread == binding.ThreadId))
+            { session.Held = true; session.Status = "Held — inspect pending native request"; Touch(session); return; }
+            var advanced = session.RestoreTurn != null && id != session.RestoreTurn;
+            if (advanced)
+            {
+                // Native app/goal work may advance while the observer is down.
+                // The exact thread/workspace/security and latest turn are now
+                // verified, with no unknown effects or pending native request.
+                // Rotate observations; never replay input, approve, or pretend
+                // the older response received a final completion.
+                session.Status = "Detached — native work advanced while bridge was offline";
+                BeginBubble(session); session.RestoreTurn = null;
+                session.Turn = id; session.Busy = false;
+            }
             if (turn.GetProperty("status").GetString() != "inProgress")
             {
-                if (session.RestoreTurn != null && turn.GetProperty("status").GetString() is "completed" or "interrupted")
+                if (advanced)
+                { session.Status = turn.GetProperty("status").GetString() == "completed" ? "Done" : "Stopped";
+                  session.Bubble.Append("Native work advanced while the bridge was offline; no input replayed."); Touch(session); }
+                else if (session.RestoreTurn != null && turn.GetProperty("status").GetString() is "completed" or "interrupted")
                 { session.Turn = id; session.Busy = false; session.Status = turn.GetProperty("status").GetString() == "completed" ? "Done" : "Stopped";
                   if (session.Status == "Done") CompleteAnswer(session); session.RestoreTurn = null; Touch(session); }
                 return;
             }
             if (session.Turn == id && session.Busy && session.RestoreTurn == null) return;
-            if (session.RestoreTurn == null) BeginBubble(session);
+            if (session.RestoreTurn == null && !advanced) BeginBubble(session);
             session.RestoreTurn = null; session.Turn = id; session.Busy = true; session.Status = "Working";
             session.Elapsed.Restart(); session.Carried = TimeSpan.Zero;
             if (turn.TryGetProperty("startedAt", out var started) && started.TryGetInt64(out var seconds))

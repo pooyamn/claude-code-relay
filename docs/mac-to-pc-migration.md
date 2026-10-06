@@ -63,6 +63,41 @@ launch. Never resend input or create a replacement session. A disconnected idle
 topic can become ready only after fresh native initialization confirms idle.
 Existing native hosts and VPNs are outside this router-only deployment.
 
+October 6 Android input incident: Telegram message 13825, “Check log,” was
+received as update 759322744, but no native input call was attempted. The
+image-fix deployment's first router restart occurred while native Android
+work advanced from turn `01a11297-95a9-72c1-9308-1e856cb7ca78` to a newer
+turn. The private before/after snapshots prove a previously unheld topic
+entered “native work changed across restart.” That observational hold stayed
+sticky; later native app events overwrote its visible status with Working/Done.
+The owner repeated the request in the native app at 21:56:54Z and Codex handled
+it. The historical Telegram input must not be replayed as part of repair.
+
+The recovery correction verifies exact session/workspace/security and fresh
+turn metadata, follows newer same-session work without model input, preserves
+older response receipts, and still blocks uncertain effects or pending native
+requests. Held footers and per-topic health state remain explicit during app
+progress. `deploy-codex-recovery.ps1` applies the one-time legacy Android hold
+repair only against protected origin snapshots, the exact retained update and
+an unambiguous outbox; it leaves the Web topic's unrelated hold intact.
+
+Live recovery verified at **2026-10-06T23:42:40Z**: Android is unheld on its
+existing session and active turn `01a1138f-2899-7943-9135-cebf4ee95868`;
+all 15 routes and seven Claude streams are connected, zero uncertain effects,
+Linux daemon PID 479 unchanged, startup watchdog restored and zero native
+inputs submitted during deployment. Update 759322744 remains retained as
+`held-no-replay`, not falsely marked delivered. Health correctly reports the
+one unrelated Web hold. Protected release `fb3db7e94ae2413a9515975b860c3f27`
+retains prior code/config/registry, origin evidence, fresh SYSTEM proof and
+the live recovery receipt. Protected policy is unchanged; deployed DLL SHA-256:
+`3d6aa46818d7f566b857fd8d7110f7af45e2194b54befcfc318b60f2fba2a228`.
+Validation passed: 45 focused recovery checks, 1,196 router checks on Linux
+and 1,199 on Windows. These include fresh owner input steering to the exact
+current turn, snapshot/notification races, held footer durability and retention
+of unknown-action, foreign-session and pending-approval safeguards. A new real
+owner Telegram message remains the final phone round-trip check; no synthetic
+owner/model prompt was inserted merely to manufacture that evidence.
+
 ## Current inventory
 
 The original OpenClaw configuration contained 14 bindings: eight topics in Ai
