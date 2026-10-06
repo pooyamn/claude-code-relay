@@ -44,6 +44,25 @@ class PcNativeStdioTests(unittest.TestCase):
             closed.assert_called_once_with(456)
             read.assert_not_called()
 
+    def test_exact_android_directory_still_requires_literal_owner_and_credential_denial(self):
+        path = adapter.ANDROID_WORKSPACE
+        entries = {candidate: SimpleNamespace(
+            st_mode=stat.S_IFDIR | (0o700 if candidate == adapter.OWNER else 0o755),
+            st_uid=1000 if candidate == adapter.OWNER or adapter.OWNER in candidate.parents else 0,
+            st_gid=1000, st_dev=1, st_ino=len(str(candidate))) for candidate in [path, *path.parents]}
+        with mock.patch.object(adapter.Path, 'lstat', lambda candidate: entries[candidate]), \
+                mock.patch.object(adapter.os, 'open', side_effect=PermissionError) as opened:
+            verify = adapter.attest_workspaces([str(path)])
+            verify()
+            opened.assert_called_once_with(adapter.CREDENTIAL, adapter.os.O_RDONLY | adapter.os.O_CLOEXEC)
+            entries[path].st_mode |= 0o020
+            with self.assertRaises(Denied):
+                adapter.attest_workspaces([str(path)])
+        for value in (str(path) + '-other', str(path) + '/child', str(path) + '/../secret', str(path.parent)):
+            with self.subTest(value=value), mock.patch.object(adapter.Path, 'lstat') as observed, self.assertRaises(Denied):
+                adapter.attest_workspaces([value])
+            observed.assert_not_called()
+
     def test_missing_credential_is_not_a_denial_proof(self):
         with self.workspace_fixture() as (path, entries, opened):
             opened.side_effect = FileNotFoundError

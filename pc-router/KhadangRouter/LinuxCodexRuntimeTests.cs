@@ -31,6 +31,19 @@ public static class LinuxCodexRuntimeTests
         Check(arguments.StartsWith("-d Ubuntu-24.04 -u pou --exec /usr/bin/python3 -I -B ") && arguments.Contains("/mnt/c/ProgramData/OracovaNativeRemote/codex-connector-") &&
             arguments.Contains(" --attest --workspace \"") && !arguments.Contains("--socket"), "Fixed ordinary-owner isolated connector argv; no daemon or endpoint override");
         Check(LinuxCodexRuntime.Quote("a\"b\\") == "\"a\\\"b\\\\\"", "Windows argv quoting preserves quotes and terminal backslashes");
+        Check(runtime.Arguments([LinuxCodexRuntime.AndroidWorkspace]).Contains("--workspace \"/Users/pouya/android router\""),
+            "Owner-requested Android directory is preserved exactly, including its space");
+        var android = new Binding(policy.ChatId, 43, "Android phone", LinuxCodexRuntime.AndroidWorkspace, "android-thread", "codex", "linux");
+        policy.ValidateBindings([android]); Check(true, "Exact Android Codex binding admitted without broadening home access");
+        foreach (var path in new[] { "/Users/pouya", LinuxCodexRuntime.AndroidWorkspace + "-other", LinuxCodexRuntime.AndroidWorkspace + "/child", LinuxCodexRuntime.AndroidWorkspace + "/../secret" })
+        {
+            Denied(() => runtime.Arguments([path]), "Adjacent or expanded Android path admitted");
+            Denied(() => policy.ValidateBindings([android with { Workspace = path }]), "Android binding escaped exact directory");
+        }
+        Denied(() => policy.ValidateBindings([android with { Backend = "claude", ThreadId = "11111111-1111-1111-1111-111111111111" }]),
+            "Android Codex admission granted unrelated Claude access");
+        Denied(() => (basePolicy with { LinuxWorkspaceRoot = LinuxCodexRuntime.WorkspaceRoot }).ValidateBindings([android]),
+            "Android admission activated without an explicit Linux Codex runtime");
         Denied(() => LinuxCodexRuntime.Quote("bad\nargument"), "Launch control character accepted");
         foreach (var paths in new[] { Array.Empty<string>(), new[] { workspaces[0], workspaces[0] }, new[] { "/tmp/repo" },
             new[] { workspaces[0] + "/.." }, new[] { workspaces[0] + "/" }, Enumerable.Range(0,257).Select(n => workspaces[0]+n).ToArray() })

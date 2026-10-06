@@ -86,7 +86,8 @@ public sealed record RouterPolicy(string BotUsername, long BotId, long OwnerId, 
         // Logical registry validation only. The attested Linux launcher must
         // independently verify actual paths/owner/OS credential denial.
         if (binding.Runtime != "linux" || LinuxWorkspaceRoot == null ||
-            !LinuxPath(binding.Workspace).StartsWith(LinuxPath(LinuxWorkspaceRoot) + "/", StringComparison.Ordinal))
+            !(LinuxPath(binding.Workspace).StartsWith(LinuxPath(LinuxWorkspaceRoot) + "/", StringComparison.Ordinal) ||
+              binding.Backend == "codex" && LinuxCodex != null && binding.Workspace == LinuxCodexRuntime.AndroidWorkspace))
             throw new InvalidDataException("Linux workspace is outside the explicitly admitted PC root");
     }
     private bool HumanMessage(JsonElement message, out long user)

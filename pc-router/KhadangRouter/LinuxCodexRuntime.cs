@@ -13,6 +13,9 @@ public sealed record LinuxCodexRuntime(string PackageRoot, string WslSha256, Dic
     public const string ProtectedRoot = @"C:\ProgramData\OracovaNativeRemote";
     public const string WslExecutable = @"C:\Windows\System32\wsl.exe";
     public const string WorkspaceRoot = "/Users/pouya/.openclaw/workspace";
+    public const string AndroidWorkspace = "/Users/pouya/android router";
+    internal static bool AdmittedWorkspace(string path) =>
+        path == AndroidWorkspace || path.StartsWith(WorkspaceRoot + "/", StringComparison.Ordinal);
     public const string Socket = "/Users/pouya/.codex/app-server-control/app-server-control.sock";
     public const string BinarySha256 = "12eb3e81114588aca3b7998f4f19e8997b056aca08e57a7ca7c8a3ec8c652aad";
     internal static readonly string[] PackageFiles = [ "pc_native_stdio.py", "relay_core/__init__.py", "relay_core/contracts.py",
@@ -56,7 +59,7 @@ public sealed record LinuxCodexRuntime(string PackageRoot, string WslSha256, Dic
     internal static void ValidateWorkspaces(IReadOnlyList<string> workspaces)
     {
         if (workspaces.Count is < 1 or > 256 || workspaces.Distinct(StringComparer.Ordinal).Count() != workspaces.Count ||
-            workspaces.Any(path => RouterPolicy.LinuxPath(path) != path || !path.StartsWith(WorkspaceRoot + "/", StringComparison.Ordinal)))
+            workspaces.Any(path => RouterPolicy.LinuxPath(path) != path || !AdmittedWorkspace(path)))
             throw new InvalidDataException("Exact unique preserved Linux Codex workspaces required");
     }
     internal static string Quote(string value)

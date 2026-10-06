@@ -29,6 +29,9 @@ SOCKET = OWNER / '.codex/app-server-control/app-server-control.sock'
 MAX_FRAME = 2_097_152
 DAEMON_DIRECTORY = Path('/tmp/codex-daemon-1000')
 WORKSPACE_ROOT = OWNER / '.openclaw/workspace'
+# One owner-requested existing project outside the migrated workspace tree.
+# Admit this literal directory only, never the whole home or adjacent paths.
+ANDROID_WORKSPACE = OWNER / 'android router'
 CREDENTIAL = Path('/mnt/c/ProgramData/KhadangRouter/khadang-token.dpapi')
 
 
@@ -38,7 +41,7 @@ def attest_workspaces(values):
         raise Denied('Exact unique ordinary-owner workspaces required')
     observed = {}
     for value in values:
-        if type(value) is not str or not value.startswith(str(WORKSPACE_ROOT) + '/') or \
+        if type(value) is not str or not (value.startswith(str(WORKSPACE_ROOT) + '/') or value == str(ANDROID_WORKSPACE)) or \
                 '\\' in value or '//' in value or any(ord(c) < 32 or ord(c) == 127 for c in value) or \
                 any(part in ('', '.', '..') for part in value.split('/')[1:]) or value.endswith('/'):
             raise Denied('Exact preserved workspace path required')
