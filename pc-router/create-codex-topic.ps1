@@ -1,10 +1,12 @@
 param(
  [Parameter(Mandatory=$true)][ValidatePattern('^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$')][string]$ThreadId,
  [Parameter(Mandatory=$true)][ValidateLength(1,128)][string]$Name,
- [long]$ChatId=-1003550185469,
+ [Parameter(Mandatory=$true)][long]$ChatId,
  [switch]$RetryPreflight
 )
 # Creates one owner-requested topic, not a session, binding or competing poller.
+# ChatId is the requesting topic's forum unless the owner chooses another.
+# Require the caller to resolve it; never silently fall back to Ai Dispatch.
 # A durable attempted effect without its successful result is never replayed.
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 $root='C:\ProgramData\KhadangRouter';$native='C:\ProgramData\OracovaNativeRemote'

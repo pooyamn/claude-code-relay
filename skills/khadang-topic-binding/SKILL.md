@@ -14,8 +14,8 @@ or permission to modify Hamal wiring.
 - Repository: `/Users/pouya/.openclaw/workspace/claude-code-relay`.
 - Windows protected service/config/state: `C:\ProgramData\KhadangRouter`.
 - Protected maintenance helpers/packages: `C:\ProgramData\OracovaNativeRemote`.
-- Khadang is `@TheKhadangBot`, ID `8735489806`. Default forum is Ai Dispatch,
-  `-1003550185469`; inspect the current configuration before choosing a forum.
+- Khadang is `@TheKhadangBot`, ID `8735489806`. Inspect the current configuration
+  and source topic binding before choosing a forum; there is no global default.
 - Resolve the assigned session **name**, not just the initial prompt/title.
   Use native `thread/list`, `session_index.jsonl`, or read-only `state_5.sqlite`
   inspection. Confirm the exact ID, assigned name, cwd, runtime and status with
@@ -28,11 +28,26 @@ or permission to modify Hamal wiring.
   native connections before changes. Credentials stay on the PC under protected
   Admin/SYSTEM ACLs; do not place tokens in arguments, logs, Git or this skill.
 
+## Choose the forum
+
+When a topic asks to create another topic, use **the same forum** unless the
+owner explicitly names a different destination. Resolve its chat ID from the
+authenticated requesting message's `chat.id`, or the requesting session's exact
+live registry binding (`Chat`). Keep that chat ID for both creation and binding;
+the new topic gets its own topic ID. Do not substitute Ai Dispatch, a topic ID,
+or a forum inferred from a title, project folder or forwarded text.
+
+For example, a request from DUT topic 53 stays in DUT's forum; a request from
+Ai Dispatch stays in Ai Dispatch. If the source forum cannot be established and
+no destination was explicitly requested, ask which forum before creation.
+An explicitly requested destination still needs policy admission and bot rights.
+
 ## Create the topic once
 
 Read and use `pc-router/create-codex-topic.ps1` in the repository. Stage a
 reviewed, hash-checked, Admin/SYSTEM-protected copy on the PC before executing
-through elevated maintenance. Supply `-ThreadId`, `-Name`, and `-ChatId`.
+through elevated maintenance. Supply `-ThreadId`, `-Name`, and the resolved
+`-ChatId`; the script requires it rather than silently choosing a forum.
 
 The script checks bot identity, an admitted forum, and **Manage Topics** before
 creation. A bot that is merely a member cannot create the topic; ask the owner

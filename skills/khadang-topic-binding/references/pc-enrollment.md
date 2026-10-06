@@ -64,7 +64,9 @@ change. Do not run either's old fixed phase parameters for a different session.
 
    This is the verified Android example, **not defaults for another request**.
    Derive future values from that request's exact native observation and durable
-   Telegram result. Bindings are unique by chat/topic and by thread.
+   Telegram result. `Chat` must match the resolved source forum (or the owner's
+   explicit alternate destination) and the creation receipt's `chat`; do not
+   copy the example forum. Bindings are unique by chat/topic and by thread.
 6. Compare all retained **SQLite payload strings byte-for-byte**, and verify the
    unrelated ledger digest before commit. PS5 native-command inspection can
    corrupt Unicode names; its display output is not authoritative for registry
