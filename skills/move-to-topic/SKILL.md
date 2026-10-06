@@ -1,9 +1,14 @@
 ---
 name: move-to-topic
-description: Create a NEW Telegram topic bound to its own Claude Code session. Two modes - FORK the current session (worktree-backed, keeps full context) or bind a DIFFERENT folder (fresh session). Use when the user says "create a new topic", "make a topic for X", "move this to a new topic", "fork this into a new topic", "split this off", "give X its own topic", or similar.
+description: Legacy Mac Jamshid/OpenClaw tmux relay only - fork a bound Claude session or bind a fresh folder to a topic. Never use for native PC Khadang topic creation or existing-session enrollment; use khadang-topic-binding there.
 ---
 
 # new-topic / move-to-topic
+
+This is the retained **legacy Mac/tmux** workflow. Its availability in both
+agents does not authorize changing Hamal wiring or using it for the PC router.
+For Khadang on the PC, use `khadang-topic-binding`; do not fork or repoint a
+native session through these scripts.
 
 Two different jobs share this skill. Pick by what the user is asking for.
 

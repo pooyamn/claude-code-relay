@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "groups": [
+    {
+      "scope": "personal",
+      "sources": ["{repo}/skills", "{workspace}/skills"],
+      "destinations": ["{home}/.agents/skills", "{home}/.codex/skills", "{home}/.claude/skills"]
+    },
+    {
+      "scope": "relay",
+      "sources": ["{repo}/skills"],
+      "destinations": ["{repo}/.agents/skills", "{repo}/.claude/skills"]
+    },
+    {
+      "scope": "ai-hil",
+      "sources": ["{workspace}/ai-hil/.claude/skills"],
+      "destinations": ["{workspace}/ai-hil/.agents/skills"]
+    },
+    {
+      "scope": "augur-1",
+      "sources": ["{workspace}/ai-hil/hardware/augur-1/.agents/skills"],
+      "destinations": ["{workspace}/ai-hil/hardware/augur-1/.claude/skills"]
+    },
+    {
+      "scope": "dut-a",
+      "sources": ["{workspace}/ai-hil/hardware/duts/dut-a/.agents/skills"],
+      "destinations": ["{workspace}/ai-hil/hardware/duts/dut-a/.claude/skills"]
+    },
+    {
+      "scope": "kicad-happy",
+      "sources": ["{workspace}/tools/kicad-happy/.agents/skills"],
+      "destinations": ["{workspace}/tools/kicad-happy/.claude/skills"]
+    }
+  ]
+}

@@ -356,6 +356,20 @@ Global wiring (generated separately for each role's private home)
 - `~/.codex/AGENTS.md` is a generated concatenation of the same, rebuilt on change.
 - Claude `instructionFiles: "claude-md-and-agents-md"`, `crossSessionInbound: "accept"`, `cleanupPeriodDays: 3650`.
 - ccrelay MCP server registered for both tools (Claude user scope, Codex `codex mcp add`).
+- Custom skills have one canonical source per scope, published as per-skill links
+  in both `.claude/skills` and `.agents/skills`; this pinned PC also retains
+  `.codex/skills` discovery compatibility. Keep project skills project-scoped,
+  and leave bundled, synced and plugin-managed skills with their providers.
+  New/updated skills must be validated and published for both tools, not copied
+  independently into one tool's home.
+
+The personal-PC implementation is `scripts/skills-layout.json`,
+`scripts/publish_skills.py` and the `shared-skills` skill. Native Windows uses a
+byte-verified generated mirror and directory junctions; republishing admits only
+unchanged previously managed entries, retaining the old mirror and restore
+records. WSL sources remain authoritative. This is owner-level file discovery,
+not role authentication or a deployment/approval grant; future isolated roles
+still receive only their admitted skills through protected homes.
 
 The shared tree is router-managed, with read access and scoped proposal submission for agents. Each role's home, runtime sockets, authentication material, and worktrees are protected from other roles. Global instructions and role definitions cannot be rewritten by an ordinary session to acquire privileges. Legacy `/Users/pouya` paths must be migrated deliberately; a common writable home would defeat identity isolation.
 
