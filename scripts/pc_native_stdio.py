@@ -66,9 +66,11 @@ def artifact_read(parameters, workspaces):
         descriptor = os.open(components[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=directory)
         descriptors.append(descriptor)
         before = os.fstat(descriptor)
-        if not stat.S_ISREG(before.st_mode) or before.st_uid != 1000 or before.st_nlink != 1 or \
+        # CAD/container tools commonly create root-owned 0644 project outputs.
+        # The open still runs as UID 1000: OS read permissions remain the gate.
+        if not stat.S_ISREG(before.st_mode) or before.st_uid not in (0, 1000) or before.st_nlink != 1 or \
                 before.st_mode & 0o022 or not 0 < before.st_size <= 20 * 1024 * 1024 or offset >= before.st_size:
-            raise Denied('Private owner regular artifact within 20 MiB required')
+            raise Denied('Owner-readable regular project artifact within 20 MiB required')
         digest = hashlib.sha256()
         remaining = before.st_size
         while remaining:

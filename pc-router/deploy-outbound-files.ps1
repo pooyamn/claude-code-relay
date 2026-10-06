@@ -1,7 +1,8 @@
 param([Parameter(Mandatory=$true)][ValidateSet('prepare','fence','stage','probe','accept','activate','verify')][string]$Phase,
  [Parameter(Mandatory=$true)][ValidatePattern('^[a-f0-9]{32}$')][string]$Generation,
  [Parameter(Mandatory=$true)][ValidatePattern('^[A-Fa-f0-9]{64}$')][string]$CodeSha256,
- [Parameter(Mandatory=$true)][ValidatePattern('^[A-Fa-f0-9]{64}$')][string]$ConnectorSha256)
+ [Parameter(Mandatory=$true)][ValidatePattern('^[A-Fa-f0-9]{64}$')][string]$ConnectorSha256,
+ [switch]$RepairNativeImage)
 # Pinned owner-requested outbound fix. Exactly one already-authorized DUT X
 # attachment repair; no model prompt, invented input, session switch or poller.
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
@@ -9,6 +10,12 @@ $root='C:\ProgramData\KhadangRouter';$nativeRoot='C:\ProgramData\OracovaNativeRe
 $release="$root\release-$Generation";$package="$nativeRoot\codex-connector-$Generation"
 $oldCode='8574D5AE0A79C6B9D870648BA172952D56F14D0C630A137A105C1606CD282AF0'
 $oldPolicy='04934665D6699D3AF39594A09C368BDAD5C0C8B0E245AE59C0EE1E4DFBBBA02A'
+$repairKey='outbound-repair/dut-x-20261006'
+if($RepairNativeImage){
+ $oldCode='0C62D589B8051DDF10326E3319F0AFDABDBF0BE4B463030791BDBE7C5314E546'
+ $oldPolicy='2BA5EA1A4095208A39A3BB6D977E3B346A6FDBA53B4BDD84026FCC6EBEF080F0'
+ $repairKey='outbound-repair/dut-x-native-image-20261006'
+}
 $pin='01a1122c-c62d-75f2-9b47-9ad9adcdf7d5';$project='/Users/pouya/.openclaw/workspace/ai-hil/hardware/duts/dut-x'
 $normal='"'+$root+'\bin\KhadangRouter.exe" --service --config "'+$root+'\config.json"'
 $who=[Security.Principal.WindowsIdentity]::GetCurrent()
@@ -63,8 +70,10 @@ if($Phase -eq 'fence'){
  Copy-Item "$root\config.json" "$release\previous-config.json";Copy-Item "$root\state\probe.json" "$release\previous-probe.json"
  Save "$release\startup-before.json" @{state=(Get-ScheduledTask Oracova-KhadangStartup).State.ToString()}
  Disable-ScheduledTask Oracova-KhadangStartup|Out-Null;Stop-ScheduledTask Oracova-KhadangStartup
- try{Stop-Service KhadangRouter}catch{if((Get-Service KhadangRouter).Status.ToString() -ne 'Stopped'){throw}}
- (Get-Service KhadangRouter).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(10));Stopped
+ # SCM can report a stop error just before the process becomes independently
+ # observable as stopped. Never force-kill a native host or re-run the fence.
+ try{Stop-Service KhadangRouter}catch{ }
+ (Get-Service KhadangRouter).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(30));Stopped
  Save "$release\fenced.json" @{at=[DateTimeOffset]::UtcNow.ToString('o')};@{phase='fenced'}|ConvertTo-Json -Compress;return
 }
 if($Phase -eq 'stage'){
@@ -74,23 +83,31 @@ if($Phase -eq 'stage'){
  try{
   $db=[PcbaRegistry]::new()
   if([int]$db.Read("SELECT (SELECT COUNT(*) FROM operations WHERE status IN ('attempting','unknown') AND kind NOT LIKE 'telegram/edit%')+(SELECT COUNT(*) FROM updates WHERE status IN ('dispatching','unknown','received'))")[0][0]){throw 'Uncertain/pending action; preserve'}
-  if($db.Read("SELECT id FROM operations WHERE kind IN ('telegram/sendPhoto','telegram/sendDocument')").Length -or $db.Read("SELECT key FROM meta WHERE key='outbound-repair/dut-x-20261006'").Length){throw 'Existing upload or repair; reconcile before resend'}
+  $priorUploads=if($RepairNativeImage){$db.Read("SELECT id FROM operations WHERE kind IN ('telegram/sendPhoto','telegram/sendDocument') AND json_extract(payload,'$.chat_id')=-1004395661179 AND json_extract(payload,'$.message_thread_id')=4901 AND json_extract(payload,'$.filename')='dut-x-reuse-pcb-3d.png'")}else{$db.Read("SELECT id FROM operations WHERE kind IN ('telegram/sendPhoto','telegram/sendDocument')")}
+  if($priorUploads.Length -or $db.Read("SELECT key FROM meta WHERE key='$repairKey'").Length){throw 'Existing upload or repair; reconcile before resend'}
   $binding=$db.Read("SELECT payload FROM bindings WHERE chat=-1004395661179 AND topic=4901")[0][0]|ConvertFrom-Json
   if($binding.ThreadId -ne $pin -or $binding.Workspace -ne $project -or $binding.Backend -ne 'codex' -or $binding.Runtime -ne 'linux'){throw 'Exact preserved DUT X route required'}
   $bubble=$db.Read("SELECT value FROM meta WHERE key='bubble/$pin'")[0][0]|ConvertFrom-Json
   if($bubble.held -or $bubble.sendUnknown -or @($bubble.pendingAnswers).Count -or @($bubble.pendingResponses).Count){throw 'DUT X uncertain output; preserve'}
+  if($RepairNativeImage){
+   # The live response may already belong to a newer turn. Anchor historical
+   # repair to its immutable confirmed Telegram text receipt, not current work.
+   $delivered=$db.Read("SELECT json_extract(payload,'$.text') FROM operations WHERE kind='telegram/sendMessage' AND status='confirmed' AND json_extract(payload,'$.chat_id')=-1004395661179 AND json_extract(payload,'$.message_thread_id')=4901 AND json_extract(result,'$.chat.id')=-1004395661179 AND json_extract(result,'$.message_thread_id')=4901 AND json_extract(result,'$.message_id')=4929")
+   if($delivered.Length -ne 1 -or -not $delivered[0][0].Contains("![Updated DUT-X PCB placement]($project/dist/dut-x-reuse-pcb-3d.png)")){throw 'Exact historical Markdown image delivery receipt required'}
+  }
   $null=$db.Read("VACUUM INTO '$release\previous-router.db'");Protect "$release\previous-router.db" $false
   Copy-Item "$root\bin" "$release\previous-bin" -Recurse
   $p=Get-Content "$root\config.json" -Raw|ConvertFrom-Json;$p.LinuxCodex.PackageRoot=$package;$p.LinuxCodex.FileSha256.'pc_native_stdio.py'=$ConnectorSha256.ToLowerInvariant()
   Save "$release\candidate-config.json" $p
   $files=@(@{Path="$project/kicad-hier/placement-overview.png";Sha256=$null;Size=$null;Document=$false;Message=$null;SendUnknown=$false;Failure=$null},@{Path="$project/dist/dut-x-initial-placement.zip";Sha256=$null;Size=$null;Document=$true;Message=$null;SendUnknown=$false;Failure=$null})
+  if($RepairNativeImage){$files=@(@{Path="$project/dist/dut-x-reuse-pcb-3d.png";Sha256='91ba5a68dff10d4eb37c31a499b20ff65b4467319e95e5b78180e6396552f0cb';Size=[long]133607;Document=$false;Message=$null;SendUnknown=$false;Failure=$null})}
   $answer=@{Candidate='';Explicit=$true;Completed=$true;Parts=@();Files=$files}
   $bubble.pendingAnswers=@($answer) # Preserve all delivered prose/bubbles; files only.
   $null=$db.Read('BEGIN IMMEDIATE');$transaction=$true
   $json=$bubble|ConvertTo-Json -Depth 100 -Compress;$hex=([BitConverter]::ToString([Text.Encoding]::UTF8.GetBytes($json))).Replace('-','')
   $null=$db.Read("UPDATE meta SET value=CAST(X'$hex' AS TEXT) WHERE key='bubble/$pin'")
-  $receipt=@{thread=$pin;chat=[long]-1004395661179;topic=4901;files=$files;generation=$Generation;at=[DateTimeOffset]::UtcNow.ToString('o')}|ConvertTo-Json -Depth 10 -Compress;$hex=([BitConverter]::ToString([Text.Encoding]::UTF8.GetBytes($receipt))).Replace('-','')
-  $null=$db.Read("INSERT INTO meta VALUES('outbound-repair/dut-x-20261006',CAST(X'$hex' AS TEXT))")
+  $receipt=@{thread=$pin;chat=[long]-1004395661179;topic=4901;files=$files;generation=$Generation;historicalTextMessage=$(if($RepairNativeImage){4929}else{$null});at=[DateTimeOffset]::UtcNow.ToString('o')}|ConvertTo-Json -Depth 10 -Compress;$hex=([BitConverter]::ToString([Text.Encoding]::UTF8.GetBytes($receipt))).Replace('-','')
+  $null=$db.Read("INSERT INTO meta VALUES('$repairKey',CAST(X'$hex' AS TEXT))")
   $null=$db.Read('COMMIT');$transaction=$false
   Copy-Item "$release\candidate-config.json" "$root\config.json" -Force;Protect "$root\config.json" $false
   Copy-Item "$release\candidate\*" "$root\bin" -Recurse -Force;Get-ChildItem "$root\bin" -Recurse -Force|ForEach-Object {Protect $_.FullName $_.PSIsContainer}
@@ -128,10 +145,12 @@ ImportSql "$nativeRoot\inspect-state.ps1" 'RouterReceipts'
 $s=Get-Content "$root\state\status.json" -Raw|ConvertFrom-Json;$before=Get-Content "$release\before.json" -Raw -Encoding UTF8|ConvertFrom-Json;$accepted=Get-Content "$release\accepted.json" -Raw|ConvertFrom-Json
 if((Get-Service KhadangRouter).Status.ToString() -ne 'Running' -or $s.unknown -or @($s.nativeSessions).Count -ne 15 -or $s.nativeLinuxPid -ne $before.pid -or [DateTimeOffset]$s.at -le [DateTimeOffset]$accepted.at -or @($s.nativeSessions|Where-Object {$_.binding.Backend -eq 'claude' -and -not $_.claudeConnected}).Count){throw 'Fresh live routes and unchanged daemon required'}
 if(([RouterReceipts]::Read('SELECT payload FROM bindings ORDER BY chat,topic')|ConvertTo-Json -Compress) -cne ($before.bindings|ConvertTo-Json -Compress)){throw 'Registry changed'}
-$uploads=[RouterReceipts]::Read("SELECT kind,payload,result FROM operations WHERE kind IN ('telegram/sendPhoto','telegram/sendDocument') AND status='confirmed'")
-if($uploads.Length -ne 2){throw 'Two confirmed media uploads required'}
+$filter=if($RepairNativeImage){" AND json_extract(payload,'$.chat_id')=-1004395661179 AND json_extract(payload,'$.message_thread_id')=4901 AND json_extract(payload,'$.filename')='dut-x-reuse-pcb-3d.png'"}else{''}
+$uploads=[RouterReceipts]::Read("SELECT kind,payload,result FROM operations WHERE kind IN ('telegram/sendPhoto','telegram/sendDocument') AND status='confirmed'$filter")
+if($uploads.Length -ne $(if($RepairNativeImage){1}else{2})){throw 'Expected confirmed media uploads required'}
 $receipts=@();foreach($row in $uploads){$sent=$row[2]|ConvertFrom-Json;$payload=$row[1]|ConvertFrom-Json;if($sent.chat.id -ne -1004395661179 -or $sent.message_thread_id -ne 4901 -or $payload.message_thread_id -ne 4901 -or $sent.message_id -le 0){throw 'Upload destination mismatch'};$receipts+=@{kind=$row[0];filename=$payload.filename;size=$payload.size;sha256=$payload.sha256;message=$sent.message_id}}
-if(@($receipts|Where-Object {$_.kind -eq 'telegram/sendPhoto' -and $_.filename -eq 'placement-overview.png'}).Count -ne 1 -or @($receipts|Where-Object {$_.kind -eq 'telegram/sendDocument' -and $_.filename -eq 'dut-x-initial-placement.zip'}).Count -ne 1){throw 'Exact PNG and ZIP receipts required'}
+if($RepairNativeImage){if(@($receipts|Where-Object {$_.kind -eq 'telegram/sendPhoto' -and $_.filename -eq 'dut-x-reuse-pcb-3d.png' -and $_.sha256 -eq '91ba5a68dff10d4eb37c31a499b20ff65b4467319e95e5b78180e6396552f0cb'}).Count -ne 1){throw 'Exact new image receipt required'}}
+elseif(@($receipts|Where-Object {$_.kind -eq 'telegram/sendPhoto' -and $_.filename -eq 'placement-overview.png'}).Count -ne 1 -or @($receipts|Where-Object {$_.kind -eq 'telegram/sendDocument' -and $_.filename -eq 'dut-x-initial-placement.zip'}).Count -ne 1){throw 'Exact PNG and ZIP receipts required'}
 if(([RouterReceipts]::Read("SELECT id,kind,status FROM operations WHERE kind IN ('native/turn/start','native/turn/steer','claude/user/send-now','claude/control/answer') ORDER BY id")|ConvertTo-Json -Compress) -cne ($before.inputOperations|ConvertTo-Json -Compress)){throw 'Native input activity changed; inspect, do not claim zero replay'}
 $startup=Get-Content "$release\startup-before.json" -Raw|ConvertFrom-Json;if($startup.state -ne 'Disabled'){Enable-ScheduledTask Oracova-KhadangStartup|Out-Null}
 Save "$release\live-verified.json" @{files=$receipts;routes=15;unknown=0;nativeDaemonUnchanged=$true;nativeInputsSent=0;startupRestored=$true;at=[DateTimeOffset]::UtcNow.ToString('o')}

@@ -14,6 +14,13 @@ public static class OutboundFileTests
         var extracted = OutboundFiles.Extract("Done.\n📎 " + png + "\n📎 " + zip + "\n📎 " + png);
         Check(extracted.Text == "Done." && extracted.Files.Select(f => f.Path).SequenceEqual([png, zip]), "Standalone markers strip from prose and deduplicate, preserving spaces");
         Check(OutboundFiles.Extract("```\n📎 " + png + "\n```\n[local](" + zip + ")").Files.Count == 0, "Code examples and arbitrary local links never upload");
+        var image = OutboundFiles.Extract("Before ![PCB](" + png + ") after.\n📎 " + png);
+        Check(image.Text == "Before  after." && image.Files.Count == 1 && image.Files[0].Path == png, "Native Markdown image uploads once and removes the placeholder without losing prose");
+        Check(OutboundFiles.Extract("![Windows](<C:\\Workspaces\\fixture\\photo with spaces.png>)").Files.Single().Path == "C:\\Workspaces\\fixture\\photo with spaces.png", "Angle-bracket Windows image paths preserve spaces");
+        Check(OutboundFiles.Extract("`![code](" + png + ")`\n```\n![fenced](" + png + ")\n```\n\\![escaped](" + png + ")\n![web](https://example.invalid/image.png)").Files.Count == 0, "Code, escaped images and remote URLs never become artifact uploads");
+        const string newest = "Updated DUT-X.\n\n[Updated BOM](/Users/pouya/.openclaw/workspace/fixture/BOM.csv) · [KiCad package](/Users/pouya/.openclaw/workspace/fixture/package.zip)\n\n![Updated DUT-X PCB placement](/Users/pouya/.openclaw/workspace/fixture/dist/dut-x-reuse-pcb-3d.png)";
+        var nativeImage = new FinalAnswerState(); nativeImage.Consider(newest); nativeImage.Complete(); nativeImage.Validate();
+        Check(nativeImage.Files.Single().Path.EndsWith("dut-x-reuse-pcb-3d.png") && !nativeImage.Parts.Any(p => p.Part.Text.Contains("![")), "Regression for the actual missed DUT X answer includes a photo delivery");
         foreach (var path in new[] { "relative.zip", "https://example.invalid/a.png", project + "/../secret", project + "//x", "C:\\Workspaces\\x:ads", project + "/.git/config" })
             Check(!OutboundFiles.LiteralPath(path), "Unsafe path refused");
         Check(OutboundFiles.LiteralPath("C:\\Workspaces\\fixture\\photo.png"), "Literal native Windows artifact supported");
@@ -43,6 +50,9 @@ public static class OutboundFileTests
         var restored = JsonSerializer.Deserialize<FinalAnswerState>(JsonSerializer.Serialize(response.Answer))!; restored.Validate();
         response.Answer = restored; await Flush();
         Check(bot.Uploads.Count == 2, "Confirmed file IDs prevent restart duplicate");
+        response.Answer = new(); response.Answer.Consider("Updated.\n![PCB](" + png + ")"); response.Answer.Complete();
+        await Flush(); var imageUploads = bot.Uploads.Count; await Flush();
+        Check(response.Answer.Delivered && bot.Uploads.Count == imageUploads && bot.Uploads[^1] && bot.LastAnswer == "Updated.", "Markdown image final goes through real durable flush and is not resent");
         response.Answer = new(); response.Answer.Consider("📎 " + png); response.Answer.Complete(); bot.Errors.Enqueue(400);
         await Flush();
         Check(response.Answer.Delivered && bot.Uploads.TakeLast(2).SequenceEqual([true, false]), "Explicit photo rejection falls back to document");

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace KhadangRouter;
 
@@ -39,16 +40,34 @@ public sealed class OutboundFiles(RouterPolicy policy, INative? linux) : IOutbou
             if (line.TrimStart().StartsWith("```", StringComparison.Ordinal)) fenced = !fenced;
             if (!fenced && line.StartsWith("📎 ", StringComparison.Ordinal))
             {
-                var path = line[3..].Trim();
-                if (seen.Add(path))
-                {
-                    if (files.Count >= 16) throw new InvalidDataException("Attachment count exceeds delivery bound");
-                    files.Add(new() { Path = path, Failure = LiteralPath(path) ? null : "Invalid attachment path" });
-                }
+                Add(line[3..].Trim());
             }
-            else result.AppendLine(line);
+            else result.AppendLine(fenced ? line : Images(line));
         }
         return (result.ToString().TrimEnd('\r', '\n'), files);
+
+        void Add(string path)
+        {
+            if (!seen.Add(path)) return;
+            if (files.Count >= 16) throw new InvalidDataException("Attachment count exceeds delivery bound");
+            var valid = LiteralPath(path);
+            files.Add(new() { Path = valid ? path : new string(path.Where(c => !char.IsControl(c)).Take(4096).ToArray()),
+                Failure = valid ? null : "Invalid attachment path" });
+        }
+        string Images(string line)
+        {
+            // Native app image syntax denotes delivery intent; ordinary source
+            // links and HTTP images do not. Ignore inline code and escaped !.
+            return Regex.Replace(line, @"(`+)[^`]*\1|(?<![\\!])!\[(?:\\.|[^\]\\])*\]\((?<path><[^>\r\n]+>|[^\r\n()]+)\)", match => {
+                var group = match.Groups["path"];
+                if (!group.Success) return match.Value;
+                var path = group.Value.Trim();
+                if (path.StartsWith('<') && path.EndsWith('>')) path = path[1..^1];
+                if (!path.StartsWith('/') && !(path.Length > 2 && char.IsAsciiLetter(path[0]) && path[1..3] == ":\\"))
+                    return match.Value;
+                Add(path); return "";
+            }, RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+        }
     }
 
     public async Task<byte[]> Read(Binding binding, string path, string? expectedSha256, CancellationToken stop)

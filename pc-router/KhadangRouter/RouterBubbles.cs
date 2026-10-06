@@ -230,7 +230,7 @@ public sealed partial class Router
             }
             byte[] bytes;
             try { bytes = await fileStore.Read(session.Binding, file.Path, file.Sha256, stop); }
-            catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or NativeRejected or NotSupportedException or FormatException or JsonException or System.ComponentModel.Win32Exception)
+            catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or NativeRejected or NotSupportedException or FormatException or JsonException or TimeoutException or System.ComponentModel.Win32Exception)
             {
                 lock (session.Gate)
                 {

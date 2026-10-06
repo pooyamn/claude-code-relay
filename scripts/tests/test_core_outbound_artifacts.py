@@ -58,6 +58,30 @@ class OutboundArtifactTests(unittest.TestCase):
         self.file.write_bytes(b'y' * len(self.content))
         with self.assertRaises(Denied): adapter.artifact_read(self.request(offset=524288, sha=first['sha256']), [str(self.root)])
 
+    def test_root_generated_project_file_still_opens_as_ordinary_owner(self):
+        real_fstat = adapter.os.fstat
+        def root_output(descriptor):
+            original = real_fstat(descriptor)
+            from types import SimpleNamespace
+            values = {name: getattr(original, name) for name in ('st_mode', 'st_nlink', 'st_size', 'st_dev', 'st_ino', 'st_mtime_ns', 'st_ctime_ns')}
+            return SimpleNamespace(st_uid=0, **values)
+        with mock.patch.object(adapter.os, 'fstat', side_effect=root_output):
+            result = adapter.artifact_read(self.request(), [str(self.root)])
+        self.assertEqual(result['sha256'], hashlib.sha256(self.content).hexdigest())
+
+    def test_root_private_or_foreign_role_output_is_not_granted_read_access(self):
+        with mock.patch.object(adapter.os, 'open', side_effect=PermissionError):
+            response = adapter.local_artifact_response(dict(id=3, method='ccrelay/artifact/read', params=self.request()), [str(self.root)])
+        self.assertIn('error', response)
+        real_fstat = adapter.os.fstat
+        def foreign_output(descriptor):
+            original = real_fstat(descriptor)
+            from types import SimpleNamespace
+            values = {name: getattr(original, name) for name in ('st_mode', 'st_nlink', 'st_size', 'st_dev', 'st_ino', 'st_mtime_ns', 'st_ctime_ns')}
+            return SimpleNamespace(st_uid=2000, **values)
+        with mock.patch.object(adapter.os, 'fstat', side_effect=foreign_output), self.assertRaises(Denied):
+            adapter.artifact_read(self.request(), [str(self.root)])
+
     def test_writable_empty_oversize_and_device_refused(self):
         self.file.chmod(0o666)
         with self.assertRaises(Denied): adapter.artifact_read(self.request(), [str(self.root)])
