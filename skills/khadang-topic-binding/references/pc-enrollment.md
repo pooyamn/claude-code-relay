@@ -1,9 +1,40 @@
-# Existing Codex session enrollment on the PC
+# Existing or fresh native session enrollment on the PC
 
 Use this after reading the skill entrypoint and obtaining a confirmed topic
 creation receipt. The owner must have requested the binding. Existing recipe
 scripts are **pinned historical releases**, not generic installers: inspect
 current code/config/helper hashes, counts and native state before adapting one.
+
+## Fresh Claude session
+
+Use `pc-router/enroll-fresh-claude-topic.ps1` from the controller's elevated
+maintenance lane. Stage and hash-check a protected Admin/SYSTEM copy first;
+do not execute an owner-writable script elevated. Supply the retained new UUID,
+exact source UUID, requested existing project directory, and freshly observed
+router code/config hashes. Use its phases in order: `fence`, `stage`, `probe`,
+`accept`, `activate`, `verify`. Between `probe` and `accept`, wait for a fresh
+matching successful `state/probe.json`, then stop the probe service. Do not
+automatically rerun an interrupted phase; inspect retained evidence first.
+
+The helper requires a confirmed same-forum topic creation result. It snapshots
+the registry/config/watchdog, preserves old SQLite payloads, inserts one new
+binding and pins a `ccrelay.personal_claude_start.v1` checkpoint. That manifest
+has `source_writer:owner_switch`, `history:null`, no uncertain actions and the
+original Claude profile. The existing native connector launches exactly
+`--session-id=<new UUID>`, not a fork/resume of the parent. Initial SDK
+connection is not a model prompt; Ready/connected is not a phone round trip.
+
+The protected configuration change requires a fresh real SYSTEM generic probe.
+Only unchanged Claude executable/connector/permissions acceptance is explicitly
+carried forward; the new exact session still must initialize live successfully.
+Restore the original watchdog state after verifying all routes. No project
+work, duplicated native input or shared Codex daemon restart is part of setup.
+If the owner starts using the new topic before verification, inspect actual
+protected update/switch receipts. `verify -AllowOwnerActivity` preserves a
+receipt-verified owner model switch and ongoing use; it is not an uncertain-
+delivery bypass. Never repoint the topic back to the initial session. Historical
+payloads can omit Windows backend/runtime defaults; compare those semantically
+without rewriting their retained SQLite bytes.
 
 ## Admission and artifacts
 

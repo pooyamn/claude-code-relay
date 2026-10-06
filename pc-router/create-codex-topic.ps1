@@ -2,7 +2,8 @@ param(
  [Parameter(Mandatory=$true)][ValidatePattern('^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$')][string]$ThreadId,
  [Parameter(Mandatory=$true)][ValidateLength(1,128)][string]$Name,
  [Parameter(Mandatory=$true)][long]$ChatId,
- [switch]$RetryPreflight
+ [switch]$RetryPreflight,
+ [switch]$PreflightOnly
 )
 # Creates one owner-requested topic, not a session, binding or competing poller.
 # ChatId is the requesting topic's forum unless the owner chooses another.
@@ -17,7 +18,7 @@ foreach($path in @($root,$native)){
  $item=Get-Item -LiteralPath $path;$acl=Get-Acl -LiteralPath $path
  if($item.Attributes -band [IO.FileAttributes]::ReparsePoint -or -not $acl.AreAccessRulesProtected -or $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne 'S-1-5-32-544'){throw 'Protected literal roots required'}
 }
-if(Test-Path -LiteralPath $state){
+if(-not $PreflightOnly -and (Test-Path -LiteralPath $state)){
  if((Get-Item -LiteralPath $state).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Redirected receipt refused'}
  if(Test-Path -LiteralPath "$state\result.json"){
   $saved=Get-Content -LiteralPath "$state\result.json" -Raw|ConvertFrom-Json
@@ -48,7 +49,7 @@ function SaveNew([string]$Path,$Value){
  $f=[IO.FileStream]::new($Path,[IO.FileMode]::CreateNew,[Security.AccessControl.FileSystemRights]::Write,[IO.FileShare]::None,65536,[IO.FileOptions]::None,(PrivateAcl $false))
  try{$f.Write($bytes,0,$bytes.Length);$f.Flush($true)}finally{$f.Dispose()}
 }
-[IO.Directory]::CreateDirectory($state,(PrivateAcl $true))|Out-Null
+if(-not $PreflightOnly){[IO.Directory]::CreateDirectory($state,(PrivateAcl $true))|Out-Null}
 $effectStarted=$false;$plain=$null;$token=$null;$stage='credential'
 try{
  Add-Type -AssemblyName System.Security
@@ -64,6 +65,7 @@ try{
  $stage='bot';$me=Call 'getMe' @{};if($me.id -ne $p.BotId -or $me.username -ne $p.BotUsername){throw 'Wrong bot'}
  $stage='forum';$chat=Call 'getChat' @{chat_id=$ChatId};if($chat.id -ne $ChatId -or -not $chat.is_forum){throw 'Wrong forum'}
  $stage='permission';$member=Call 'getChatMember' @{chat_id=$ChatId;user_id=$p.BotId};if($member.status -ne 'administrator' -or -not $member.can_manage_topics){throw 'Topic management missing'}
+ if($PreflightOnly){@{phase='preflight-ready';chat=$ChatId;bot=$p.BotUsername;canManageTopics=$true;created=$false}|ConvertTo-Json -Compress;return}
  $operation=[Guid]::NewGuid().ToString('N')
  SaveNew "$state\attempt.json" @{phase='attempting';operation=$operation;chat=$ChatId;name=$Name;thread=$ThreadId;at=[DateTimeOffset]::UtcNow.ToString('o')}
  $stage='create';$effectStarted=$true;$topic=Call 'createForumTopic' @{chat_id=$ChatId;name=$Name}
@@ -71,6 +73,7 @@ try{
  $receipt=@{phase='created-not-bound';operation=$operation;chat=$ChatId;topic=$topic.message_thread_id;name=$Name;thread=$ThreadId;at=[DateTimeOffset]::UtcNow.ToString('o')}
  SaveNew "$state\result.json" $receipt;$receipt|ConvertTo-Json -Depth 8 -Compress
 }catch{
- SaveNew "$state\failure.json" @{phase=$(if($effectStarted){'unknown-no-replay'}else{'preflight-failed-no-creation'});stage=$stage;failureType=$_.Exception.GetType().Name;at=[DateTimeOffset]::UtcNow.ToString('o')}
+ if(-not $PreflightOnly){SaveNew "$state\failure.json" @{phase=$(if($effectStarted){'unknown-no-replay'}else{'preflight-failed-no-creation'});stage=$stage;failureType=$_.Exception.GetType().Name;at=[DateTimeOffset]::UtcNow.ToString('o')}}
+ if($PreflightOnly){@{phase='preflight-failed';stage=$stage;created=$false}|ConvertTo-Json -Compress;exit 1}
  Write-Output 'Creation not accepted; inspect protected receipts. No automatic retry.';exit 1
 }finally{if($plain){[Array]::Clear($plain,0,$plain.Length)};$token=$null}
