@@ -180,6 +180,63 @@ public sealed class Telegram : IBot, IDisposable
         try { return await Call(AnswerMethod(part), AnswerParameters(chat, topic, part), stop, effect: true); }
         finally { outbound.Release(); }
     }
+    public async Task<JsonElement> Upload(long chat, int topic, string filename, byte[] bytes, bool photo, CancellationToken stop)
+    {
+        if (topic < 0 || filename.Length is < 1 or > 255 || filename.Any(char.IsControl) || filename.IndexOfAny(['/', '\\', '"']) >= 0 ||
+            bytes.Length is <= 0 or > OutboundFiles.MaximumBytes || photo && !OutboundFiles.Photo(bytes))
+            throw new InvalidDataException("Invalid bounded attachment upload");
+        await outbound.WaitAsync(stop);
+        string? attempt = null;
+        try
+        {
+            var method = photo ? "sendPhoto" : "sendDocument";
+            using var content = new MultipartFormDataContent();
+            content.Add(new StringContent(chat.ToString(System.Globalization.CultureInfo.InvariantCulture)), "chat_id");
+            if (topic > 0) content.Add(new StringContent(topic.ToString(System.Globalization.CultureInfo.InvariantCulture)), "message_thread_id");
+            content.Add(new StringContent(filename), "caption");
+            var media = new ByteArrayContent(bytes);
+            media.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(photo ?
+                bytes[0] == 137 ? "image/png" : "image/jpeg" : "application/octet-stream");
+            content.Add(media, photo ? "photo" : "document", filename);
+            attempt = ledger.Attempt("telegram/" + method, new { chat_id = chat, message_thread_id = topic, filename,
+                size = bytes.Length, sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant() });
+            using var request = new HttpRequestMessage(HttpMethod.Post, endpoint + method) { Content = content };
+            using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, stop);
+            if (response.Content.Headers.ContentLength > 2_097_152) throw new InvalidDataException("Bot response too large");
+            await using var stream = await response.Content.ReadAsStreamAsync(stop);
+            using var buffer = new MemoryStream(); var chunk = new byte[8192]; int count;
+            while ((count = await stream.ReadAsync(chunk, stop)) != 0)
+            {
+                if (buffer.Length + count > 2_097_152) throw new InvalidDataException("Bot response too large");
+                buffer.Write(chunk, 0, count);
+            }
+            using var doc = JsonDocument.Parse(buffer.ToArray()); var root = doc.RootElement;
+            if (!root.GetProperty("ok").GetBoolean())
+            {
+                var code = root.TryGetProperty("error_code", out var c) ? c.GetInt32() : (int)response.StatusCode;
+                var retry = root.TryGetProperty("parameters", out var p) && p.TryGetProperty("retry_after", out var r) ? r.GetInt32() : 0;
+                ledger.Outcome(attempt, "rejected"); throw new TelegramFailure(code, retry);
+            }
+            if (!response.IsSuccessStatusCode) throw new TelegramFailure(0);
+            var result = root.GetProperty("result").Clone();
+            if (result.GetProperty("message_id").GetInt32() <= 0 || result.GetProperty("chat").GetProperty("id").GetInt64() != chat ||
+                topic > 0 && (!result.TryGetProperty("message_thread_id", out var thread) || thread.GetInt32() != topic) ||
+                !result.TryGetProperty(photo ? "photo" : "document", out _))
+                throw new InvalidDataException("Upload receipt target or media mismatch");
+            ledger.Confirm(attempt, result); return result;
+        }
+        catch (Exception error) when (error is HttpRequestException or TaskCanceledException)
+        {
+            if (attempt != null) ledger.Outcome(attempt, "unknown");
+            throw new TelegramFailure(0); // Never expose token-bearing HTTP URL.
+        }
+        catch
+        {
+            if (attempt != null) ledger.Outcome(attempt, "unknown");
+            throw;
+        }
+        finally { outbound.Release(); }
+    }
     public static string DownloadPath(JsonElement result, AttachmentReference file)
     {
         if (result.ValueKind != JsonValueKind.Object) throw new AttachmentFailure("Malformed Telegram file metadata");

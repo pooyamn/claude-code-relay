@@ -49,6 +49,42 @@ public sealed class WindowsOwnerProcess : IDisposable
     }
 
     public static WindowsOwnerProcess Start(RouterPolicy policy, string workspace) => StartCore(policy, workspace, null);
+    internal static byte[] ReadArtifact(RouterPolicy policy, string workspace, string path, string? expectedSha256)
+    {
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
+        policy.Workspace(workspace);
+        if (!OutboundFiles.LiteralPath(path) || !path.StartsWith(workspace + "\\", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("Attachment is outside the topic project");
+        using var current = WindowsIdentity.GetCurrent();
+        if (!current.IsSystem) throw new UnauthorizedAccessException("Owner artifact read requires the protected service");
+        EnablePrivileges();
+        var session = WTSGetActiveConsoleSessionId();
+        if (session is 0 or uint.MaxValue || !WTSQueryUserToken(session, out var token))
+            throw new UnauthorizedAccessException("Signed-in ordinary owner required");
+        try
+        {
+            using var identity = new WindowsIdentity(token);
+            if (identity.User?.Value != policy.OwnerSid || identity.IsSystem ||
+                !GetTokenInformation(token, 20, out var elevated, 4, out _) || elevated != 0)
+                throw new UnauthorizedAccessException("Ordinary owner token required");
+            VerifyCredentialDenied(token, policy.CredentialFile);
+            if (!DuplicateTokenEx(token, 0x02000000, IntPtr.Zero, 2, 2, out var owner))
+                throw new UnauthorizedAccessException("Cannot impersonate ordinary owner");
+            using (owner) return WindowsIdentity.RunImpersonated(owner, () => {
+                for (FileSystemInfo? item = new FileInfo(path); item != null; item = item is FileInfo f ? f.Directory : ((DirectoryInfo)item).Parent)
+                    if (!item.Exists || (item.Attributes & FileAttributes.ReparsePoint) != 0)
+                        throw new InvalidDataException("Literal artifact and ancestors required");
+                using var source = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+                if (source.Length is <= 0 or > OutboundFiles.MaximumBytes)
+                    throw new InvalidDataException("Attachment exceeds 20 MiB bound");
+                var bytes = new byte[checked((int)source.Length)]; source.ReadExactly(bytes);
+                if (expectedSha256 != null && !Convert.ToHexString(SHA256.HashData(bytes)).Equals(expectedSha256, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("Attachment changed before retry");
+                return bytes;
+            });
+        }
+        finally { CloseHandle(token); }
+    }
     public static WindowsOwnerProcess StartLinuxCodex(RouterPolicy policy, string windowsWorkspace, IReadOnlyList<string> workspaces)
     {
         policy.Validate();

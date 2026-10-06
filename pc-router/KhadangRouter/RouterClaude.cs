@@ -12,7 +12,7 @@ public sealed partial class Router
     {
         if (session.DeliveryHold is not { } hold || !session.Held || session.Claude is not { Connected: true } ||
             ledger.Unknown != 0 || session.SendUnknown || session.PendingBubbles.Any(b => b.SendUnknown) ||
-            session.PendingAnswers.Append(session.Response.Answer).Any(a => a.Parts.Any(p => p.SendUnknown)) ||
+            session.PendingAnswers.Append(session.Response.Answer).Any(a => a.Unknown) ||
             session.Status != "Held — input " + hold.UpdateId + " not confirmed" && session.Status != "Held — reconcile native receipts" ||
             ledger.Get("claude/reset/" + session.Binding.ThreadId) != null ||
             !ClaudeDelivery.Confirmed(ledger, hold.Operation, session.Binding.ThreadId, hold.Uuid)) return;

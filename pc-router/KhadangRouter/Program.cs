@@ -4,6 +4,19 @@ using KhadangRouter;
 try
 {
     if (args.SequenceEqual(new[] { "--self-test" })) { SelfTests.Run(); return; }
+    if (args.SequenceEqual(new[] { "--self-test-files" }))
+    {
+        var testRoot = Path.Combine(Path.GetTempPath(), "khadang-file-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(testRoot);
+        try
+        {
+            var fixture = new RouterPolicy("TheKhadangBot", 123, 456, -100123, "S-1-5-21-1-2-3-1001",
+                "C:\\Native\\codex.exe", new string('a', 64), "C:\\Protected\\token.dpapi", "C:\\Protected\\state", "C:\\Workspaces");
+            Console.WriteLine("Passed " + await OutboundFileTests.Run(testRoot, fixture) + " outbound-file checks (no network/models).");
+        }
+        finally { Directory.Delete(testRoot, recursive: true); }
+        return;
+    }
     if (args.Length != 3 || args[0] is not ("--service" or "--probe-service" or "--canary-service" or "--typing-probe-service" or "--table-probe-service") || args[1] != "--config")
         throw new InvalidOperationException("KhadangRouter --service|--probe-service|--canary-service|--typing-probe-service|--table-probe-service --config PATH; or --self-test");
     var policy = RouterPolicy.Load(args[2]);

@@ -23,7 +23,10 @@ internal sealed class FinalAnswerState
     public bool Explicit { get; set; }
     public bool Completed { get; set; }
     public List<FinalDelivery> Parts { get; set; } = [];
-    [JsonIgnore] public bool Delivered => !Completed || Parts.All(p => p.Message != null && !p.SendUnknown);
+    public List<FileDelivery> Files { get; set; } = [];
+    [JsonIgnore] public bool Unknown => Parts.Any(p => p.SendUnknown) || Files.Any(f => f.SendUnknown);
+    [JsonIgnore] public bool Delivered => !Completed || Parts.All(p => p.Message != null && !p.SendUnknown) &&
+        Files.All(f => !f.SendUnknown && (f.Message != null || f.Failure != null));
     public void Consider(string text, bool authoritative = false)
     {
         if (Completed || string.IsNullOrWhiteSpace(text) || Explicit && !authoritative) return;
@@ -33,12 +36,21 @@ internal sealed class FinalAnswerState
     public void Complete()
     {
         if (Completed) return;
-        Parts = FinalAnswerView.Split(Candidate).Select(part => new FinalDelivery { Part = part }).ToList();
+        var extracted = OutboundFiles.Extract(Candidate);
+        Files = extracted.Files;
+        Parts = FinalAnswerView.Split(extracted.Text).Select(part => new FinalDelivery { Part = part }).ToList();
+        foreach (var file in Files.Where(f => f.Failure != null))
+            Parts.Add(new() { Part = new("Attachment not sent: " + file.Failure + ".", []) });
         Completed = true;
     }
     public void Validate()
     {
-        if (Candidate.Length > FinalAnswerView.MaximumCharacters || Parts.Count > 256 || !Completed && Parts.Count != 0 ||
+        if (Candidate.Length > FinalAnswerView.MaximumCharacters || Parts.Count > 256 || Files.Count > 16 ||
+            !Completed && (Parts.Count != 0 || Files.Count != 0) ||
+            Files.Any(f => f.Path.Length > 4096 || f.Path.Any(char.IsControl) || f.Message is <= 0 ||
+                f.Size is <= 0 or > OutboundFiles.MaximumBytes || f.Sha256 != null &&
+                (f.Sha256.Length != 64 || !f.Sha256.All(Uri.IsHexDigit)) || f.Failure?.Length > 256 ||
+                f.Message != null && (f.Sha256 == null || f.Size == null || f.Failure != null)) ||
             Parts.Any(p => p.Part.Text.Length is < 1 or > 3900 || p.Message is <= 0 ||
                 p.Part.Entities.Any(e => e.offset < 0 || e.length <= 0 || e.offset + (long)e.length > p.Part.Text.Length ||
                     e.type is not ("pre" or "code" or "bold" or "italic" or "strikethrough" or "text_link")) ||

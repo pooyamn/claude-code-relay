@@ -18,6 +18,8 @@ public interface IBot
     Task<JsonElement> SendBubble(long chat, int topic, string text, CancellationToken stop) => Send(chat, topic, text, stop);
     Task EditBubble(long chat, int message, string text, CancellationToken stop) => Edit(chat, message, text, stop);
     Task<JsonElement> SendAnswer(long chat, int topic, AnswerPart part, CancellationToken stop) => Send(chat, topic, part.Text, stop);
+    Task<JsonElement> Upload(long chat, int topic, string filename, byte[] bytes, bool photo, CancellationToken stop) =>
+        throw new NotSupportedException("This transport has no attachment upload implementation");
     Task Download(AttachmentReference file, Stream target, CancellationToken stop) =>
         throw new NotSupportedException("This transport has no attachment download implementation");
 }

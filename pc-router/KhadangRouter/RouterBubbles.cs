@@ -40,7 +40,7 @@ public sealed partial class Router
                 var answer = JsonSerializer.Deserialize<FinalAnswerState>(value.GetRawText())!; answer.Validate();
                 if (!answer.Completed) throw new InvalidDataException("Pending answer lacks a final boundary");
                 session.PendingAnswers.Enqueue(answer);
-                if (answer.Parts.Any(p => p.SendUnknown)) { session.Held = true; session.Status = "Held — final answer delivery unconfirmed"; }
+                if (answer.Unknown) { session.Held = true; session.Status = "Held — final answer delivery unconfirmed"; }
             }
         if (!saved.TryGetProperty("pendingResponses", out var pending)) return;
         foreach (var receipt in pending.EnumerateArray())
@@ -55,7 +55,7 @@ public sealed partial class Router
             RestoreAnswer(response, receipt);
             if (response.Message != null) response.SendUnknown = false;
             session.PendingBubbles.Enqueue(response);
-            if (response.SendUnknown || response.Answer.Parts.Any(p => p.SendUnknown)) { session.Held = true; session.Status = "Held — reconcile uncertain response delivery"; }
+            if (response.SendUnknown || response.Answer.Unknown) { session.Held = true; session.Status = "Held — reconcile uncertain response delivery"; }
         }
     }
 
@@ -106,7 +106,7 @@ public sealed partial class Router
                     !completed.SendUnknown && completed.Text == completed.LastRendered && completed.Answer.Delivered)
                     session.PendingBubbles.Dequeue();
                 response = session.PendingBubbles.TryPeek(out var pending) ? pending : session.Response;
-                if (response.SendUnknown && response.Message == null || response.Message == null && response.Answer.Parts.Any(p => p.SendUnknown)) return;
+                if (response.SendUnknown && response.Message == null || response.Answer.Unknown) return;
                 text = ReferenceEquals(response, session.Response) ? RenderBubble(session) : response.Text;
                 message = response.Message; revision = session.Revision;
             }
@@ -168,6 +168,7 @@ public sealed partial class Router
                     return;
                 }
             }
+            if (!await FlushFiles(session, response.Answer, stop)) return;
             lock (session.Gate) if (ReferenceEquals(response, session.Response)) return;
         }
         void Delivered()
@@ -188,7 +189,7 @@ public sealed partial class Router
             {
                 while (session.PendingAnswers.TryPeek(out var delivered) && delivered.Delivered) session.PendingAnswers.Dequeue();
                 if (!session.PendingAnswers.TryPeek(out answer!)) { Persist(session); return true; }
-                if (session.SendUnknown && session.Message == null || answer.Parts.Any(p => p.SendUnknown)) return false;
+                if (session.SendUnknown && session.Message == null || answer.Unknown) return false;
             }
             foreach (var part in answer.Parts)
             {
@@ -214,6 +215,75 @@ public sealed partial class Router
                     return false;
                 }
             }
+            if (!await FlushFiles(session, answer, stop)) return false;
         }
+    }
+
+    private async Task<bool> FlushFiles(Session session, FinalAnswerState answer, CancellationToken stop)
+    {
+        foreach (var file in answer.Files)
+        {
+            lock (session.Gate)
+            {
+                if (file.Message != null || file.Failure != null) continue;
+                if (file.SendUnknown) return false;
+            }
+            byte[] bytes;
+            try { bytes = await fileStore.Read(session.Binding, file.Path, file.Sha256, stop); }
+            catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or NativeRejected or NotSupportedException or FormatException or JsonException or System.ComponentModel.Win32Exception)
+            {
+                lock (session.Gate)
+                {
+                    file.Failure = "Project file unavailable, changed, outside the topic, or exceeds 20 MiB";
+                    answer.Parts.Add(new() { Part = new("Attachment not sent: " + OutboundFiles.Filename(file.Path) + " — " + file.Failure + ".", []) });
+                    Persist(session);
+                }
+                return false; // Flush the visible failure notice on the next tick.
+            }
+            lock (session.Gate)
+            {
+                file.Size = bytes.Length; file.Sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant();
+                file.Document |= !OutboundFiles.Photo(bytes);
+                file.SendUnknown = true; Persist(session); // Intent BEFORE HTTP.
+            }
+            try
+            {
+                JsonElement sent;
+                try { sent = await telegram.Upload(session.Binding.Chat, session.Binding.Topic, OutboundFiles.Filename(file.Path), bytes, !file.Document, stop); }
+                catch (TelegramFailure rejected) when (rejected.Code == 400 && !file.Document)
+                {
+                    // Explicit rejection only, never ambiguous timeout fallback.
+                    lock (session.Gate) { file.Document = true; Persist(session); }
+                    sent = await telegram.Upload(session.Binding.Chat, session.Binding.Topic, OutboundFiles.Filename(file.Path), bytes, false, stop);
+                }
+                lock (session.Gate) { file.Message = sent.GetProperty("message_id").GetInt32(); file.SendUnknown = false; Persist(session); }
+            }
+            catch (TelegramFailure failure)
+            {
+                lock (session.Gate)
+                {
+                    if (failure.Code == 429) file.SendUnknown = false;
+                    else if (failure.Code is 400 or 403 or 413)
+                    {
+                        file.SendUnknown = false; file.Failure = "Telegram rejected upload (" + failure.Code + ")";
+                        answer.Parts.Add(new() { Part = new("Attachment not sent: " + OutboundFiles.Filename(file.Path) + " — " + file.Failure + ".", []) });
+                    }
+                    else { session.Held = true; session.Status = "Held — attachment delivery unconfirmed; no automatic resend"; }
+                    Persist(session);
+                }
+                if (failure.Code == 429) await Task.Delay(TimeSpan.FromSeconds(Math.Clamp(failure.RetryAfter, 1, 60)), stop);
+                return false;
+            }
+            catch (Exception error) when (error is IOException or InvalidDataException or JsonException or NotSupportedException)
+            {
+                lock (session.Gate)
+                {
+                    session.Held = true; session.Status = "Held — attachment delivery unconfirmed; no automatic resend";
+                    Persist(session);
+                }
+                return false;
+            }
+        }
+        return true;
     }
 }

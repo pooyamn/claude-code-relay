@@ -7,7 +7,7 @@ namespace KhadangRouter;
 // Owner-only PC migration adapter. It does not claim company/role gates or
 // replace the prepared WSL authorization/admission/deployment components.
 public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot telegram, INative rpc, IAttachments? attachments = null,
-    NativeRemote? nativeRemote = null, IClaudeTopics? claudeTopics = null, INative? linuxRpc = null)
+    NativeRemote? nativeRemote = null, IClaudeTopics? claudeTopics = null, INative? linuxRpc = null, IOutboundFiles? outboundFiles = null)
 {
     private sealed class Session(Binding binding, INative native)
     {
@@ -69,6 +69,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
     private readonly NativeQuota linuxQuota = new();
     private readonly NativeRemote linuxRemote = new();
     private readonly IAttachments attachmentStore = attachments ?? new Attachments(policy, ledger, telegram);
+    private readonly IOutboundFiles fileStore = outboundFiles ?? new OutboundFiles(policy, linuxRpc);
     private DateTimeOffset lastStart = DateTimeOffset.MinValue;
 
     public async Task Run(CancellationToken stop, bool canary = false)
@@ -137,7 +138,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 if (saved.TryGetProperty("lastAnswer", out var lastAnswer)) session.LastAnswer = lastAnswer.GetString()!;
                 if (saved.TryGetProperty("claudeDeliveryHold", out var deliveryHold) && deliveryHold.ValueKind == JsonValueKind.Object)
                     session.DeliveryHold = deliveryHold.Deserialize<ClaudeDeliveryHold>();
-                if (session.Response.Answer.Parts.Any(p => p.SendUnknown)) { session.Held = true; session.Status = "Held — final answer delivery unconfirmed"; }
+                if (session.Response.Answer.Unknown) { session.Held = true; session.Status = "Held — final answer delivery unconfirmed"; }
                 session.Dirty = true;
             }
             sessions[binding.Address] = session;

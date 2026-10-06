@@ -6,6 +6,7 @@ company authority or substitute for Windows credential/code ACLs. No fallback,
 reconnect, login, enrollment, initialization or action replay is performed.
 """
 import argparse
+import base64
 import hashlib
 import os
 from pathlib import Path
@@ -33,6 +34,74 @@ WORKSPACE_ROOT = OWNER / '.openclaw/workspace'
 # Admit this literal directory only, never the whole home or adjacent paths.
 ANDROID_WORKSPACE = OWNER / 'android router'
 CREDENTIAL = Path('/mnt/c/ProgramData/KhadangRouter/khadang-token.dpapi')
+
+
+def artifact_read(parameters, workspaces):
+    """Connector-local read, NOT a provider RPC or a SYSTEM filesystem read.
+
+    Open each literal component with no-follow, as UID 1000. Every chunk is
+    bound to the same content hash; no arbitrary home/credential paths, URLs,
+    links, devices or caller-selected commands cross this transport.
+    """
+    require_owner()
+    if type(parameters) is not dict or set(parameters) != {'workspace', 'path', 'offset', 'sha256'}:
+        raise Denied('Invalid artifact request')
+    workspace, path = parameters['workspace'], parameters['path']
+    offset, expected = parameters['offset'], parameters['sha256']
+    if workspace not in (workspaces or []) or type(path) is not str or len(path) > 4096 or \
+            not path.startswith(workspace + '/') or '\\' in path or \
+            any(ord(c) < 32 or ord(c) == 127 for c in path) or \
+            any(part in ('', '.', '..', '.git', '.codex', '.claude', '.ssh') for part in path.split('/')[1:]) or \
+            type(offset) is not int or not 0 <= offset <= 20 * 1024 * 1024 or \
+            expected is not None and (type(expected) is not str or not re.fullmatch('[a-f0-9]{64}', expected)):
+        raise Denied('Artifact must be a literal file inside its exact bound workspace')
+    descriptors = []
+    try:
+        directory = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+        descriptors.append(directory)
+        components = path.split('/')[1:]
+        for part in components[:-1]:
+            directory = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=directory)
+            descriptors.append(directory)
+        descriptor = os.open(components[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=directory)
+        descriptors.append(descriptor)
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode) or before.st_uid != 1000 or before.st_nlink != 1 or \
+                before.st_mode & 0o022 or not 0 < before.st_size <= 20 * 1024 * 1024 or offset >= before.st_size:
+            raise Denied('Private owner regular artifact within 20 MiB required')
+        digest = hashlib.sha256()
+        remaining = before.st_size
+        while remaining:
+            body = os.read(descriptor, min(65536, remaining))
+            if not body:
+                raise Denied('Artifact truncated while reading')
+            digest.update(body)
+            remaining -= len(body)
+        sha256 = digest.hexdigest()
+        if expected is not None and sha256 != expected:
+            raise Denied('Artifact changed between chunks')
+        os.lseek(descriptor, offset, os.SEEK_SET)
+        chunk = os.read(descriptor, min(524288, before.st_size - offset))
+        after = os.fstat(descriptor)
+        if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns) != \
+                (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+            raise Denied('Artifact changed during read')
+        return {'size': before.st_size, 'offset': offset, 'sha256': sha256, 'data': base64.b64encode(chunk).decode('ascii')}
+    finally:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+
+
+def local_artifact_response(message, workspaces):
+    if message.get('method') != 'ccrelay/artifact/read':
+        return None
+    if type(message.get('id')) is not int:
+        raise Denied('Artifact reads require an identified request')
+    try:
+        return {'id': message['id'], 'result': artifact_read(message.get('params'), workspaces)}
+    except (Denied, OSError):
+        # Do not expose secret paths, OS exceptions or file content in errors.
+        return {'id': message['id'], 'error': {'code': -32602, 'message': 'Project artifact read refused'}}
 
 
 def attest_workspaces(values):
@@ -260,7 +329,11 @@ def bridge(value, workspaces=None):
                 if b'\n' in stdio.buffer:
                     message, _ = stdio.receive(time.monotonic() + 30)
                     verify()
-                    native.send(message, time.monotonic() + 30)
+                    local = local_artifact_response(message, workspaces)
+                    if local is not None:
+                        stdio.send(local, time.monotonic() + 30)
+                    else:
+                        native.send(message, time.monotonic() + 30)
                     continue
                 if native.buffer:
                     message, _ = native.receive(time.monotonic() + 30)
