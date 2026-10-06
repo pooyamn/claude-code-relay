@@ -29,6 +29,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         public readonly Dictionary<string, string> ClaudeToolCompletions = new();
         public readonly Dictionary<int, ClaudeToolInput> ClaudePartialTools = new();
         public string? ClaudeResultStatus;
+        public ClaudeDeliveryHold? DeliveryHold;
         public readonly object Gate = new();
         public readonly SemaphoreSlim Dispatch = new(1, 1);
         public readonly SemaphoreSlim Output = new(1, 1);
@@ -134,6 +135,8 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 RestorePendingBubbles(session, saved);
                 RestoreAnswer(session.Response, saved);
                 if (saved.TryGetProperty("lastAnswer", out var lastAnswer)) session.LastAnswer = lastAnswer.GetString()!;
+                if (saved.TryGetProperty("claudeDeliveryHold", out var deliveryHold) && deliveryHold.ValueKind == JsonValueKind.Object)
+                    session.DeliveryHold = deliveryHold.Deserialize<ClaudeDeliveryHold>();
                 if (session.Response.Answer.Parts.Any(p => p.SendUnknown)) { session.Held = true; session.Status = "Held — final answer delivery unconfirmed"; }
                 session.Dirty = true;
             }
@@ -159,6 +162,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                         session.Held = false;
                     if (revision == session.ClaudeStateRevision)
                         ApplyClaudeState(session, session.ClaudeInfo.Value.GetProperty("session_state").GetString()!);
+                    ReleaseClaudeDeliveryHold(session);
                 }
                 var remoteReceipt = await ClaudeRemoteControl.Enable(claude, binding, ledger, stop);
                 lock (session.Gate)
@@ -423,6 +427,16 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             if (target != null)
                 lock (target.Gate)
                 {
+                    if (error is ClaudeDeliveryTimeout late && late.Session == target.Binding.ThreadId)
+                    {
+                        target.DeliveryHold = new(late.Operation, late.Uuid, updateId);
+                        if (ClaudeDelivery.Confirmed(ledger, late.Operation, late.Session, late.Uuid))
+                        {
+                            ledger.Exec("UPDATE updates SET status='accepted-late' WHERE id=? AND status='held-no-replay'", updateId);
+                            target.DeliveryHold = null; Touch(target); return;
+                        }
+                    }
+                    else target.DeliveryHold = null;
                     target.Held = error is not NativeRejected;
                     target.Status = "Held — input " + updateId + " not confirmed";
                     target.Bubble.Append("\nInput " + updateId + " was not confirmed: " + error.GetType().Name + ". No automatic replay or queued fallback. /status shows the exact session.\n");
@@ -737,6 +751,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             {
                 lock (session.Gate)
                 {
+                    ReleaseClaudeDeliveryHold(session);
                     if (session.Claude is { Connected: false } && !session.Held)
                     {
                         session.Held = true; session.Status = "Held — Claude stream disconnected";
@@ -800,6 +815,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             backend = session.Binding.Backend, runtime = session.Binding.Runtime,
             claudeState = session.Claude == null ? null : session.ClaudeState,
             tail = session.Bubble.Tail, message = session.Message, sendUnknown = session.SendUnknown, held = session.Held,
+            claudeDeliveryHold = session.DeliveryHold,
             pendingResponses = session.PendingBubbles.Select(r => new { text = r.Text, message = r.Message, lastRendered = r.LastRendered, sendUnknown = r.SendUnknown, finalAnswer = r.Answer }).ToArray(),
             pendingAnswers = session.PendingAnswers.ToArray(),
             completedItems = session.CompletedOrder.ToArray(),

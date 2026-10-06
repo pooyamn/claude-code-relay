@@ -87,11 +87,11 @@ public static class MixedRoutingTests
             catch (Exception error) when (error is InvalidDataException or IOException)
             { Check(topics.Opened.Count == 2 && topics.Opened.All(c => c.Disposed) && bot.Menus.Count == 0, "Startup failure closes all acquired Claude streams, including the unregistered one: " + bad); }
         }
-        foreach (var scenario in new[] { "initialize-race", "initialize-question", "media-race", "slow-usage", "failed-usage" })
+        foreach (var scenario in new[] { "initialize-race", "initialize-question", "media-race", "slow-usage", "failed-usage", "late-delivery", "ack-timeout-race", "late-unrelated-hold" })
         {
             var path = Path.Combine(directory, scenario); Directory.CreateDirectory(path);
             using var ledger = new Ledger(Path.Combine(path, "router.db")); var b = bindings[2]; ledger.Bind(b);
-            var topics = new Topics(scenario); var win = new Codex(policy); var bot = new Bot(policy, [b]);
+            var topics = new Topics(scenario, ledger); var win = new Codex(policy); var bot = new Bot(policy, [b]);
             ledger.Put("bubble/" + b.ThreadId, new { chat = b.Chat, topic = b.Topic, tail = "Fixture", message = 900,
                 sendUnknown = false, held = false, busy = false, status = "Ready", elapsedMs = 0 });
             using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(12));
@@ -111,6 +111,26 @@ public static class MixedRoutingTests
                     await Wait(() => Done(ledger, 1), stop.Token);
                     Check(claude.Inputs.Count == 0 && ledger.Query("SELECT status FROM updates WHERE id=1")[0][0] == "held-media" &&
                         !ledger.Get("bubble/" + Pin)!.Value.GetProperty("held").GetBoolean(), "Changed native work during media staging retains the complete input, without a fresh send or blocking healthy work");
+                }
+                else if (scenario is "late-delivery" or "ack-timeout-race" or "late-unrelated-hold")
+                {
+                    bot.Post(bot.Update(1, b, "START")); await Wait(() => Done(ledger, 1), stop.Token);
+                    if (scenario != "ack-timeout-race")
+                    {
+                        Check(ledger.Unknown == 1 && ledger.Get("bubble/" + Pin)!.Value.GetProperty("held").GetBoolean(), "Receipt timeout holds precisely the submitted input");
+                        if (scenario == "late-unrelated-hold") claude.Emit(new { type = "system", session_id = Pin, subtype = "worker_shutting_down" });
+                        claude.ConfirmLate();
+                    }
+                    if (scenario == "late-unrelated-hold")
+                        Check(ledger.Unknown == 0 && ledger.Get("bubble/" + Pin)!.Value.GetProperty("held").GetBoolean(), "Late delivery cannot clear a different native shutdown hold");
+                    else
+                    {
+                        await Wait(() => !ledger.Get("bubble/" + Pin)!.Value.GetProperty("held").GetBoolean(), stop.Token);
+                        Check(ledger.Unknown == 0 && ledger.Query("SELECT status FROM updates WHERE id=1")[0][0] == "accepted-late" && claude.Inputs.Count == 1,
+                            "Exact late acknowledgement clears timeout hold without duplicate work: " + scenario);
+                        bot.Post(bot.Update(2, b, "NEXT")); await Wait(() => Done(ledger, 2), stop.Token);
+                        Check(claude.Inputs.Count == 2 && ledger.Query("SELECT status FROM updates WHERE id=2")[0][0] == "accepted", "Owner can send next message after reconciled receipt");
+                    }
                 }
                 else
                 {
@@ -257,13 +277,13 @@ public static class MixedRoutingTests
     private static object Ask() => new { subtype = "can_use_tool", tool_name = "AskUserQuestion", input = new { preserve = "original", questions = new[] {
         new { question = "First full question?", header = "First", multiSelect = false, options = new[] { new { label = "A", description = "first" }, new { label = "B", description = "second" } } },
         new { question = "Second full question?", header = "Second", multiSelect = true, options = new[] { new { label = "A", description = "first" }, new { label = "B", description = "second" } } } } } };
-    private sealed class Topics(string? failure = null) : IClaudeTopics
+    private sealed class Topics(string? failure = null, Ledger? ledger = null) : IClaudeTopics
     {
         public List<Claude> Opened = [];
         public Task<IClaudeNative> Open(Binding binding, CancellationToken stop)
         {
             var claude = new Claude(failure == "foreign-pin" && Opened.Count == 1 ? Guid.NewGuid().ToString("D") : binding.ThreadId,
-                failInitialize: failure == "initialization-failure" && Opened.Count == 1, scenario: failure);
+                failInitialize: failure == "initialization-failure" && Opened.Count == 1, scenario: failure, ledger: ledger);
             Opened.Add(claude); return Task.FromResult<IClaudeNative>(claude);
         }
     }
@@ -277,7 +297,7 @@ public static class MixedRoutingTests
             return Task.FromResult<IReadOnlyList<StagedAttachment>>([new("document", "C:\\Protected\\asset.bin", 3, new string('a', 64), "fixture", null, false)]);
         }
     }
-    private sealed class Claude(string pin, bool failInitialize = false, string? scenario = null) : IClaudeNative
+    private sealed class Claude(string pin, bool failInitialize = false, string? scenario = null, Ledger? ledger = null) : IClaudeNative
     {
         public uint Pid => 123; public string SessionId => pin; public bool Connected => !Disposed; public bool Disposed;
         public event Action<JsonElement>? Notification;
@@ -285,6 +305,12 @@ public static class MixedRoutingTests
         public ConcurrentBag<(string Id, JsonElement Answer)> Answers = new();
         public ConcurrentBag<(string Kind, JsonElement Args)> Controls = new();
         public TaskCompletionSource<JsonElement> UsageReply = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private JsonElement? late;
+        public void ConfirmLate()
+        {
+            var frame = late!.Value; var operation = ClaudeDelivery.ConfirmReplay(ledger!, pin, frame)!;
+            Emit(new { type = "ccrelay_delivery_confirmed", session_id = pin, operation, uuid = frame.GetProperty("uuid").GetString() });
+        }
         public void Emit(object value) => Notification?.Invoke(Json(value));
         public void Question(string id, object request) => Emit(new { type = "control_request", request_id = id, request });
         public Task<JsonElement> Initialize(CancellationToken stop)
@@ -297,6 +323,13 @@ public static class MixedRoutingTests
         public Task<JsonElement> SendNow(string expectedSessionId, JsonElement content, CancellationToken stop)
         {
             Inputs.Add((expectedSessionId, content)); Emit(new { type = "system", session_id = pin, subtype = "session_state_changed", state = "running" });
+            if (Inputs.Count == 1 && scenario is "late-delivery" or "ack-timeout-race" or "late-unrelated-hold")
+            {
+                var uuid = Guid.NewGuid().ToString("D"); var operation = ledger!.Attempt("claude/user/send-now", new { SessionId = pin, uuid, content });
+                ledger.Outcome(operation, "unknown"); late = Json(new { type = "user", session_id = pin, uuid, parent_tool_use_id = (string?)null, message = new { role = "user", content } });
+                if (scenario == "ack-timeout-race") ConfirmLate();
+                throw new ClaudeDeliveryTimeout(operation, pin, uuid);
+            }
             Emit(new { type = "stream_event", session_id = pin, @event = new { type = "content_block_delta", delta = new { type = "text_delta", text = "CLAUDE-TEXT" } } });
             return Task.FromResult(Json(new { type = "user", session_id = pin, uuid = Guid.NewGuid().ToString("D") }));
         }

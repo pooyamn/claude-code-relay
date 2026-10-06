@@ -166,3 +166,36 @@ with `modelProvider`) may declare a provider — see `provider-grouping-plan.md`
   succeeded. Check before retrying or you get duplicate topics.
 - **Overlays** (`/workflows`, `/config`) replace the input bar; the watcher Esc-peels
   them. Never keystroke-drive a picker — it races and mis-selects.
+
+## PC DUT: a late Claude receipt must outlive the ACK waiter (2026-10-06)
+
+DUT stopped admitting input after the 30-second `SendNow` ACK timeout. The native
+session subsequently echoed the exact input and completed its work, and its final
+answer reached Telegram. The in-memory ACK waiter had already been removed, so
+the durable send stayed `unknown`, retaining DUT's hold and global intake fence.
+Do not diagnose this as an absent native input or resend the task.
+
+`ClaudeDelivery` now reconciles every primary-user echo against the protected
+send journal: exact session, UUID, role, null parent and equal content. Receipt
+confirmation and its evidence are transactional and duplicates are idempotent.
+The router releases only the corresponding delivery-timeout hold, including the
+race where confirmation precedes timeout handling. Other safety holds, uncertain
+actions, resets and unconfirmed Telegram sends remain held; nothing is resent.
+
+The existing incident was reconciled against its completed, quiescent native
+transcript under the exclusive writer lease, with matching input content hash.
+The stopped router's ledger and binaries were backed up before the narrow repair.
+Follow-ups held before native submission were retained, not automatically replayed.
+The production deployment passed 1,153 Windows checks, fresh OS-boundary probes,
+and live verification of all 14 routes, seven connected Claude streams, unheld
+idle DUT and zero uncertain native inputs. The shared Codex daemon, active
+controller turn, unrelated Web safety hold, bindings and policy were preserved;
+the startup watchdog was restored.
+
+For this repair, the transcript evidence helper must run in the existing limited
+owner context. An administrator's Windows `wsl.exe` can retain elevated DrvFS
+credential access despite Linux UID 1000; the helper correctly rejects that
+context. Seal the genuinely observed metadata as administrator after fencing,
+instead of weakening credential-denial checks. Crash/disconnection recovery still
+fails closed when exact delivery evidence is unavailable; this fix is not a
+promise of universal availability.

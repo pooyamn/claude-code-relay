@@ -7,6 +7,21 @@ namespace KhadangRouter;
 
 public sealed partial class Router
 {
+    private sealed record ClaudeDeliveryHold(string Operation, string Uuid, long UpdateId);
+    private void ReleaseClaudeDeliveryHold(Session session)
+    {
+        if (session.DeliveryHold is not { } hold || !session.Held || session.Claude is not { Connected: true } ||
+            ledger.Unknown != 0 || session.SendUnknown || session.PendingBubbles.Any(b => b.SendUnknown) ||
+            session.PendingAnswers.Append(session.Response.Answer).Any(a => a.Parts.Any(p => p.SendUnknown)) ||
+            session.Status != "Held — input " + hold.UpdateId + " not confirmed" && session.Status != "Held — reconcile native receipts" ||
+            ledger.Get("claude/reset/" + session.Binding.ThreadId) != null ||
+            !ClaudeDelivery.Confirmed(ledger, hold.Operation, session.Binding.ThreadId, hold.Uuid)) return;
+        ledger.Exec("UPDATE updates SET status='accepted-late' WHERE id=? AND status='held-no-replay'", hold.UpdateId);
+        session.DeliveryHold = null; session.Held = false;
+        session.Status = session.Busy ? session.ClaudeState == "requires_action" ? "Waiting for owner" : "Working" :
+            session.ClaudeResultStatus == "success" ? "Done" : session.ClaudeResultStatus == null ? "Ready" : "Failed — inspect native Claude session";
+        session.Bubble.Append("\nLate native acknowledgement verified. Original input was received; nothing was resent.\n"); Touch(session);
+    }
     private sealed record ClaudeRequest(string Id, TopicAddress Address, string Pin, long WorkRevision,
         JsonElement Request, bool Question, bool Reviewable, Dictionary<int, string> Answers);
     private readonly ConcurrentDictionary<string, ClaudeRequest> claudeRequests = new();
@@ -252,12 +267,13 @@ public sealed partial class Router
         {
             try
             {
-                if (kind == "conversation_reset" || kind == "system" && frame.TryGetProperty("subtype", out var reset) && reset.GetString() == "conversation_reset")
+                if (kind == "ccrelay_delivery_confirmed") ReleaseClaudeDeliveryHold(session);
+                else if (kind == "conversation_reset" || kind == "system" && frame.TryGetProperty("subtype", out var reset) && reset.GetString() == "conversation_reset")
                 {
                     var next = frame.GetProperty("new_conversation_id").GetString();
                     if (!Guid.TryParseExact(next, "D", out _)) throw new InvalidDataException("Native reset ID missing");
                     ledger.Put("claude/reset/" + session.Binding.ThreadId, new { previous = session.Binding.ThreadId, next, state = "held-exact-rebind-required" });
-                    session.Held = true; session.Status = "Held — native conversation reset";
+                    session.DeliveryHold = null; session.Held = true; session.Status = "Held — native conversation reset";
                     session.Bubble.Append("\nClaude reset to " + next + ". Old-pin input is held until the exact native binding is reconciled.\n");
                     foreach (var item in claudeRequests.Where(p => p.Value.Pin == session.Binding.ThreadId)) claudeRequests.TryRemove(item.Key, out _);
                 }
@@ -278,7 +294,7 @@ public sealed partial class Router
                     }
                     else if (subtype == "status") session.Bubble.Append("\nClaude status: " + NativeGoal.Literal(frame.GetProperty("status").ToString()) + "\n");
                     else if (subtype is "worker_shutting_down" or "startup_failed")
-                    { session.Held = true; session.Status = "Held — native Claude stopped"; session.Bubble.Append("\nNative Claude stopped; inspect its receipt. No replay.\n"); }
+                    { session.DeliveryHold = null; session.Held = true; session.Status = "Held — native Claude stopped"; session.Bubble.Append("\nNative Claude stopped; inspect its receipt. No replay.\n"); }
                 }
                 else if (kind == "user")
                 {
@@ -373,7 +389,7 @@ public sealed partial class Router
             }
             catch (Exception error) when (error is JsonException or KeyNotFoundException or InvalidOperationException or InvalidDataException)
             {
-                session.Held = true; session.Status = "Held — malformed native Claude evidence"; Touch(session);
+                session.DeliveryHold = null; session.Held = true; session.Status = "Held — malformed native Claude evidence"; Touch(session);
             }
         }
     }

@@ -12,7 +12,7 @@ public static class ClaudeNativeStreamTests
         int checks = 0;
         void Check(bool value, string name) { if (!value) throw new Exception(name); checks++; }
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        foreach (var mode in new[] { "normal", "reject", "disconnect", "mismatched-replay", "duplicate-json", "invalid-utf8" })
+        foreach (var mode in new[] { "normal", "reject", "disconnect", "mismatched-replay", "changed-replay", "duplicate-json", "invalid-utf8" })
         {
             var path = Path.Combine(root, "claude-stream-" + mode); Directory.CreateDirectory(path);
             using var ledger = new Ledger(Path.Combine(path, "rpc.db"));
@@ -128,6 +128,45 @@ public static class ClaudeNativeStreamTests
             try { await client.Answer("snapshot-question", new { behavior = "allow" }, stop.Token); throw new Exception("Replayed question answered"); }
             catch (InvalidOperationException) { Check(channel.Writes.Count == 2 && ledger.Unknown == 1, "Unacknowledged answer remains durable and is not replayed"); }
         }
+        foreach (var wrong in new[] { "none", "session", "uuid", "parent", "role", "content" })
+        {
+            var path = Path.Combine(root, "claude-late-replay-" + wrong); Directory.CreateDirectory(path);
+            using var ledger = new Ledger(Path.Combine(path, "rpc.db"));
+            var channel = new FakeChannel("deferred");
+            await using var client = new ClaudeNativeStream(channel, ledger, Session) { DeliveryTimeout = TimeSpan.FromMilliseconds(50) };
+            await client.Initialize(stop.Token);
+            var confirmed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var barrier = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            client.Notification += m => {
+                if (m.GetProperty("type").GetString() == "ccrelay_delivery_confirmed") confirmed.TrySetResult();
+                if (m.GetProperty("type").GetString() == "fixture_barrier") barrier.TrySetResult();
+            };
+            ClaudeDeliveryTimeout expired;
+            try { await client.SendNow(Session, JsonSerializer.SerializeToElement("Late exact input"), stop.Token); throw new Exception("Missing ACK not held"); }
+            catch (ClaudeDeliveryTimeout e) { expired = e; }
+            Check(ledger.Unknown == 1 && channel.Writes.Count == 2, "Timeout retains exactly one uncertain native send");
+            var echo = new { type = "user", session_id = wrong == "session" ? Guid.NewGuid().ToString("D") : Session,
+                uuid = wrong == "uuid" ? Guid.NewGuid().ToString("D") : expired.Uuid,
+                parent_tool_use_id = wrong == "parent" ? "sidechain" : null,
+                message = new { role = wrong == "role" ? "assistant" : "user", content = wrong == "content" ? "Changed input" : "Late exact input" } };
+            if (wrong == "content")
+            {
+                try { ClaudeDelivery.ConfirmReplay(ledger, Session, JsonSerializer.SerializeToElement(echo)); throw new Exception("Changed receipt accepted"); }
+                catch (InvalidDataException) { checks++; }
+            }
+            else { channel.Emit(echo); channel.Emit(new { type = "fixture_barrier" }); await barrier.Task.WaitAsync(stop.Token); }
+            Check(ledger.Unknown == (wrong == "none" ? 0 : 1) && channel.Writes.Count == 2,
+                "Only an exact late session/UUID/content/primary-user receipt resolves uncertainty, with no write: " + wrong);
+            if (wrong == "none")
+            {
+                await confirmed.Task.WaitAsync(stop.Token);
+                Check(ClaudeDelivery.Confirmed(ledger, expired.Operation, Session, expired.Uuid), "Late acknowledgement is durable after the in-memory waiter was removed");
+                var receipt = ledger.Get(ClaudeDelivery.Key(expired.Operation))!.Value.GetRawText();
+                ClaudeDelivery.ConfirmReplay(ledger, Session, JsonSerializer.SerializeToElement(echo));
+                Check(ledger.Get(ClaudeDelivery.Key(expired.Operation))!.Value.GetRawText() == receipt && channel.Writes.Count == 2,
+                    "Duplicate late echo is idempotent, retaining evidence without another native input");
+            }
+        }
         return checks;
     }
     private sealed class FakeChannel(string mode) : INativeChannel
@@ -157,6 +196,7 @@ public static class ClaudeNativeStreamTests
             }
             else if (value.GetProperty("type").GetString() == "user")
             {
+                if (mode == "deferred") return Task.CompletedTask;
                 if (mode == "disconnect") frames.Writer.TryWrite(null);
                 else if (mode == "invalid-utf8") frames.Writer.TryWrite("fixture-invalid-utf8");
                 else if (mode == "duplicate-json") frames.Writer.TryWrite("{\"type\":\"user\",\"type\":\"user\"}");
@@ -164,7 +204,7 @@ public static class ClaudeNativeStreamTests
                 {
                     Emit(new { type = "stream_event", session_id = Session, @event = new { type = "content_block_delta", delta = new { text = "Fixture progress" } } });
                     Emit(new { type = "user", uuid = value.GetProperty("uuid").GetString(), session_id = mode == "mismatched-replay" ? "foreign" : Session,
-                        parent_tool_use_id = (string?)null, message = new { role = "user", content = "Fixture input replay" } });
+                        parent_tool_use_id = (string?)null, message = new { role = "user", content = mode == "changed-replay" ? JsonSerializer.SerializeToElement("Changed input") : value.GetProperty("message").GetProperty("content") } });
                 }
             }
             return Task.CompletedTask;

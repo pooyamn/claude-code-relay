@@ -30,6 +30,7 @@ public sealed class ClaudeNativeStream : IClaudeNative
     public uint Pid => channel.Pid;
     public string SessionId { get; }
     public bool Connected => !disconnected;
+    internal TimeSpan DeliveryTimeout { get; init; } = TimeSpan.FromSeconds(30);
     public ClaudeNativeStream(INativeChannel channel, Ledger ledger, string sessionId)
     {
         if (!Guid.TryParseExact(sessionId, "D", out _)) throw new InvalidDataException("Exact native Claude session ID required");
@@ -103,9 +104,14 @@ public sealed class ClaudeNativeStream : IClaudeNative
         {
             operation = ledger.Attempt("claude/user/send-now", new { SessionId, uuid, content });
             await Write(message, token, requireInitialized: true);
-            var replay = await completion.Task.WaitAsync(TimeSpan.FromSeconds(30), token);
+            var replay = await completion.Task.WaitAsync(DeliveryTimeout, token);
             ledger.Confirm(operation, JsonSerializer.SerializeToElement(new { SessionId, uuid, receipt = "native-user-replay" }));
             return replay;
+        }
+        catch (TimeoutException)
+        {
+            if (operation != null) ledger.Outcome(operation, "unknown");
+            throw new ClaudeDeliveryTimeout(operation!, SessionId, uuid);
         }
         catch { if (operation != null) ledger.Outcome(operation, "unknown"); throw; }
         finally { sends.TryRemove(uuid, out _); }
@@ -238,14 +244,20 @@ public sealed class ClaudeNativeStream : IClaudeNative
                         else ledger.Put(RequestKey(id), new { status = "cancelled" });
                     }
                 }
-                if (kind == "user" && message.TryGetProperty("uuid", out var uuid) && uuid.ValueKind == JsonValueKind.String &&
-                    sends.TryGetValue(uuid.GetString()!, out var send))
+                if (kind == "user")
                 {
-                    if (message.GetProperty("session_id").GetString() != SessionId ||
+                    var delivery = ClaudeDelivery.ConfirmReplay(ledger, SessionId, message);
+                    if (message.TryGetProperty("uuid", out var uuid) && uuid.ValueKind == JsonValueKind.String &&
+                        sends.TryGetValue(uuid.GetString()!, out var send))
+                    {
+                    if (delivery == null || message.GetProperty("session_id").GetString() != SessionId ||
                         message.GetProperty("message").GetProperty("role").GetString() != "user" ||
                         message.GetProperty("parent_tool_use_id").ValueKind != JsonValueKind.Null)
                         throw new InvalidDataException("Claude replay is not the submitted primary-conversation input");
                     send.TrySetResult(message);
+                    }
+                    if (delivery != null) Notification?.Invoke(JsonSerializer.SerializeToElement(new {
+                        type = "ccrelay_delivery_confirmed", session_id = SessionId, operation = delivery, uuid = message.GetProperty("uuid").GetString() }));
                 }
                 if (kind == "conversation_reset" || kind == "system" && message.TryGetProperty("subtype", out var subtype) && subtype.GetString() == "conversation_reset")
                 {
