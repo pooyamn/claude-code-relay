@@ -73,6 +73,13 @@ public sealed class WindowsPipePeer : IDisposable
         catch { image?.Dispose(); process.Dispose(); throw; }
     }
 
+    internal static WindowsPipePeer AuthenticateImage(PipeStream stream, bool serverPeer, string image, string digest, string root)
+    {
+        RequireSystem();
+        // Obtain the identity from the kernel, never a client-supplied PID.
+        return Authenticate(stream, serverPeer, Capture(PeerPid(stream.SafePipeHandle, serverPeer), image, digest), root);
+    }
+
     public static async Task<(NamedPipeClientStream Stream, WindowsPipePeer Peer)> Connect(string run,
         WindowsPipePin expectedServer, string protectedArtifactRoot, CancellationToken stop)
     {

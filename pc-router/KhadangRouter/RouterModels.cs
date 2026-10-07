@@ -113,7 +113,7 @@ public sealed partial class Router
         {
             if (target == null) { target = source.Binding with { ThreadId = Guid.NewGuid().ToString("D"), Backend = "claude" }; ledger.Put(key, target); }
             ledger.Put(intentKey, new { phase = "opening-destination", nonce, source = source.Binding, target, handoff, requestedModel = model });
-            if (source.Claude != null) { source.Claude.Notification -= source.ClaudeHandler; await source.Claude.DisposeAsync(); sourceClosed = true; }
+            if (source.Claude != null) { source.Claude.Notification -= source.ClaudeHandler; await source.Claude.RetireForSwitch(stop); sourceClosed = true; }
             var native = await claudeTopics.OpenForSwitch(source.Binding, target, fresh, model.ToLowerInvariant(), stop);
             if (!native.Connected || native.SessionId != target.ThreadId)
                 throw new InvalidDataException("Claude switch stream is not connected to the exact reserved native ID");
@@ -122,6 +122,7 @@ public sealed partial class Router
             destination.ClaudeHandler = frame => OnClaude(destination, frame); native.Notification += destination.ClaudeHandler;
             destination.ClaudeInfo = await native.Initialize(stop);
             ApplyClaudeState(destination, destination.ClaudeInfo.Value.GetProperty("session_state").GetString()!);
+            if (native is ClaudeWorkerClient worker) await worker.RestoreRequests(stop);
             var catalog = destination.ClaudeInfo.Value.GetProperty("models").EnumerateArray();
             if (!catalog.Any(m => m.GetProperty("value").GetString() == model.ToLowerInvariant()))
                 throw new InvalidDataException("Requested Claude model absent from native catalog; source topic remains selected");

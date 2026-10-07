@@ -7,7 +7,8 @@ public sealed record RouterPolicy(string BotUsername, long BotId, long OwnerId, 
     string OwnerSid, string CodexExecutable, string CodexSha256, string CredentialFile,
     string StateDirectory, string WorkspaceRoot, int MaximumSessions = 3, int StartSpacingSeconds = 5,
     bool OwnerFullAccess = false, ChatRoute[]? AdditionalChats = null, string? LinuxWorkspaceRoot = null,
-    LinuxCodexRuntime? LinuxCodex = null, LinuxClaudeRuntime? LinuxClaude = null, long[]? ParticipantIds = null)
+    LinuxCodexRuntime? LinuxCodex = null, LinuxClaudeRuntime? LinuxClaude = null, long[]? ParticipantIds = null,
+    bool PersistentClaudeWorkers = false)
 {
     [JsonIgnore] public string NativeApprovalPolicy => OwnerFullAccess ? "never" : "on-request";
     [JsonIgnore] public string NativePermissionProfile => OwnerFullAccess ? ":danger-full-access" : ":workspace";

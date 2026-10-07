@@ -30,6 +30,7 @@ public sealed class ClaudeNativeStream : IClaudeNative
     public uint Pid => channel.Pid;
     public string SessionId { get; }
     public bool Connected => !disconnected;
+    internal JsonElement[] PendingRequests() { lock (requestGate) return requests.Values.Select(frame => frame.Clone()).ToArray(); }
     internal TimeSpan DeliveryTimeout { get; init; } = TimeSpan.FromSeconds(30);
     public ClaudeNativeStream(INativeChannel channel, Ledger ledger, string sessionId)
     {
@@ -89,12 +90,14 @@ public sealed class ClaudeNativeStream : IClaudeNative
         catch { if (operation != null) ledger.Outcome(operation, "unknown"); throw; }
         finally { controls.TryRemove(requestId, out _); }
     }
-    public async Task<JsonElement> SendNow(string expectedSessionId, JsonElement content, CancellationToken token)
+    public Task<JsonElement> SendNow(string expectedSessionId, JsonElement content, CancellationToken token) =>
+        SendWithUuid(expectedSessionId, content, Guid.NewGuid().ToString("D"), token);
+    internal async Task<JsonElement> SendWithUuid(string expectedSessionId, JsonElement content, string uuid, CancellationToken token)
     {
         RequireInitialized();
         if (expectedSessionId != SessionId) throw new InvalidDataException("Claude message belongs to another pinned conversation");
         if (content.ValueKind is not (JsonValueKind.String or JsonValueKind.Array)) throw new InvalidDataException("Native Claude content must be text or blocks");
-        var uuid = Guid.NewGuid().ToString("D");
+        if (!Guid.TryParseExact(uuid, "D", out _)) throw new InvalidDataException("Exact native user UUID required");
         var message = Encode(new { type = "user", message = new { role = "user", content }, origin = new { kind = "human" },
             parent_tool_use_id = (string?)null, session_id = SessionId, uuid, priority = "now" });
         var completion = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);

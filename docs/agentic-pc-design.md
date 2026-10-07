@@ -11,6 +11,21 @@ preserved worktrees. Resuming old Mac session IDs is optional, not a migration
 gate. Record the new PC IDs for normal operation and recovery; this does not
 authorize silent fresh-session fallback after an uncertain failure.
 
+Claude lifecycle requirement, 2026-10-07: Telegram router deployments must not
+relaunch idle Claude workers or re-register Remote Control. Native streams,
+one-shot initialization and event/intent journals belong to an independent
+protected host, while router clients attach/detach. Reconnection must validate
+the exact host/native process generation, native session and cloud mapping;
+restore missed events and pending questions; preserve existing uncertainty
+holds; and never replay user input. Only an explicit idle tool switch retires
+a worker. A host/PC restart still needs guarded quiescent-history recovery;
+router-only continuity does not prove crash/reboot or clean-machine recovery.
+This is the personal-owner adapter, not company/role identity enforcement.
+The PC cutover and actual router-only restart passed at 17:07Z: sixteen routes,
+seven unchanged native worker generations and cloud mappings, no additional
+Remote Control registrations and no input replay. See the
+[lifecycle deployment evidence](mac-to-pc-migration.md#persistent-claude-workers-october-7).
+
 Scope decision, October 3 at 11:19 PM PDT: Pouya excluded the local Qwen server
 and its Ai Dispatch topic `10656`. Neither moves to the PC, and the topic is
 not switched to Claude. Eight of thirteen required original topics are routed;

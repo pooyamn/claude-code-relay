@@ -47,6 +47,22 @@ public sealed class NativeBroker : IAsyncDisposable
             throw;
         }
     }
+    internal static async Task<NativeBroker> OwnClaude(string directory, string root,
+        Func<Ledger, Task<ClaudeWorkerNative>> launch)
+    {
+        WindowsPipePeer.RequireSystem();
+        var journal = NativeBrokerJournal.Open(directory, root); ClaudeWorkerNative? native = null;
+        try
+        {
+            native = await launch(journal.Ledger);
+            return new(native, native, journal.Ledger, native.Initialize, journal);
+        }
+        catch
+        {
+            try { if (native != null) await native.DisposeAsync(); } finally { journal.Dispose(); }
+            throw;
+        }
+    }
     internal static NativeBroker Fixture(INative native, IAsyncDisposable owner, Ledger privateLedger, Func<Task> initialize, NativeBrokerJournal? journal = null) =>
         new(native, owner, privateLedger, initialize, journal);
     private NativeBroker(INative native, IAsyncDisposable owner, Ledger ledger, Func<Task> initialize, NativeBrokerJournal? journal)
@@ -89,8 +105,12 @@ public sealed class NativeBroker : IAsyncDisposable
     internal void Current()
     {
         lock (gate)
+        {
             if (closed || captureFailed || native is NativeRpc rpc && !rpc.Connected)
                 throw new IOException("Native broker custody unavailable; no reconnect or replay");
+            if (native is ClaudeWorkerNative claude && !claude.Connected)
+                throw new IOException("Claude worker is stopped; explicit recovery required");
+        }
     }
     internal Task<JsonElement> Call(string intent, string method, object parameters)
     {
@@ -120,6 +140,13 @@ public sealed class NativeBroker : IAsyncDisposable
             if (running.Count >= 16) throw new InvalidOperationException("Broker outstanding-call ceiling reached");
             if (Unknown != 0 && !ReadOnly(method)) throw new InvalidOperationException("Unknown native outcome holds new mutations");
             ledger.Exec("INSERT INTO broker_calls VALUES (?,?,?,?,'attempting',NULL)", intent, Epoch, method, fingerprint);
+            if (native is ClaudeWorkerNative && method == "claude/send")
+            {
+                using var input = JsonDocument.Parse(payload);
+                var uuid = input.RootElement.GetProperty("uuid").GetString();
+                if (!Guid.TryParseExact(uuid, "D", out _)) throw new InvalidDataException("Exact Claude user UUID required");
+                ledger.Put("claude/broker-user/" + uuid, new { intent, epoch = Epoch, fingerprint });
+            }
             // Cancellation belongs to the broker lifetime, not the UI waiter.
             // Queue behind initialization only; no action retry is performed.
             var work = Task.Run(async () => {
@@ -140,7 +167,8 @@ public sealed class NativeBroker : IAsyncDisposable
         }
     }
     private static bool ReadOnly(string method) => method is "account/read" or "account/rateLimits/read" or "remoteControl/status/read" or
-        "thread/read" or "thread/list" or "thread/loaded/list" or "thread/goal/get" or "model/list";
+        "thread/read" or "thread/list" or "thread/loaded/list" or "thread/goal/get" or "model/list" or
+        "claude/status/read" or "claude/remote/read" or "claude/usage/read";
     private static string Hash(string payload) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload)));
     private static string RequestKey(JsonElement id)
     {
@@ -159,9 +187,15 @@ public sealed class NativeBroker : IAsyncDisposable
                 if (captureFailed) throw new IOException("Native event custody unavailable");
                 var frame = message.GetRawText();
                 if (Encoding.UTF8.GetByteCount(frame) > WebSocketNativeChannel.MaximumFrameBytes) throw new InvalidDataException("Broker event frame exceeds bound");
+                var exactClaudeReceipt = native is ClaudeWorkerNative && message.TryGetProperty("session_id", out var session) &&
+                    session.ValueKind == JsonValueKind.String && ClaudeDelivery.ConfirmReplay(ledger, session.GetString()!, message) != null;
                 var next = position + 1;
                 ledger.Transaction(() => {
                     ledger.Exec("INSERT INTO broker_events VALUES (?,?,?)", Epoch, next, frame);
+                    if (exactClaudeReceipt && message.TryGetProperty("uuid", out var userId) && userId.ValueKind == JsonValueKind.String &&
+                        ledger.Get("claude/broker-user/" + userId.GetString()) is { } send && send.GetProperty("epoch").GetString() == Epoch)
+                        ledger.Exec("UPDATE broker_calls SET status='confirmed',result=? WHERE intent=? AND epoch=? AND method='claude/send' AND fingerprint=? AND status IN ('attempting','unknown')",
+                            frame, send.GetProperty("intent").GetString(), Epoch, send.GetProperty("fingerprint").GetString());
                     if (!message.TryGetProperty("method", out var method)) return; // late unmatched native response: evidence, not silent reconciliation
                     if (message.TryGetProperty("id", out var id))
                     {

@@ -3,7 +3,19 @@ using KhadangRouter;
 
 try
 {
+    if (args.SequenceEqual(new[] { "--claude-host-service" }))
+    {
+        WindowsService.Run(ClaudeWorkerHost.Run, ClaudeWorkerHost.ServiceName); return;
+    }
     if (args.SequenceEqual(new[] { "--self-test" })) { SelfTests.Run(); return; }
+    if (args.SequenceEqual(new[] { "--self-test-claude-workers" }))
+    {
+        var testRoot = Path.Combine(Path.GetTempPath(), "khadang-worker-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(testRoot);
+        try { Console.WriteLine("Passed " + await ClaudeWorkerTests.Run(testRoot) + " persistent-Claude worker checks (inert native/IPC fixtures only)."); }
+        finally { Directory.Delete(testRoot, recursive: true); }
+        return;
+    }
     if (args.SequenceEqual(new[] { "--self-test-recovery" }))
     {
         var testRoot = Path.Combine(Path.GetTempPath(), "khadang-recovery-tests-" + Guid.NewGuid().ToString("N"));
@@ -99,6 +111,10 @@ try
                     "try { $p = '" + Path.GetDirectoryName(policy.CredentialFile) + "\\bin\\acl-denial-canary.tmp'; " +
                     "$f = [IO.File]::Open($p,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write); $f.Dispose(); exit 13 } " +
                     "catch [UnauthorizedAccessException] { }; Write-Output 'ROUTER-ACL-DENIED'; exit 0";
+                if (policy.PersistentClaudeWorkers)
+                    aclCheck = aclCheck.Replace("Write-Output 'ROUTER-ACL-DENIED'; exit 0",
+                        "try { $f=[IO.File]::Open('" + ClaudeWorkerHost.Root + "\\installed.json','Open','Read','ReadWrite'); $f.Dispose(); exit 17 } catch [UnauthorizedAccessException] { }; " +
+                        "try { $f=[IO.File]::Open('" + ClaudeWorkerHost.Root + "\\bin\\worker-write-canary.tmp','CreateNew','Write','None'); $f.Dispose(); exit 18 } catch [UnauthorizedAccessException] { }; Write-Output 'ROUTER-ACL-DENIED'; exit 0");
                 var denied = await rpc.Call("command/exec", new { command = new[] { Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell\\v1.0\\powershell.exe"), "-NoProfile", "-NonInteractive", "-Command", aclCheck },
                     // Fixed non-model probe, deliberately WITHOUT a provider
                     // sandbox: prove Windows ACLs deny the ordinary owner token.
@@ -146,6 +162,7 @@ try
                     verified = true, pcOnly = true, bot = policy.BotUsername, nativeOwnerSid = policy.OwnerSid,
                     nativePid = rpc.Pid, nativeAccountAuthenticated = loggedIn, commandOwnerVerified = true, credentialAndCodeDenied = true,
                     aclProbeWithoutProviderSandbox = true,
+                    nativePersistentClaudeHostAclDenied = policy.PersistentClaudeWorkers,
                     nativeWindowsSandboxVerified = true,
                     nativeGoalReadSchemaVerified = true, nativeGoalReads = goalReads,
                     nativeQuota = quota.Snapshot,

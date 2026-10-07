@@ -72,6 +72,7 @@ public static class SelfTests
         checks += ClaudeNativeStreamTests.Run(root).GetAwaiter().GetResult();
         checks += NativeBrokerTests.Run(root).GetAwaiter().GetResult();
         checks += NativeBrokerWireTests.Run(root).GetAwaiter().GetResult();
+        checks += ClaudeWorkerTests.Run(root).GetAwaiter().GetResult();
         checks += RemoteTests.Run().GetAwaiter().GetResult();
         checks += JoinedTests.Run(root, policy).GetAwaiter().GetResult();
         checks += BubbleBoundaryTests.Run(root, policy).GetAwaiter().GetResult();

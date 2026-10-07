@@ -36,6 +36,9 @@ public interface IClaudeNative : IAsyncDisposable
     Task<JsonElement> Control(string subtype, object parameters, CancellationToken stop, bool effect = true);
     Task<JsonElement> SendNow(string expectedSessionId, JsonElement content, CancellationToken stop);
     Task Answer(string requestId, object answer, CancellationToken stop);
+    // Ordinary disposal detaches persistent clients. Only an explicit owner
+    // model switch may retire the worker before reopening its exact saved ID.
+    ValueTask RetireForSwitch(CancellationToken stop) => DisposeAsync();
 }
 public interface IClaudeTopics
 {

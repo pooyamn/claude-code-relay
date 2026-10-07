@@ -23,13 +23,20 @@ internal static class ClaudeRemoteControl
     {
         if (binding.Backend != "claude" || binding.Runtime != "linux" || native.SessionId != binding.ThreadId || !native.Connected)
             throw new InvalidDataException("Remote Control requires the exact already-owned Claude conversation");
-        if (ledger.Unknown != 0) throw new InvalidOperationException("Remote Control held by uncertain effects");
         var key = "claude/remote/" + binding.ThreadId;
         var previous = ledger.Get(key);
         if (previous is { } saved && saved.GetProperty("phase").GetString() is "attempting" or "unknown")
             throw new InvalidOperationException("Remote Control enrollment is uncertain; reconcile, never repeat");
         Receipt? prior = previous is { } p && p.GetProperty("phase").GetString() == "ready" ?
             JsonSerializer.Deserialize<Receipt>(p.GetProperty("receipt")) : null;
+        if (native is ClaudeWorkerClient worker)
+        {
+            var current = Parse(await worker.Remote(stop));
+            if (prior != null && prior != current) throw new InvalidDataException("Persistent worker changed the saved cloud session");
+            if (prior == null) ledger.Put(key, new { phase = "ready", binding.ThreadId, receipt = current, at = DateTimeOffset.UtcNow });
+            return current; // Read the live host's cached receipt; no native registration.
+        }
+        if (ledger.Unknown != 0) throw new InvalidOperationException("Remote Control held by uncertain effects");
         var request = new Dictionary<string, object?> { ["enabled"] = true, ["name"] = binding.Name, ["keep_session_on_exit"] = true };
         if (prior != null)
         {

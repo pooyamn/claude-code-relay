@@ -231,6 +231,8 @@ public sealed partial class LinuxClaudeTopics : IClaudeTopics
     {
         if (!selected.TryGetValue(binding.Address, out var original) || binding != original)
             throw new InvalidDataException("Claude launcher cannot select a substitute binding");
+        if (policy.PersistentClaudeWorkers)
+            return await ClaudeWorkerClient.Open(policy, ledger, binding, null, false, null, stop);
         if (runtime!.GuardedRecovery && (ledger.Get(CheckpointKey(binding)) != null || ledger.Get(RecoveryKey(binding)) != null ||
             ledger.Get("claude/launch-handoff/" + binding.ThreadId) is { } consumed &&
             consumed.GetProperty("checkpointSha256").GetString() == runtime.For(binding).Sha256))

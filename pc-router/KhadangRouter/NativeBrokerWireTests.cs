@@ -209,7 +209,7 @@ public static class NativeBrokerWireTests
     }
     private static byte[] Packet(string json)
     { var body = Encoding.UTF8.GetBytes(json); var result = new byte[4 + body.Length]; BinaryPrimitives.WriteInt32BigEndian(result, body.Length); body.CopyTo(result, 4); return result; }
-    private sealed class Connection : IAsyncDisposable
+    internal sealed class Connection : IAsyncDisposable
     {
         private readonly NativeBrokerSession attached;
         private readonly Duplex remote;

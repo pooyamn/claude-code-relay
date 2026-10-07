@@ -8,7 +8,7 @@ namespace KhadangRouter;
 public static class WindowsService
 {
     public const string Name = "KhadangRouter";
-    public static void Run(Func<CancellationToken, Task> run)
+    public static void Run(Func<CancellationToken, Task> run, string serviceName = Name)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
         using var identity = WindowsIdentity.GetCurrent();
@@ -25,7 +25,7 @@ public static class WindowsService
         Handler control = (code, _, _, _) => { if (code is 1 or 5) stop.Cancel(); return 0; };
         Main callback = (_, _) =>
         {
-            handle = RegisterServiceCtrlHandlerEx(Name, control, IntPtr.Zero);
+            handle = RegisterServiceCtrlHandlerEx(serviceName, control, IntPtr.Zero);
             if (handle == IntPtr.Zero) return;
             try
             {
@@ -36,7 +36,7 @@ public static class WindowsService
             catch (OperationCanceledException) when (stop.IsCancellationRequested) { Status(3); Status(1); }
             catch { Status(1, 1); } // Never let privileged errors reveal URLs or secrets.
         };
-        if (!StartServiceCtrlDispatcher([new ServiceEntry { Name = Name, Callback = callback }, new()]))
+        if (!StartServiceCtrlDispatcher([new ServiceEntry { Name = serviceName, Callback = callback }, new()]))
             throw new Win32Exception(Marshal.GetLastWin32Error());
         GC.KeepAlive(callback); GC.KeepAlive(control);
     }

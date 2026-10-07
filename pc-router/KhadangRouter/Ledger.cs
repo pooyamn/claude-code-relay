@@ -9,15 +9,20 @@ public sealed class Ledger : IDisposable
 {
     private readonly object gate = new();
     private IntPtr db;
+    private readonly bool readOnly;
     static Ledger()
     {
         NativeLibrary.SetDllImportResolver(typeof(Ledger).Assembly, (name, _, _) => name != "router_sqlite" ? IntPtr.Zero :
             NativeLibrary.Load(OperatingSystem.IsWindows() ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "winsqlite3.dll") :
                 OperatingSystem.IsLinux() ? "libsqlite3.so.0" : "/usr/lib/libsqlite3.dylib"));
     }
-    public Ledger(string path)
+    public Ledger(string path) : this(path, false) { }
+    internal static Ledger ReadOnly(string path) => new(path, true);
+    private Ledger(string path, bool readOnly)
     {
-        if (sqlite3_open_v2(path, out db, 2 | 4 | 0x10000, IntPtr.Zero) != 0) throw new IOException("Cannot open router ledger");
+        this.readOnly = readOnly;
+        if (sqlite3_open_v2(path, out db, (readOnly ? 1 : 2 | 4) | 0x10000, IntPtr.Zero) != 0) throw new IOException("Cannot open router ledger");
+        if (readOnly) return; // Never run constructor recovery against a live router.
         Exec("PRAGMA journal_mode=WAL"); Exec("PRAGMA synchronous=FULL");
         Exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY,value TEXT NOT NULL)");
         Exec("CREATE TABLE IF NOT EXISTS updates (id INTEGER PRIMARY KEY,payload TEXT NOT NULL,status TEXT NOT NULL)");
@@ -117,6 +122,7 @@ public sealed class Ledger : IDisposable
             if (sqlite3_prepare_v2(db, sql, -1, out var statement, IntPtr.Zero) != 0) throw new IOException("SQLite prepare failed");
             try
             {
+                if (readOnly && sqlite3_stmt_readonly(statement) == 0) throw new UnauthorizedAccessException("Read-only registry inspection cannot mutate state");
                 for (int i = 0; i < args.Length; i++)
                 {
                     var value = args[i];
@@ -139,6 +145,7 @@ public sealed class Ledger : IDisposable
     [DllImport("router_sqlite")] private static extern int sqlite3_open_v2([MarshalAs(UnmanagedType.LPUTF8Str)] string name, out IntPtr db, int flags, IntPtr vfs);
     [DllImport("router_sqlite")] private static extern int sqlite3_prepare_v2(IntPtr db, [MarshalAs(UnmanagedType.LPUTF8Str)] string sql, int length, out IntPtr statement, IntPtr tail);
     [DllImport("router_sqlite")] private static extern int sqlite3_step(IntPtr statement);
+    [DllImport("router_sqlite")] private static extern int sqlite3_stmt_readonly(IntPtr statement);
     [DllImport("router_sqlite")] private static extern int sqlite3_changes(IntPtr db);
     [DllImport("router_sqlite")] private static extern int sqlite3_bind_null(IntPtr statement, int index);
     [DllImport("router_sqlite")] private static extern int sqlite3_bind_int64(IntPtr statement, int index, long value);

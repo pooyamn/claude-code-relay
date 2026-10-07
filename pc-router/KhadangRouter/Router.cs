@@ -130,7 +130,11 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 if (saved.GetProperty("busy").GetBoolean() && !saved.GetProperty("held").GetBoolean() &&
                     saved.TryGetProperty("turn", out var previousTurn) && previousTurn.ValueKind == JsonValueKind.String)
                     session.RestoreTurn = previousTurn.GetString();
-                session.Held = saved.GetProperty("held").GetBoolean() || saved.GetProperty("busy").GetBoolean() && session.RestoreTurn == null;
+                // A kernel-authenticated SAME host/native epoch retained active
+                // work. This is a UI reattachment, not an interrupted agent.
+                // New generations and pre-existing/uncertain holds stay fenced.
+                var continuousClaude = session.Claude is ClaudeWorkerClient { ReattachedGeneration: true } && ledger.Unknown == 0;
+                session.Held = saved.GetProperty("held").GetBoolean() || saved.GetProperty("busy").GetBoolean() && session.RestoreTurn == null && !continuousClaude;
                 session.Status = session.Held ? "Held — reconcile interrupted turn" : saved.GetProperty("status").GetString()!;
                 session.Carried = TimeSpan.FromMilliseconds(saved.GetProperty("elapsedMs").GetDouble());
                 RestorePendingBubbles(session, saved);
@@ -165,6 +169,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                         ApplyClaudeState(session, session.ClaudeInfo.Value.GetProperty("session_state").GetString()!);
                     ReleaseClaudeDeliveryHold(session);
                 }
+                if (claude is ClaudeWorkerClient worker) await worker.RestoreRequests(stop);
                 var remoteReceipt = await ClaudeRemoteControl.Enable(claude, binding, ledger, stop);
                 lock (session.Gate)
                 {

@@ -3990,3 +3990,56 @@ processes completed and were disposed; existing failures and archives were kept.
 The owned documentation checkpoint is ready for handoff. Remaining PC wiring,
 source-writer fencing, portable credential recovery, off-machine restore testing
 and remote power/recovery acceptance remain deferred. No Mac/VM wipe is authorized.
+
+## Persistent Claude workers (October 7)
+
+Idle topics appeared refreshed/New in Claude because each Telegram router
+deployment killed its seven owned Claude streams, resumed them and re-enabled
+Remote Control. The uniform 16:05–16:06Z reconnects were deployment activity,
+not new human/model turns; the native IDs and cloud mappings had not changed.
+
+The personal PC adapter now uses the independent SYSTEM `KhadangClaudeHost`
+service, with sealed code/state at `C:\ProgramData\KhadangClaudeHost`. Actual
+native agents still run as the attested non-elevated owner/WSL UID 1000. Local
+SYSTEM/session-zero pipe peers are authenticated by kernel process generation
+and protected image; the host never loads or polls the Telegram bot token.
+The router attaches to cached native initialization/Remote Control receipts
+and replays journaled events to its saved cursor, not user inputs. Pending native
+questions are restored without approval. An exact saved host/native lease
+permits active UI continuation; pre-existing holds and uncertain/new generations
+remain fenced. Only explicit idle model-switch retirement closes a worker.
+
+An actual Windows cutover exposed a hub reply-discard race: `Disconnect()`
+could drop unread bytes after `FlushAsync`. The host now retains the connection
+until the client closes after consuming its full reply. Partial cutover evidence
+and the initial failure were retained; no native input was replayed. Final
+sealed Windows build passed 1,283 checks, including nineteen inert persistent-
+worker checks for detach/rejoin, offline events, exact-generation continuity,
+pending questions, late acknowledgement reconciliation and explicit retirement.
+
+Protected release `7e8e1e60d6309e06e34d0d10edf254e0`, router/host DLL SHA256
+`A2E3E8B6B0A71684A513D270E0F06D21F3A12560B99CA67AF9032F969BCFE369`.
+Fresh SYSTEM OS proof at 17:04:11Z verified ordinary-owner denial of host-state
+read/code write as well as existing credential, Windows sandbox and Linux-owner
+gates. Unchanged pinned native Claude launcher acceptance was explicitly reused;
+no model turn was invented for this deployment.
+
+Actual router-only restart passed at 17:07:26Z: host PID 440 and all seven native
+PIDs/epochs/pipes remained unchanged, cloud mappings and remote receipt bytes/
+timestamps stayed unchanged, and private host plus router journals showed zero
+additional Remote Control registrations. All sixteen routes were restored,
+with seven Claude workers connected. Linux Codex PID 479, native-input rows
+and the existing Web hold were retained, with zero unknown deliveries. At
+17:08:07Z the restored startup supervisor was Ready/result 0 with the same
+healthy routes. Complete artifact/proof identifiers are recorded in
+[deployment-status.json](../pc-router/deployment-status.json).
+
+For ordinary router updates/restarts, leave `KhadangClaudeHost` and its state
+running; do not recopy/restart it as a router dependency. Host upgrades are a
+separate reviewed maintenance step. Boot/stopped-host supervision checks sealed
+artifacts and the exact console owner, then uses guarded quiescent-history
+recovery; uncertain work cannot silently resume. Include host journals, leases
+and installed-artifact receipts in coherent recovery snapshots, not just native
+transcripts; downloaded binaries are not a substitute for that state. This
+router-only idle-worker test does not establish actual active model/phone,
+host-crash/PC-reboot, company-role or clean-machine restoration acceptance.

@@ -125,7 +125,7 @@ public static class NativeBrokerWire
                     catch (Exception error) when (error is InvalidDataException or ArgumentException or JsonException)
                     { response = new(1, request.Id, attached.Epoch, "refused", null); }
                     catch (UnauthorizedAccessException) { response = new(1, request.Id, attached.Epoch, "refused", null); }
-                    catch (Exception error) when (error is IOException or InvalidOperationException)
+                    catch (Exception error) when (error is IOException or InvalidOperationException or TimeoutException)
                     { response = new(1, request.Id, attached.Epoch, "unconfirmed", null); }
                     catch { connection.Cancel(); throw; }
                     try { await BrokerWireFrames.Write(stream, response, writes, connection.Token); }

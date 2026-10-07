@@ -22,6 +22,8 @@ public sealed partial class LinuxClaudeTopics
             throw new InvalidDataException("Exact protected owner topic-switch enrollment required");
         policy.ValidateBindings([target]);
         if (model != null && !System.Text.RegularExpressions.Regex.IsMatch(model, @"\A[A-Za-z0-9][A-Za-z0-9._\[\]-]*\z")) throw new InvalidDataException("Literal native model required");
+        if (policy.PersistentClaudeWorkers)
+            return await ClaudeWorkerClient.Open(policy, ledger, target, source, fresh, model, stop);
         var path = runtime.PackageRoot + "\\handoff-" + target.ThreadId + ".json";
         string digest;
         if (fresh)

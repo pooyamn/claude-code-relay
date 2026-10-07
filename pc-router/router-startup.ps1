@@ -1,7 +1,8 @@
 $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
 # Deterministic SYSTEM lifecycle only. No prompts, model actions, credential
-# readout or agent restart. The service itself still enforces the owner token.
+# readout or action replay. The services themselves enforce exact owner tokens
+# and guarded checkpoint recovery. Router restarts never stop the Claude host.
 $root='C:\ProgramData\KhadangRouter'
 $ownerSid='S-1-5-21-71459778-1164188569-2276148161-1001'
 $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
@@ -9,11 +10,23 @@ if(-not $identity.IsSystem -or [Diagnostics.Process]::GetCurrentProcess().Sessio
 $service=Get-CimInstance Win32_Service -Filter "Name='KhadangRouter'"
 $expected='"'+$root+'\bin\KhadangRouter.exe" --service --config "'+$root+'\config.json"'
 if(-not $service -or $service.StartName -ne 'LocalSystem' -or $service.PathName -ne $expected -or $service.StartMode -ne 'Manual'){throw 'Unexpected service configuration; refuse startup'}
-if($service.State -eq 'Running'){[Console]::WriteLine('Already running; no effect');exit 0}
-if($service.State -ne 'Stopped'){[Console]::WriteLine('SCM transition in progress; no effect');exit 0}
+if($service.State -notin @('Stopped','Running')){[Console]::WriteLine('SCM transition in progress; no effect');exit 0}
 $probe=Get-Content "$root\state\probe.json" -Raw | ConvertFrom-Json
 if(-not $probe.verified -or -not $probe.credentialAndCodeDenied -or -not $probe.aclProbeWithoutProviderSandbox -or $probe.nativeOwnerSid -ne $ownerSid){throw 'Matching owner/credential isolation probe required'}
 if((Get-FileHash "$root\bin\KhadangRouter.dll").Hash -ne $probe.routerSha256 -or (Get-FileHash "$root\config.json").Hash -ne $probe.policySha256){throw 'Reviewed router/policy changed; re-probe before startup'}
+$policy=Get-Content "$root\config.json" -Raw|ConvertFrom-Json
+$hostRestarted=$false
+if($policy.PersistentClaudeWorkers){
+ $hostRoot='C:\ProgramData\KhadangClaudeHost'
+ $hostService=Get-CimInstance Win32_Service -Filter "Name='KhadangClaudeHost'"
+ $hostPath='"'+$hostRoot+'\bin\KhadangRouter.exe" --claude-host-service'
+ $installed=Get-Content "$hostRoot\installed.json" -Raw|ConvertFrom-Json
+ if(-not $hostService -or $hostService.StartName -ne 'LocalSystem' -or $hostService.PathName -cne $hostPath -or $hostService.StartMode -ne 'Manual' -or
+  (Get-FileHash "$hostRoot\bin\KhadangRouter.dll").Hash -ne $installed.dll -or (Get-FileHash "$hostRoot\bin\KhadangRouter.exe").Hash -ne $installed.exe){throw 'Exact reviewed independent Claude host required'}
+ if($hostService.State -notin @('Stopped','Running')){[Console]::WriteLine('Claude host SCM transition; no effect');exit 0}
+ $hostRestarted=$hostService.State -eq 'Stopped'
+}
+if($service.State -eq 'Running' -and -not $hostRestarted){[Console]::WriteLine('Router and independent host already running; no effect');exit 0}
 Add-Type -TypeDefinition @'
 using System;
 using System.ComponentModel;
@@ -44,5 +57,12 @@ public static class ConsoleOwnerReady {
 }
 '@
 if(-not [ConsoleOwnerReady]::Ready($ownerSid)){[Console]::WriteLine('Waiting for exact non-elevated console owner; no agent started');exit 0}
+if($hostRestarted){
+ Start-Service KhadangClaudeHost
+ (Get-Service KhadangClaudeHost).WaitForStatus('Running',[TimeSpan]::FromSeconds(15))
+ # A replacement host is a new custody generation. Reattach the UI once;
+ # private broker journals/checkpoints fence uncertain effects and active work.
+ if($service.State -eq 'Running'){try{Stop-Service KhadangRouter}catch{};(Get-Service KhadangRouter).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(30))}
+}
 Start-Service KhadangRouter
 [Console]::WriteLine('Owner ready; SCM startup requested. Interrupted turns remain held by the router ledger.')
