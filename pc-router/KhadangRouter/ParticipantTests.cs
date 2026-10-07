@@ -11,8 +11,8 @@ public static class ParticipantTests
     {
         int checks = 0;
         void Check(bool value, string name) { if (!value) throw new Exception(name); checks++; }
-        const long participant = 199200674, otherChat = -1004395661179;
-        var policy = template with { ParticipantIds = [participant], AdditionalChats = [new(otherChat)], StateDirectory = root };
+        const long participant = 199200674, scopedParticipant = 150241362, otherChat = -1004395661179, unrelatedChat = -1003550185469;
+        var policy = template with { ParticipantIds = [participant], AdditionalChats = [new(otherChat, ParticipantIds: [scopedParticipant]), new(unrelatedChat)], StateDirectory = root };
         (policy with { StateDirectory = template.StateDirectory }).Validate();
         JsonElement Message(long sender = participant, long? chat = null, int topic = 53, string text = "Check the current source", bool bot = false,
             string? forbidden = null, bool attachment = false)
@@ -52,9 +52,22 @@ public static class ParticipantTests
         }
         Check(!(policy with { ParticipantIds = null }).ConversationMessage(Message()), "Missing participant policy grants no access");
         Check(policy.ConversationMessage(Message(attachment: true)), "Normal participant attachment remains authorized");
+        foreach (var topic in new[] { 1, 18, 53, 427, 816, 2697 })
+        {
+            Check(policy.ConversationMessage(Message(sender: scopedParticipant, chat: otherChat, topic: topic, attachment: true)) &&
+                !policy.OwnerMessage(Message(sender: scopedParticipant, chat: otherChat, topic: topic)), "Scoped participant can converse only as a non-owner in granted forum topics");
+            foreach (var chat in new[] { policy.ChatId, unrelatedChat })
+                Check(!policy.ConversationMessage(Message(sender: scopedParticipant, chat: chat, topic: topic, attachment: true)), "Scoped participant denied in other admitted forums");
+        }
+        foreach (var text in new[] { "/approve exact", "/deny exact", "/goal task", "/clear", "/cancel", "/model opus", "cc model opus" })
+            Check(!policy.ConversationMessage(Message(sender: scopedParticipant, chat: otherChat, text: text)), "Scoped participant never gains owner controls");
+        Check(policy.ConversationMessage(Message(sender: scopedParticipant, chat: otherChat, attachment: true, forbidden: "forward_origin")), "Scoped participant may forward ordinary files inside their forum");
+        Check(!(policy with { AdditionalChats = [new(otherChat)] }).ConversationMessage(Message(sender: scopedParticipant, chat: otherChat)), "Removing scoped grant fails closed without a global fallback");
         foreach (var ids in new long[][] { [0], [-1], [participant, participant], [policy.OwnerId], [long.MaxValue], Enumerable.Range(1, 65).Select(x => (long)x).ToArray() })
         {
             try { (policy with { StateDirectory = template.StateDirectory, ParticipantIds = ids }).Validate(); throw new Exception("Unsafe participant policy accepted"); }
+            catch (InvalidDataException) { checks++; }
+            try { (policy with { StateDirectory = template.StateDirectory, AdditionalChats = [new(otherChat, ParticipantIds: ids)] }).Validate(); throw new Exception("Unsafe scoped participant policy accepted"); }
             catch (InvalidDataException) { checks++; }
         }
         // Exercise the actual dispatch gate before BOTH native backend handlers.
@@ -96,6 +109,13 @@ public static class ParticipantTests
             await Dispatch(Message(sender: policy.OwnerId, chat: otherChat, text: "cc model opus", forbidden: "forward_origin"));
             Check(ledger.Query("SELECT status FROM updates WHERE id=8")[0][0] == "denied" && media.Calls == 2 &&
                 (backend == "claude" ? claude.Sends == 3 : native.Calls.Count == 3), "Owner-forwarded controls cause no native or attachment actions");
+            await Dispatch(Message(sender: scopedParticipant, chat: otherChat, attachment: true, forbidden: "forward_origin"));
+            Check(ledger.Query("SELECT status FROM updates WHERE id=9")[0][0] == "accepted" && media.Calls == 3 &&
+                (backend == "claude" ? claude.Sends == 4 : native.Calls.Count == 4), "Scoped participant attachment reaches the exact admitted native route: " + backend);
+            await Dispatch(Message(sender: scopedParticipant, chat: otherChat, text: "/goal forbidden"));
+            await Dispatch(Message(sender: scopedParticipant, chat: unrelatedChat, attachment: true));
+            Check(ledger.Query("SELECT COUNT(*) FROM updates WHERE id IN (10,11) AND status='denied'")[0][0] == "2" && media.Calls == 3 &&
+                (backend == "claude" ? claude.Sends == 4 : native.Calls.Count == 4), "Scoped controls and foreign-forum files fail before dispatch/download: " + backend);
             Check(ledger.Unknown == 0 && ledger.Bindings().Single() == binding, "Participant never changes native binding or owner identity");
         }
         return checks;

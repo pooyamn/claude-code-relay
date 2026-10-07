@@ -42,11 +42,18 @@ public sealed record RouterPolicy(string BotUsername, long BotId, long OwnerId, 
         var seen = new HashSet<long> { ChatId };
         if (AdditionalChats is { Length: > 32 }) throw new InvalidDataException("Too many migration chats");
         foreach (var route in AdditionalChats ?? [])
+        {
             if (route == null || route.Chat >= 0 || route.Chat < -4_503_599_627_370_495L ||
                 route.IsForum && !route.Chat.ToString().StartsWith("-100") || !seen.Add(route.Chat))
                 throw new InvalidDataException("Invalid or duplicate migration chat");
-        if (ParticipantIds is { Length: > 64 } || (ParticipantIds ?? []).Any(id => id <= 0 || id > 4_503_599_627_370_495L || id == OwnerId) ||
-            (ParticipantIds ?? []).Distinct().Count() != (ParticipantIds?.Length ?? 0))
+            ValidateParticipants(route.ParticipantIds);
+        }
+        ValidateParticipants(ParticipantIds);
+    }
+    private void ValidateParticipants(long[]? participants)
+    {
+        if (participants is { Length: > 64 } || (participants ?? []).Any(id => id <= 0 || id > 4_503_599_627_370_495L || id == OwnerId) ||
+            (participants ?? []).Distinct().Count() != (participants?.Length ?? 0))
             throw new InvalidDataException("Exact unique non-owner Telegram participant IDs required");
     }
     public static string WindowsPath(string path)
@@ -113,7 +120,9 @@ public sealed record RouterPolicy(string BotUsername, long BotId, long OwnerId, 
         // is untrusted content provenance, not a replacement sender identity.
         // Permit approved humans to forward files/text, never relay controls.
         if (!HumanMessage(message, out var user, allowForwardedContent: true)) return false;
-        if (user != OwnerId && !(ParticipantIds ?? []).Contains(user)) return false;
+        if (!TryAddress(message, out var address)) return false;
+        var chatParticipants = (AdditionalChats ?? []).FirstOrDefault(route => route.Chat == address.Chat)?.ParticipantIds ?? [];
+        if (user != OwnerId && !(ParticipantIds ?? []).Contains(user) && !chatParticipants.Contains(user)) return false;
         if (user == OwnerId && !IsForwarded(message)) return true;
         if (message.TryGetProperty("text", out var text) && text.ValueKind == JsonValueKind.String &&
             (text.GetString()!.TrimStart().StartsWith('/') || ModelCommand.TryParse(text.GetString()!, BotUsername, out _))) return false;
@@ -166,7 +175,7 @@ public sealed record RouterPolicy(string BotUsername, long BotId, long OwnerId, 
     }
 }
 
-public sealed record ChatRoute(long Chat, bool IsForum = true);
+public sealed record ChatRoute(long Chat, bool IsForum = true, long[]? ParticipantIds = null);
 public readonly record struct TopicAddress(long Chat, int Topic);
 public sealed record Binding(long Chat, int Topic, string Name, string Workspace, string ThreadId,
     string Backend = "codex", string Runtime = "windows")
