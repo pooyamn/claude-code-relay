@@ -90,15 +90,18 @@ public sealed record RouterPolicy(string BotUsername, long BotId, long OwnerId, 
               binding.Backend == "codex" && LinuxCodex != null && binding.Workspace == LinuxCodexRuntime.AndroidWorkspace))
             throw new InvalidDataException("Linux workspace is outside the explicitly admitted PC root");
     }
-    private bool HumanMessage(JsonElement message, out long user)
+    private bool HumanMessage(JsonElement message, out long user, bool allowForwardedContent = false)
     {
         user = 0;
         return message.ValueKind == JsonValueKind.Object && message.TryGetProperty("from", out var sender) && sender.ValueKind == JsonValueKind.Object &&
             sender.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.Number && id.TryGetInt64(out user) && user > 0 &&
             sender.TryGetProperty("is_bot", out var bot) && bot.ValueKind == JsonValueKind.False &&
             TryAddress(message, out _) &&
-            !new[] { "sender_chat", "forward_origin", "forward_date", "via_bot" }.Any(key => message.TryGetProperty(key, out _));
+            !new[] { "sender_chat", "via_bot" }.Any(key => message.TryGetProperty(key, out _)) &&
+            (allowForwardedContent || !IsForwarded(message));
     }
+    private static bool IsForwarded(JsonElement message) =>
+        message.TryGetProperty("forward_origin", out _) || message.TryGetProperty("forward_date", out _);
     public bool OwnerMessage(JsonElement message) => HumanMessage(message, out var user) && user == OwnerId;
 
     // Normal conversation access across admitted chats/topics, never owner
@@ -106,9 +109,12 @@ public sealed record RouterPolicy(string BotUsername, long BotId, long OwnerId, 
     // before either native backend or attachment download can be invoked.
     public bool ConversationMessage(JsonElement message)
     {
-        if (!HumanMessage(message, out var user)) return false;
-        if (user == OwnerId) return true;
-        if (!(ParticipantIds ?? []).Contains(user)) return false;
+        // Telegram's `from` is the human who sent this update. Forward origin
+        // is untrusted content provenance, not a replacement sender identity.
+        // Permit approved humans to forward files/text, never relay controls.
+        if (!HumanMessage(message, out var user, allowForwardedContent: true)) return false;
+        if (user != OwnerId && !(ParticipantIds ?? []).Contains(user)) return false;
+        if (user == OwnerId && !IsForwarded(message)) return true;
         if (message.TryGetProperty("text", out var text) && text.ValueKind == JsonValueKind.String &&
             (text.GetString()!.TrimStart().StartsWith('/') || ModelCommand.TryParse(text.GetString()!, BotUsername, out _))) return false;
         return true;

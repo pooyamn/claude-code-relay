@@ -34,8 +34,22 @@ public static class ParticipantTests
             Check(policy.ConversationMessage(Message(sender: policy.OwnerId, text: text)), "Owner controls remain authorized: " + text);
         }
         foreach (var invalid in new[] { Message(sender: participant + 1), Message(bot: true), Message(chat: -1009876),
-            Message(forbidden: "sender_chat"), Message(forbidden: "forward_origin"), Message(forbidden: "forward_date"), Message(forbidden: "via_bot") })
-            Check(!policy.ConversationMessage(invalid), "Unlisted sender, bot, foreign chat and forwarded/proxy identity denied");
+            Message(forbidden: "sender_chat"), Message(forbidden: "via_bot") })
+            Check(!policy.ConversationMessage(invalid), "Unlisted sender, bot, foreign chat and proxy identity denied");
+        foreach (var provenance in new[] { "forward_origin", "forward_date" })
+        {
+            foreach (var sender in new[] { participant, policy.OwnerId })
+            {
+                Check(policy.ConversationMessage(Message(sender: sender, forbidden: provenance, attachment: true)),
+                    "Authenticated human may forward normal attachment content");
+                Check(!policy.OwnerMessage(Message(sender: sender, forbidden: provenance)), "Forward provenance cannot establish owner authority");
+                foreach (var control in new[] { "/approve exact", "/goal set task", "cc model opus", "/model opus" })
+                    Check(!policy.ConversationMessage(Message(sender: sender, forbidden: provenance, text: control)),
+                        "Forwarded controls are denied even when forwarded by owner");
+            }
+            Check(!policy.ConversationMessage(Message(sender: participant + 1, forbidden: provenance, attachment: true)),
+                "An origin naming an allowed person cannot admit the actual unlisted sender");
+        }
         Check(!(policy with { ParticipantIds = null }).ConversationMessage(Message()), "Missing participant policy grants no access");
         Check(policy.ConversationMessage(Message(attachment: true)), "Normal participant attachment remains authorized");
         foreach (var ids in new long[][] { [0], [-1], [participant, participant], [policy.OwnerId], [long.MaxValue], Enumerable.Range(1, 65).Select(x => (long)x).ToArray() })
@@ -75,6 +89,13 @@ public static class ParticipantTests
             await Dispatch(Message(chat: otherChat, text: "Also check uncommitted work", attachment: true));
             Check(ledger.Query("SELECT status FROM updates WHERE id=6")[0][0] == "accepted" && media.Calls == 1 &&
                 (backend == "claude" ? claude.Sends == 2 : native.Calls.SequenceEqual(new[] { "turn/start", "turn/steer" })), "Participant attachment steers exact active native session without queue: " + backend);
+            await Dispatch(Message(chat: otherChat, attachment: true, forbidden: "forward_origin"));
+            Check(ledger.Query("SELECT status FROM updates WHERE id=7")[0][0] == "accepted" && media.Calls == 2 &&
+                (backend == "claude" ? claude.Sends == 3 : native.Calls.SequenceEqual(new[] { "turn/start", "turn/steer", "turn/steer" })),
+                "Forwarded attachment reaches the same exact bound native session once: " + backend);
+            await Dispatch(Message(sender: policy.OwnerId, chat: otherChat, text: "cc model opus", forbidden: "forward_origin"));
+            Check(ledger.Query("SELECT status FROM updates WHERE id=8")[0][0] == "denied" && media.Calls == 2 &&
+                (backend == "claude" ? claude.Sends == 3 : native.Calls.Count == 3), "Owner-forwarded controls cause no native or attachment actions");
             Check(ledger.Unknown == 0 && ledger.Bindings().Single() == binding, "Participant never changes native binding or owner identity");
         }
         return checks;
