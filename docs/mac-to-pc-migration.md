@@ -1,5 +1,63 @@
 # Mac to PC migration plan
 
+Owner correction, October 7: the mini-PC's “thermal event” reason is a
+reporting bug; Pouya confirms there was no actual thermal event. Do not infer
+overheating from this label. The latest outage was a hibernation transition
+recorded at 2026-10-07T06:14:43Z, followed by a power-button wake at 11:30:02Z,
+not a new full Windows boot. Event-time independent temperatures are absent.
+Hardware thermal protections remain intact while the power/reporting fault is
+investigated. Prevent ordinary automatic sleep/hibernate and unattended reboots;
+do not describe an OS watchdog as able to recover a physically powered-off PC.
+
+October 7 deployment, accepted at 11:53:01Z: hibernation and Fast Startup are
+disabled (`powercfg /a` independently confirms both unavailable). AC/DC idle,
+unattended and hybrid sleep are disabled; standby permission and lid action
+were corrected from 1 to 0. Power/sleep short-press actions remain 0. The
+existing SYSTEM keep-awake request is still present. Modern Standby remains a
+firmware-supported capability, not a guarantee that explicit/critical sleep
+can be prevented. Windows Update policy now disables automatic updates and
+sets the logged-on-user no-auto-reboot policy; manual updates and Defender
+remain available. The October 5 reboot had been initiated by MoUsoCoreWorker.
+
+Three protected tasks are installed: `Oracova-AlwaysOnPolicy` checks policy
+every five minutes and at boot; `Oracova-MTProtoHealth` probes both proxies
+every minute and at boot; `Oracova-ShutdownGuard` runs an unelevated owner GUI
+at logon with one-minute restart supervision. The small tray app registers a
+real shutdown-block reason and vetoes ordinary WM_QUERYENDSESSION requests.
+Its tray menu allows ten minutes of deliberate maintenance. It cannot stop
+forced/critical shutdowns, a long-held hardware power key, firmware power-off
+or electricity loss, and it does not convert those actions into restart.
+Only simulated query messages were sent; no real PC shutdown was triggered.
+
+MTProto checks authenticate the existing FakeTLS secret, then verify a Telegram
+`resPQ` reply with the exact request nonce through the obfuscated transport.
+Stopped services are started on the next check. Running services get a
+two-minute startup grace; three consecutive local/forwarding failures trigger
+a targeted restart, with a five-minute cooldown. A locally authenticated
+proxy plus unreachable upstream is recorded as a network outage, not repeatedly
+restarted. Existing LocalService identities, SCM crash recovery, secrets,
+links, ports, firewall and tunnel routes are unchanged. The outage's immediate
+cause was host hibernation; SCM cannot recover services while the host is asleep.
+
+Live tests: a deliberately suspended loopback Python child caused three real
+failed probes and automatic restart (host PID 5272 to 11196), followed by a
+successful authenticated Telegram exchange. A clean service stop recovered
+through the actual periodic scheduler, without manually launching the task
+or starting the service (11196 to 19188). Direct MTProto, VPN, both Cloudflare
+tunnels and Khadang retained their host PIDs throughout. Both proxies pass
+authenticated checks. Eleven Python tests, twenty Windows watchdog/persistence
+checks, five native shutdown-policy checks, and the live registered-reason,
+ordinary-veto/critical-allow checks passed.
+
+Reviewed code, prior policy/task receipts and bounded runtime logs are under
+`C:\ProgramData\OracovaMTProtoHealth-04c21538e8be4ce99674ec05cf78a53d`.
+Code is administrator-owned; SYSTEM runs the watchdog/policy and the owner
+can read/execute but not replace their inputs. An initial Windows PowerShell
+atomic-replace binding bug was caught and fixed before failure drills; the
+historical `watchdog-error.json` is older than successful current receipts.
+No reboot was performed: next-boot/logon, physical power-loss recovery,
+outside-LAN acceptance and the firmware/reporting-bug repair remain unproven.
+
 Pouya's current priority is to move the existing working system to the PC,
 keep the same Telegram topics, use Khadang instead of Hamal, and make the PC
 the bench host. The new role and broker infrastructure is deferred. This plan
