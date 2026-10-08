@@ -35,6 +35,16 @@ public static class NativeEventView
         return text.Length == 0 ? "" : "\n↪ " + text + "\n";
     }
 
+    // A native userMessage is an observed conversational boundary, not proof
+    // of human identity/approval. Exclude provider-internal goal continuations;
+    // no heuristics about whether assistant prose "sounds like" an answer.
+    internal static bool DirectInput(JsonElement item) =>
+        item.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array &&
+        content.EnumerateArray().Any(part => part.TryGetProperty("type", out var type) &&
+            (type.GetString() is "image" or "localImage" or "file" || type.GetString() == "text" &&
+             part.TryGetProperty("text", out var text) && text.ValueKind == JsonValueKind.String &&
+             !string.IsNullOrWhiteSpace(text.GetString()) && !text.GetString()!.TrimStart().StartsWith("<codex_internal_context", StringComparison.Ordinal)));
+
     // Display compatibility only: leave native history and durable provenance
     // intact. Previously formatted inputs and restored bubbles need not keep
     // showing the retired verbose header after the new formatter is deployed.

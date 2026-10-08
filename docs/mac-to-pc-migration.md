@@ -4043,3 +4043,43 @@ and installed-artifact receipts in coherent recovery snapshots, not just native
 transcripts; downloaded binaries are not a substitute for that state. This
 router-only idle-worker test does not establish actual active model/phone,
 host-crash/PC-reboot, company-role or clean-machine restoration acceptance.
+
+## Direct replies during Codex goals (October 7)
+
+The Futek recovery topic accepted owner message 106/update 759322835,
+`Progress ?`, at 01:20Z October 8 (18:20 PDT October 7). Codex answered in the
+same active turn with `phase: commentary`, not `final_answer`. The router
+confirmed that text inside bubble 105, but never sent a clean answer; later
+tool/progress updates displaced it. This was output classification, not a
+dropped Telegram input or failed model call.
+
+The fix records the observed native user-message boundary and delivers the
+next completed commentary reply through the existing durable clean-answer
+outbox, without waiting for the goal/turn to finish. App and Telegram inputs
+share this path. Already-streaming prose, duplicate/stale items and internal
+goal continuation prompts do not trigger another clean reply; subsequent
+background work stays in the same rolling code-block bubble. Reply observation
+and delivery state survive router restart; uncertain sends stay held, and
+known Telegram throttles retry only rejected output. No approval or native
+input authority is inferred from a user-message display event.
+
+Release `fe4022b5443141faa533d9495078303d`, router DLL SHA256
+`C3B90DC278BA5ED47276A0B900E51DF97207B0AE02D1A5C9B822F5C551881BBE`,
+passed all 1,303 actual Windows checks, including 40 goal-answer checks.
+Fresh SYSTEM OS proof at `2026-10-08T01:38:23.805983+00:00` passed; protected
+policy, native adapters and independent Claude host were unchanged. Prior
+native Claude acceptance was explicitly reused, not re-tested with paid work.
+The historical missing answer was queued through the normal output code with
+an original-time label and a durable one-time repair marker, after checking
+accepted input and confirmed historical bubble evidence and excluding any
+prior clean-send attempt. The goal had advanced to another turn during tests,
+so the historical Telegram edit receipt was used instead of the cleared
+per-turn item cache. No native input/goal was replayed or fabricated.
+
+Live verification at `2026-10-08T01:40:27.8915525+00:00` confirmed all sixteen
+routes, the same Codex PID 479, Claude host PID 440 and all seven worker
+PIDs/epochs/pipes, unchanged native input rows, existing safety holds and
+restored startup supervision. Telegram confirmed the recovered clean answer
+as [Futek topic message 109](https://t.me/c/4393585932/109). This is actual
+output-delivery evidence plus inert native-boundary regression coverage; no
+synthetic owner input or new phone-to-model fixture was submitted.

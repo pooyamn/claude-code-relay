@@ -13,6 +13,7 @@ public sealed partial class Router
     // Called under Gate, only at a new native-work boundary, never on steering.
     private void BeginBubble(Session session)
     {
+        session.GoalReplyPending = false; session.GoalReplyExcludedItems.Clear();
         // An empty initial Ready placeholder is not a completed response.
         if (session.Status == "Ready" && session.Turn == null && session.Bubble.Tail.Length == 0 && !session.SendUnknown)
         {
@@ -29,6 +30,15 @@ public sealed partial class Router
 
     private static void RestorePendingBubbles(Session session, JsonElement saved)
     {
+        if (saved.TryGetProperty("goalReplyPending", out var reply)) session.GoalReplyPending = reply.GetBoolean();
+        if (saved.TryGetProperty("goalReplyExcludedItems", out var excluded))
+            foreach (var value in excluded.EnumerateArray())
+            {
+                var id = value.GetString();
+                if (session.GoalReplyExcludedItems.Count >= 32 || string.IsNullOrEmpty(id) || id.Length > 200 || id.Any(char.IsControl))
+                    throw new InvalidDataException("Invalid pending goal-reply observation");
+                session.GoalReplyExcludedItems.Add(id);
+            }
         if (saved.TryGetProperty("completedItems", out var items))
             foreach (var item in items.EnumerateArray())
             {

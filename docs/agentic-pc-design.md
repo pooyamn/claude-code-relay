@@ -61,6 +61,16 @@ tail. Commands are explicitly unchanged, per Pouya. Windows checks and real DUT
 formatting receipts are recorded in the
 [progress/final deployment evidence](mac-to-pc-migration.md#jamshid-progress-and-separate-finals-restored-october-3-at-11-45-pm-pdt).
 
+Goal reply rule, 2026-10-07: Codex may answer a human steering message in the
+`commentary` channel while continuing the same goal turn. That reply must not
+wait for a `final_answer` or goal completion. Track the observed native user
+message boundary (from Telegram or the native app), emit the next completed
+assistant reply as clean prose, and keep later background updates in the one
+rolling bubble. Exclude already-streaming prose and internal goal continuation
+messages; persist reply/outbox state, deduplicate item receipts, and hold unknown
+deliveries without blind retry. Observed user messages are display boundaries,
+not authenticated approval or permission to replay native input.
+
 Status: v9, decisions in progress (2026-10-02). Incorporates Pouya's review decisions on local identities, relay update authorization, daily disaster recovery, tool-switch repair, evidence-based memory maintenance with passive inconsistency reporting, a builder in the first rollout with demand-driven management, a three-active-session cap with task-wide progress monitoring, subscription-aware pacing with a 10% owner reserve, evaluated GStack/GBrain integration, source-evaluated AX/Paperclip launch, ownership and continuity patterns, company-scoped human employees interacting with Khadang, and native Codex goal controls with a rolling-bubble indicator. Remaining review questions are listed in §15. These are target requirements, not claims that the live Mac relay already implements them. Owner: Pouya.
 Target: Windows PC, WSL2 Ubuntu 24.04. Agent roles run under separate local security identities with private homes and runtime state; the router runs as `relay`. Pouya remains the owner and uses one GitHub account. The existing Mac deployment remains a migration source.
 

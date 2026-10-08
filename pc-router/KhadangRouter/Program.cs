@@ -8,6 +8,27 @@ try
         WindowsService.Run(ClaudeWorkerHost.Run, ClaudeWorkerHost.ServiceName); return;
     }
     if (args.SequenceEqual(new[] { "--self-test" })) { SelfTests.Run(); return; }
+    if (args.SequenceEqual(new[] { "--render-answer" }))
+    {
+        // Offline maintenance: render supplied text with the same durable
+        // outbox schema. No credentials, transport, native calls or DB writes.
+        var answer = new FinalAnswerState();
+        answer.Consider(Console.In.ReadToEnd(), authoritative: true); answer.Complete();
+        Console.WriteLine(JsonSerializer.Serialize(answer)); return;
+    }
+    if (args.SequenceEqual(new[] { "--self-test-goal-answers" }))
+    {
+        var testRoot = Path.Combine(Path.GetTempPath(), "khadang-goal-tests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(testRoot);
+        try
+        {
+            var fixture = new RouterPolicy("TheKhadangBot", 123, 456, -100123, "S-1-5-21-1-2-3-1001",
+                "C:\\Native\\codex.exe", new string('a', 64), "C:\\Protected\\token.dpapi", testRoot, "C:\\Workspaces");
+            Console.WriteLine("Passed " + await GoalAnswerTests.Run(testRoot, fixture) + " goal-answer checks (no network/models).");
+        }
+        finally { Directory.Delete(testRoot, recursive: true); }
+        return;
+    }
     if (args.SequenceEqual(new[] { "--self-test-claude-workers" }))
     {
         var testRoot = Path.Combine(Path.GetTempPath(), "khadang-worker-tests-" + Guid.NewGuid().ToString("N"));

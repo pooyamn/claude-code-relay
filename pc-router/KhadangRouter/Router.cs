@@ -43,6 +43,10 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         public ResponseMessage Response = new();
         public readonly Queue<ResponseMessage> PendingBubbles = new();
         public readonly Queue<FinalAnswerState> PendingAnswers = new();
+        // Native steering replies may be commentary while a goal continues.
+        // This is display state only, never authorization to send native input.
+        public bool GoalReplyPending;
+        public readonly HashSet<string> GoalReplyExcludedItems = new();
         public string LastAnswer = "";
         public int? Message { get => Response.Message; set => Response.Message = value; }
         public bool SendUnknown { get => Response.SendUnknown; set => Response.SendUnknown = value; }
@@ -670,6 +674,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 }
                 if (!session.Busy) { BeginBubble(session); session.Elapsed.Restart(); session.Carried = TimeSpan.Zero; session.DeltaItems.Clear(); session.Items.Clear(); session.CompletedItems.Clear(); session.CompletedOrder.Clear(); }
                 session.Turn = started; session.Busy = true; session.Status = "Working";
+                session.GoalReplyPending = false; session.GoalReplyExcludedItems.Clear();
             }
             else if (method == "turn/completed")
             {
@@ -679,6 +684,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 session.Busy = false; session.Status = turn.GetProperty("status").GetString() switch {
                     "completed" => "Done", "interrupted" => "Stopped", _ => "Failed — inspect native session" };
                 session.Elapsed.Stop();
+                session.GoalReplyPending = false; session.GoalReplyExcludedItems.Clear();
                 if (turn.GetProperty("status").GetString() == "completed") CompleteAnswer(session);
                 session.Bubble.Remove("question:");
                 if (turn.TryGetProperty("error", out var failure) && failure.ValueKind == JsonValueKind.Object)
@@ -715,6 +721,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 {
                     var key = completedId.GetString()!;
                     if (!session.CompletedItems.Add(key)) return;
+                    session.DeltaItems.Remove(key); // Keep only currently streaming messages, not an entire long goal.
                     session.CompletedOrder.Enqueue(key);
                     // Bounded display deduplication, not action-delivery authority.
                     if (session.CompletedOrder.Count > 2048) session.CompletedItems.Remove(session.CompletedOrder.Dequeue());
@@ -725,16 +732,41 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                     session.Bubble.Upsert("agent:" + item.GetProperty("id").GetString(), text);
                     var phase = item.TryGetProperty("phase", out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;
                     if (phase != "commentary") ConsiderAnswer(session, text, phase == "final_answer");
+                    var directReply = session.GoalReplyPending && !string.IsNullOrWhiteSpace(text) &&
+                        !session.GoalReplyExcludedItems.Contains(item.GetProperty("id").GetString()!);
+                    if (directReply && phase == "commentary")
+                    {
+                        // Do not wait for turn/completed: a goal can keep the
+                        // same turn open long after answering a human message.
+                        var answer = new FinalAnswerState();
+                        try { answer.Consider(text, authoritative: true); answer.Complete(); session.PendingAnswers.Enqueue(answer); session.LastAnswer = RollingBubble.SafeTail(text, 12000); }
+                        catch (InvalidDataException) { session.Held = true; session.Bubble.Append("Reply delivery held: text exceeds the delivery bound; native history retained."); }
+                    }
+                    if (directReply) { session.GoalReplyPending = false; session.GoalReplyExcludedItems.Clear(); }
                     // A goal can continue the same native turn after an actual
                     // final answer. Deliver that answer now, not at goal end.
-                    if (phase == "final_answer" && session.Goal.Value?.GetProperty("status").GetString() == "active")
+                    if (phase == "final_answer" && (directReply || session.Goal.Value?.GetProperty("status").GetString() == "active"))
                     {
                         CompleteAnswer(session);
                         session.PendingAnswers.Enqueue(session.Response.Answer);
                         session.Response.Answer = new();
                     }
                 }
-                else if (item.GetProperty("type").GetString() == "userMessage") session.Bubble.Append(NativeEventView.User(item));
+                else if (item.GetProperty("type").GetString() == "userMessage")
+                {
+                    session.Bubble.Append(NativeEventView.User(item));
+                    if (session.Goal.Value?.GetProperty("status").GetString() == "active" && NativeEventView.DirectInput(item))
+                    {
+                        session.GoalReplyPending = true;
+                        session.GoalReplyExcludedItems.Clear();
+                        // Already-streaming prose cannot answer input received
+                        // later. Wait for the next completed assistant message.
+                        foreach (var excludedId in session.DeltaItems.Concat(session.Items.Where(p =>
+                            p.Value.TryGetProperty("type", out var kind) && kind.GetString() == "agentMessage").Select(p => p.Key))
+                            .Where(id => !session.CompletedItems.Contains(id)).Distinct().Take(32))
+                            session.GoalReplyExcludedItems.Add(excludedId);
+                    }
+                }
                 else
                 {
                     var displayItem = item;
@@ -832,6 +864,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             claudeDeliveryHold = session.DeliveryHold,
             pendingResponses = session.PendingBubbles.Select(r => new { text = r.Text, message = r.Message, lastRendered = r.LastRendered, sendUnknown = r.SendUnknown, finalAnswer = r.Answer }).ToArray(),
             pendingAnswers = session.PendingAnswers.ToArray(),
+            goalReplyPending = session.GoalReplyPending, goalReplyExcludedItems = session.GoalReplyExcludedItems.ToArray(),
             completedItems = session.CompletedOrder.ToArray(),
             finalAnswer = session.Response.Answer,
             lastAnswer = session.LastAnswer,
