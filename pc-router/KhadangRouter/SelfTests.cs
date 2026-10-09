@@ -121,6 +121,7 @@ public static class SelfTests
         checks += ParticipantTests.Run(root, policy).GetAwaiter().GetResult();
         checks += ReceiptTypingTests.Run(root, policy).GetAwaiter().GetResult();
         checks += MixedRoutingTests.Run(root, policy).GetAwaiter().GetResult();
+        checks += MixedRoutingTests.RunInputIsolation(root, policy).GetAwaiter().GetResult();
         // A unique test-owned directory, never a workspace/service path.
         Directory.Delete(root, recursive: true);
         Console.WriteLine("All " + checks + " PC-router checks passed (no credentials/network/models).");

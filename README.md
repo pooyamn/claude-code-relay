@@ -108,6 +108,14 @@ verification](docs/native-telegram-commands.md). Command registration is active
 on the legacy Mac Khadang test router; protected PC acceptance remains pending.
 HamalBot wiring is unchanged.
 
+## PC router release validation
+
+Windows and Linux release artifacts run the complete offline regression suite
+on every push, PR and published release. The upload-timeout test checks topic
+isolation, active steering and restart without duplicate sends. Standard PC
+deployment runs the same gate before stopping production. See the
+[release-validation runbook](docs/pc-router-release-validation.md).
+
 ## Telegram rich messages (tables that actually line up)
 
 Telegram renders normal message text in a **proportional** font, so any table — ASCII,

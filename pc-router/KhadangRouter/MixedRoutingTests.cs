@@ -117,6 +117,9 @@ public static class MixedRoutingTests
                     bot.Post(bot.Update(1, b, "START")); await Wait(() => Done(ledger, 1), stop.Token);
                     if (scenario != "ack-timeout-race")
                     {
+                        // Finish(update) precedes the separately persisted
+                        // session hold. Observe both receipts, not that race.
+                        await Wait(() => ledger.Get("bubble/" + Pin)!.Value.GetProperty("held").GetBoolean(), stop.Token);
                         Check(ledger.Unknown == 1 && ledger.Get("bubble/" + Pin)!.Value.GetProperty("held").GetBoolean(), "Receipt timeout holds precisely the submitted input");
                         if (scenario == "late-unrelated-hold") claude.Emit(new { type = "system", session_id = Pin, subtype = "worker_shutting_down" });
                         claude.ConfirmLate();
@@ -125,7 +128,8 @@ public static class MixedRoutingTests
                         Check(ledger.Unknown == 0 && ledger.Get("bubble/" + Pin)!.Value.GetProperty("held").GetBoolean(), "Late delivery cannot clear a different native shutdown hold");
                     else
                     {
-                        await Wait(() => !ledger.Get("bubble/" + Pin)!.Value.GetProperty("held").GetBoolean(), stop.Token);
+                        await Wait(() => !ledger.Get("bubble/" + Pin)!.Value.GetProperty("held").GetBoolean() &&
+                            ledger.Query("SELECT status FROM updates WHERE id=1")[0][0] == "accepted-late", stop.Token);
                         Check(ledger.Unknown == 0 && ledger.Query("SELECT status FROM updates WHERE id=1")[0][0] == "accepted-late" && claude.Inputs.Count == 1,
                             "Exact late acknowledgement clears timeout hold without duplicate work: " + scenario);
                         bot.Post(bot.Update(2, b, "NEXT")); await Wait(() => Done(ledger, 2), stop.Token);
@@ -275,6 +279,100 @@ public static class MixedRoutingTests
         }
         return checks;
     }
+    // Reproduce the production failure through intake, native completion and
+    // the durable outbox, not by pre-seeding only an isolated ledger row.
+    public static async Task<int> RunInputIsolation(string root, RouterPolicy template)
+    {
+        int checks = 0;
+        void Check(bool ok, string name) { if (!ok) throw new Exception(name); checks++; }
+        var directory = Path.Combine(root, "upload-timeout-input-isolation"); Directory.CreateDirectory(directory);
+        var workspace = OperatingSystem.IsWindows() ? Path.Combine(directory, "workspaces") : "C:\\IsolationWorkspaces";
+        if (OperatingSystem.IsWindows()) Directory.CreateDirectory(Path.Combine(workspace, "fixture"));
+        var policy = template with { WorkspaceRoot = workspace, LinuxWorkspaceRoot = "/Users/pouya/projects",
+            StateDirectory = directory, AdditionalChats = [new(-100333333)], StartSpacingSeconds = 1 };
+        var bindings = new[] {
+            new Binding(policy.ChatId, 42, "Uncertain upload", workspace + "\\fixture", "upload-thread"),
+            new Binding(policy.ChatId, 43, "Healthy Codex", workspace + "\\fixture", "healthy-thread"),
+            new Binding(-100333333, 42, "Healthy Claude", "/Users/pouya/projects/fixture", Pin, "claude", "linux") };
+        var db = Path.Combine(directory, "router.db"); var native = new Codex(policy, activityReadback: true);
+        var files = new IsolationFiles(); string? upload = null; var totalUploads = 0;
+        for (var generation = 0; generation < 2; generation++)
+        {
+            using var ledger = new Ledger(db);
+            if (generation == 0) foreach (var binding in bindings) ledger.Bind(binding);
+            var topics = new Topics(); var bot = new Bot(policy, bindings, ledger);
+            using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            var run = new Router(policy, ledger, bot, native, claudeTopics: topics, outboundFiles: files).Run(stop.Token);
+            try
+            {
+                await bot.Ready.Task.WaitAsync(stop.Token); var claude = topics.Opened.Single();
+                if (generation == 0)
+                {
+                    bot.Post(bot.Update(1, bindings[0], "PREPARE-ZIP"));
+                    await Wait(() => Done(ledger, 1), stop.Token);
+                    Check(ledger.Query("SELECT status FROM updates WHERE id=1")[0][0] == "accepted" && native.Starts.Count == 1,
+                        "Upload fixture begins as a confirmed native input, not a fabricated unknown operation");
+                    native.Event("item/completed", new { threadId = bindings[0].ThreadId, turnId = "native-turn",
+                        item = new { id = "zip-answer", type = "agentMessage", phase = "final_answer",
+                            text = "Done.\n📎 " + workspace + "\\fixture\\out.zip" } });
+                    native.Event("turn/completed", new { threadId = bindings[0].ThreadId,
+                        turn = new { id = "native-turn", status = "completed" } });
+                    await Wait(() => bot.FailedUpload != null && ledger.Get("bubble/" + bindings[0].ThreadId)!.Value.GetProperty("held").GetBoolean(), stop.Token);
+                    upload = bot.FailedUpload;
+                    Check(bot.UploadAttempts == 1 && files.Reads == 1 && ledger.Unknown == 1 && ledger.InputUnknown(bindings[0]) == 1,
+                        "Actual outbox upload timeout durably holds only its exact topic");
+                }
+                else
+                {
+                    Check(ledger.Unknown == 1 && ledger.Query("SELECT status FROM operations WHERE id=?", upload!)[0][0] == "unknown",
+                        "Upload uncertainty survives reopening SQLite without being confirmed or replayed");
+                    Check(ledger.Get("bubble/" + bindings[0].ThreadId)!.Value.GetProperty("held").GetBoolean() &&
+                        ledger.Get("bubble/" + bindings[1].ThreadId)!.Value.GetProperty("busy").GetBoolean() &&
+                        native.Calls.Any(c => c.Kind == "thread/turns/list" && c.Args.GetProperty("threadId").GetString() == bindings[1].ThreadId),
+                        "Restart keeps upload hold and attaches exact active unrelated Codex turn");
+                }
+                var first = 10 + generation * 10;
+                bot.Post(bot.Update(first, bindings[1], "CODEX-INPUT-" + generation),
+                    bot.Update(first + 1, bindings[2], "CLAUDE-INPUT-" + generation),
+                    bot.Update(first + 2, bindings[0], "DO-NOT-DISPATCH-AFFECTED-TOPIC"));
+                await Wait(() => Done(ledger, first, first + 1, first + 2), stop.Token);
+                Check(ledger.Query("SELECT status FROM updates WHERE id=?", first)[0][0] == "accepted" &&
+                    ledger.Query("SELECT status FROM updates WHERE id=?", first + 1)[0][0] == "accepted" && claude.Inputs.Count == 1,
+                    "Unrelated Codex and Claude intake succeeds despite ZIP timeout, generation " + generation);
+                Check(ledger.InputUnknown(bindings[1]) == 0 && ledger.InputUnknown(bindings[2]) == 0 &&
+                    !ledger.Get("bubble/" + bindings[1].ThreadId)!.Value.GetProperty("held").GetBoolean() &&
+                    !ledger.Get("bubble/" + Pin)!.Value.GetProperty("held").GetBoolean(),
+                    "Same-forum different topic and different-forum same topic number remain unfenced");
+                Check(ledger.Query("SELECT status FROM updates WHERE id=?", first + 2)[0][0] != "accepted" &&
+                    native.Starts.Count(a => a.GetProperty("threadId").GetString() == bindings[0].ThreadId) == 1 &&
+                    !native.Steers.Any(a => a.GetProperty("threadId").GetString() == bindings[0].ThreadId),
+                    "Affected topic input remains retained with no unsafe native dispatch");
+                bot.Post(bot.Update(first + 3, bindings[1], "STEER-EXACT-ACTIVE-TURN"),
+                    bot.Update(first + 4, bindings[2], "CLAUDE-FOLLOWUP"));
+                await Wait(() => Done(ledger, first + 3, first + 4), stop.Token);
+                Check(ledger.Query("SELECT status FROM updates WHERE id=?", first + 3)[0][0] == "accepted" && claude.Inputs.Count == 2 &&
+                    native.Steers.Any(a => a.GetProperty("threadId").GetString() == bindings[1].ThreadId &&
+                        a.GetProperty("expectedTurnId").GetString() == "native-turn"),
+                    "Unrelated active work can still receive steering, generation " + generation);
+                Check(ledger.Unknown == 1 && ledger.Query("SELECT status FROM operations WHERE id=?", upload!)[0][0] == "unknown" &&
+                    bot.UploadAttempts == (generation == 0 ? 1 : 0), "No duplicate upload or false acknowledgement during continued polling");
+                Check(ledger.Bindings().OrderBy(b => b.Topic).ThenBy(b => b.Chat).SequenceEqual(bindings.OrderBy(b => b.Topic).ThenBy(b => b.Chat)),
+                    "Topic recovery does not change native identities or project bindings");
+                claude.Emit(new { type = "system", session_id = Pin, subtype = "session_state_changed", state = "idle" });
+                totalUploads += bot.UploadAttempts;
+            }
+            finally { stop.Cancel(); try { await run; } catch (OperationCanceledException) { } }
+        }
+        Check(totalUploads == 1 && files.Reads == 1 && native.Starts.Count == 2,
+            "Router restart neither rereads/resends uncertain ZIP nor starts a duplicate native turn");
+        return checks;
+    }
+    private sealed class IsolationFiles : IOutboundFiles
+    {
+        public int Reads;
+        public Task<byte[]> Read(Binding binding, string path, string? expectedSha256, CancellationToken stop)
+        { Interlocked.Increment(ref Reads); return Task.FromResult<byte[]>([80, 75, 3, 4, 1]); }
+    }
     private static string Tail(Ledger ledger) => ledger.Get("bubble/" + Pin)!.Value.GetProperty("tail").GetString()!;
     private static bool Done(Ledger ledger, params int[] ids) => ids.All(id => ledger.Query("SELECT status FROM updates WHERE id=?", id) is { Count: 1 } rows && rows[0][0] is not ("received" or "dispatching"));
     private static async Task Wait(Func<bool> done, CancellationToken stop) { while (!done()) await Task.Delay(10, stop); }
@@ -349,14 +447,25 @@ public static class MixedRoutingTests
         public Task Answer(string id, object answer, CancellationToken stop) { Answers.Add((id, Json(answer))); return Task.CompletedTask; }
         public ValueTask DisposeAsync() { Disposed = true; return ValueTask.CompletedTask; }
     }
-    private sealed class Codex(RouterPolicy policy) : INative
+    private sealed class Codex(RouterPolicy policy, bool activityReadback = false) : INative
     {
         public uint Pid => 7; public event Action<JsonElement>? Notification; public int Replies;
         public ConcurrentBag<(string Kind, JsonElement Args)> Calls = new(); public ConcurrentBag<JsonElement> Starts = new(), Steers = new();
-        public void Event(string method, object parameters) => Notification?.Invoke(Json(new { method, @params = parameters }));
+        private readonly ConcurrentDictionary<string, bool> active = new();
+        public void Event(string method, object parameters)
+        {
+            var args = Json(parameters);
+            if (method is "turn/started" or "turn/completed") active[args.GetProperty("threadId").GetString()!] = method == "turn/started";
+            Notification?.Invoke(Json(new { method, @params = parameters }));
+        }
         public Task<JsonElement> Call(string method, object parameters, CancellationToken stop, bool effect = true)
         {
             var args = Json(parameters); Calls.Add((method, args)); var id = args.GetProperty("threadId").GetString();
+            if (method == "thread/resume" && activityReadback) return Task.FromResult(Json(new { cwd = args.GetProperty("cwd").GetString(),
+                thread = new { id, status = new { type = active.GetValueOrDefault(id!) ? "active" : "idle", activeFlags = Array.Empty<string>() } },
+                approvalPolicy = policy.NativeApprovalPolicy, approvalsReviewer = "user", sandbox = new { type = policy.NativeSandboxType } }));
+            if (method == "thread/turns/list" && activityReadback) return Task.FromResult(Json(new {
+                data = new[] { new { id = "native-turn", status = active.GetValueOrDefault(id!) ? "inProgress" : "completed" } } }));
             if (method == "thread/resume") return Task.FromResult(Json(new { cwd = args.GetProperty("cwd").GetString(), thread = new { id },
                 approvalPolicy = policy.NativeApprovalPolicy, approvalsReviewer = "user", sandbox = new { type = policy.NativeSandboxType } }));
             if (method == "thread/goal/get") return Task.FromResult(Json(new { goal = (object?)null }));
@@ -366,11 +475,26 @@ public static class MixedRoutingTests
         }
         public Task Reply(JsonElement id, object result, CancellationToken stop) { Replies++; return Task.CompletedTask; }
     }
-    private sealed class Bot(RouterPolicy policy, Binding[] bindings) : IBot
+    private sealed class Bot(RouterPolicy policy, Binding[] bindings, Ledger? uploadTimeoutLedger = null) : IBot
     {
         private readonly Channel<JsonElement> updates = Channel.CreateUnbounded<JsonElement>();
         public ConcurrentDictionary<long, JsonElement> Menus = new(); public ConcurrentDictionary<TopicAddress, string> Edits = new();
         public TaskCompletionSource Ready = new(TaskCreationOptions.RunContinuationsAsynchronously); public int Sends, MaxPolls; private int polling;
+        public string? FailedUpload; public int UploadAttempts;
+        public Task<JsonElement> Upload(long chat, int topic, string filename, byte[] bytes, bool photo, CancellationToken stop)
+        {
+            if (uploadTimeoutLedger == null) throw new NotSupportedException();
+            var binding = bindings.Single(b => b.Chat == chat && b.Topic == topic);
+            var saved = uploadTimeoutLedger.Get("bubble/" + binding.ThreadId)!.Value;
+            if (!saved.GetProperty("finalAnswer").GetProperty("Files")[0].GetProperty("SendUnknown").GetBoolean())
+                throw new Exception("Upload attempted without durable uncertain-file intent");
+            Interlocked.Increment(ref UploadAttempts);
+            var operation = uploadTimeoutLedger.Attempt(photo ? "telegram/sendPhoto" : "telegram/sendDocument",
+                new { chat_id = chat, message_thread_id = topic, filename, size = bytes.Length,
+                    sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)) });
+            uploadTimeoutLedger.Outcome(operation, "unknown"); FailedUpload = operation;
+            throw new TelegramFailure(0, 0);
+        }
         public object Update(int id, Binding binding, string text) => new { update_id = id, message = new { from = new { id = policy.OwnerId, is_bot = false },
             chat = new { id = binding.Chat, is_forum = true }, message_thread_id = binding.Topic, message_id = id, text } };
         public void Post(params object[] batch) => updates.Writer.TryWrite(Json(batch));

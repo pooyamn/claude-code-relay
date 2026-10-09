@@ -1,0 +1,54 @@
+name: PC router release validation
+
+on:
+  push:
+  pull_request:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Release validation (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            rid: linux-x64
+          - os: windows-2022
+            rid: win-x64
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: pc-router
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+    steps:
+      - name: Check out exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install pinned SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: '8.0.425'
+      - name: Publish self-contained candidate
+        env:
+          RELEASE_RID: ${{ matrix.rid }}
+        run: |
+          dotnet publish KhadangRouter/KhadangRouter.csproj -c Release -r $env:RELEASE_RID --self-contained true -o "$env:RUNNER_TEMP/router-candidate"
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate publish failed' }
+      - name: Validate actual release artifact
+        run: |
+          ./validate-release.ps1 -CandidateDirectory "$env:RUNNER_TEMP/router-candidate"
+
+# Hosted, isolated fixtures only: no PC connector, Telegram token, model
+# login, live state or automatic deployment. All pushes (including tags), PRs
+# and published releases are tested; do not add path filters to this gate.

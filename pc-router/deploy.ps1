@@ -26,7 +26,7 @@ if (-not ($runtime.runtimeOptions.includedFrameworks | Where-Object name -eq 'Mi
 }
 # Validate the actual target runtime BEFORE interrupting the service. A Mac
 # compile cannot prove Windows packaging, and a mixed overlay is not a runtime.
-& "$release\publish-live\KhadangRouter.exe" --self-test
+& (Join-Path $PSScriptRoot 'validate-release.ps1') -CandidateDirectory "$release\publish-live"
 if ($LASTEXITCODE -ne 0) { throw 'Windows candidate tests failed; live service untouched' }
 Copy-Item "$root\state\probe.json" (Join-Path $release 'previous-probe.json')
 [IO.File]::WriteAllText((Join-Path $release 'previous-service.json'), (@{path=$service.PathName;startMode=$service.StartMode} | ConvertTo-Json))
@@ -69,7 +69,7 @@ Copy-Item -LiteralPath "$root\bin" -Destination $backup -Recurse
 Copy-Item "$release\publish-live\*" "$root\bin" -Recurse -Force
 $admin = [Security.Principal.SecurityIdentifier]::new('S-1-5-32-544')
 Get-ChildItem $root -Recurse -Force | ForEach-Object {$a=Get-Acl $_.FullName;$a.SetOwner($admin);Set-Acl $_.FullName $a}
-& "$root\bin\KhadangRouter.exe" --self-test
+& (Join-Path $PSScriptRoot 'validate-release.ps1') -CandidateDirectory "$root\bin"
 if ($LASTEXITCODE -ne 0) { throw 'Actual Windows joined tests failed; service stays stopped, previous-bin retained' }
 # Keep the historical sealed vault item for recovery, but remove ordinary
 # worker access. Its active replacement is the protected SYSTEM service seal.

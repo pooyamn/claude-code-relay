@@ -676,6 +676,12 @@ visible. A pre-dispatch admission refusal is not an uncertain native input and
 must not leave an unrelated idle topic permanently held. The October 9
 incident was an uncertain Display recovery ZIP upload that blocked DUT and
 other topics; see the migration incident record for deployment evidence.
+Every release must run the named upload-timeout/input-isolation integration
+regression and the complete self-test on actual Windows and Linux artifacts.
+The regression includes unaffected Claude/Codex input, active steering, observer
+restart and preservation of uncertain output without replay. The automated
+[release-validation gate](pc-router-release-validation.md) runs on every push,
+PR and published release without live credentials or model activity.
 This distinction follows the October 4 DUT outage: one CC relay bubble-edit
 timeout blocked all topics. The exact live intent was classified without
 restarting or replaying; the permanent source guard passed 929 offline checks
