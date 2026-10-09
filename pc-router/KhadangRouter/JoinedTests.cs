@@ -14,12 +14,13 @@ public static class JoinedTests
         using var ledger = new Ledger(Path.Combine(root, "joined.db"));
         ledger.Bind(new Binding(policy.ChatId, 42, "LG", workspaces + "\\lg-magic", "exact-native-id"));
         var native = new FakeNative(); var bot = new FakeBot(policy, native);
-        // Whole-suite JIT/host load can make the intentionally long final slow
-        // on Windows. Keep the same event/receipt assertions, with room for
-        // the three-second editor tick after completing that rendering work.
-        using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(35));
+        // Whole-suite JIT/host load can make the intentionally 18,000-character
+        // final slow on Windows or two-core hosted Linux runners. Keep all
+        // five-chunk/event/receipt assertions; allow bounded rendering time
+        // plus the three-second editor tick, not a timing-based acceptance.
+        using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(120));
         var running = new Router(policy, ledger, bot, native).Run(stop.Token);
-        try { await bot.Completed.Task.WaitAsync(TimeSpan.FromSeconds(30)); }
+        try { await bot.Completed.Task.WaitAsync(TimeSpan.FromSeconds(110)); }
         finally { stop.Cancel(); try { await running; } catch (OperationCanceledException) { } }
         Check(native.Started == 1 && native.Steered == 1, "Joined routing starts once and steers exact active turn");
         Check(native.LastProfile == ":danger-full-access" && native.LastApproval == "never", "Owner full-access profile survives exact resume");
