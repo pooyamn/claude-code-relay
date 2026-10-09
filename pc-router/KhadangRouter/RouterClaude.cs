@@ -11,7 +11,7 @@ public sealed partial class Router
     private void ReleaseClaudeDeliveryHold(Session session)
     {
         if (session.DeliveryHold is not { } hold || !session.Held || session.Claude is not { Connected: true } ||
-            ledger.Unknown != 0 || session.SendUnknown || session.PendingBubbles.Any(b => b.SendUnknown) ||
+            ledger.InputUnknown(session.Binding) != 0 || session.SendUnknown || session.PendingBubbles.Any(b => b.SendUnknown) ||
             session.PendingAnswers.Append(session.Response.Answer).Any(a => a.Unknown) ||
             session.Status != "Held — input " + hold.UpdateId + " not confirmed" && session.Status != "Held — reconcile native receipts" ||
             ledger.Get("claude/reset/" + session.Binding.ThreadId) != null ||
@@ -54,7 +54,7 @@ public sealed partial class Router
         long arrivalRevision;
         lock (session.Gate)
         {
-            if (session.Held || ledger.Unknown != 0 || session.Claude is not { Connected: true })
+            if (session.Held || ledger.InputUnknown(session.Binding) != 0 || session.Claude is not { Connected: true })
                 throw new AttachmentFailure("Exact Claude input state is unconfirmed; held before download/send");
             arrivalRevision = session.ClaudeWorkRevision;
         }
@@ -76,7 +76,7 @@ public sealed partial class Router
             bool active;
             lock (session.Gate)
             {
-                if (session.Held || ledger.Unknown != 0 || session.Claude is not { Connected: true })
+                if (session.Held || ledger.InputUnknown(session.Binding) != 0 || session.Claude is not { Connected: true })
                     throw new InvalidOperationException("Uncertain Claude effect; input held without replay");
                 if (references.Count > 0 && arrivalRevision != session.ClaudeWorkRevision)
                     throw new AttachmentFailure("Native work changed during attachment download; staged files held, no fresh-work fallback");
@@ -93,7 +93,7 @@ public sealed partial class Router
                     if (wait > TimeSpan.Zero) await Task.Delay(wait, stop);
                     lock (session.Gate)
                     {
-                        if (session.Held || ledger.Unknown != 0 || references.Count > 0 && arrivalRevision != session.ClaudeWorkRevision)
+                        if (session.Held || ledger.InputUnknown(session.Binding) != 0 || references.Count > 0 && arrivalRevision != session.ClaudeWorkRevision)
                             throw new AttachmentFailure("Native work changed during paced admission; no attachment fallback");
                         if (!session.Busy) StartClaudeWork(session);
                     }
@@ -130,7 +130,7 @@ public sealed partial class Router
             case "/status":
                 lock (session.Gate) answer = "PC Claude session: " + session.Binding.Name + "\nNative session: " + session.Binding.ThreadId +
                     "\nRuntime: " + session.Binding.Runtime + "\nState: " + session.ClaudeState +
-                    (session.Held ? "\nHeld — reconcile native receipts before continuing." : "") + "\nHeld/unknown operations: " + ledger.Unknown;
+                    (session.Held ? "\nHeld — reconcile native receipts before continuing." : "") + "\nInput-blocking unknowns here: " + ledger.InputUnknown(session.Binding) + "\nUnknown operations across relay: " + ledger.Unknown;
                 break;
             case "/limits":
                 try
@@ -155,7 +155,7 @@ public sealed partial class Router
                     catalog.EnumerateArray().ToArray() : [];
                 if (argument.Length == 0) answer = "Native Claude models: " + string.Join(", ", models.Select(m => m.GetProperty("value").GetString()));
                 else if (!models.Any(m => m.GetProperty("value").GetString() == argument)) answer = "That model is not in this Claude process's native catalog. No change sent.";
-                else if (session.Held || ledger.Unknown != 0) answer = "Model change held: reconcile uncertain effects first.";
+                else if (session.Held || ledger.InputUnknown(session.Binding) != 0) answer = "Model change held: reconcile uncertain effects first.";
                 else
                 {
                     await claude.Control("set_model", new { model = argument }, stop);
@@ -164,7 +164,7 @@ public sealed partial class Router
                 break;
             case "/effort":
                 if (!new[] { "low", "medium", "high", "xhigh", "max" }.Contains(argument)) answer = "Specify a Claude effort level: low, medium, high, xhigh or max.";
-                else if (session.Held || ledger.Unknown != 0) answer = "Effort change held: reconcile uncertain effects first.";
+                else if (session.Held || ledger.InputUnknown(session.Binding) != 0) answer = "Effort change held: reconcile uncertain effects first.";
                 else
                 {
                     await claude.Control("apply_flag_settings", new { settings = new { effortLevel = argument } }, stop);

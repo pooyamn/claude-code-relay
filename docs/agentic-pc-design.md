@@ -665,6 +665,17 @@ work in unrelated sessions. Its affected display remains held until safely
 reconciled; do not replay a stale edit or claim it delivered. Uncertain initial
 message sends, native writes and interrupted incoming dispatches retain their
 existing safety fences. Expose presentation uncertainty separately in status.
+For an uncertain initial text, rich message, photo or document send with a
+valid exact forum/topic destination, fence native input only to that
+conversation, not unrelated topics or another forum's matching topic number.
+Retain the original unknown operation and pending-output marker without
+resending, confirming or deleting them. Unknown native mutations, interrupted
+incoming dispatches and malformed/unscoped effects still fence globally.
+Keep both the total uncertainty count and this topic's input-blocking count
+visible. A pre-dispatch admission refusal is not an uncertain native input and
+must not leave an unrelated idle topic permanently held. The October 9
+incident was an uncertain Display recovery ZIP upload that blocked DUT and
+other topics; see the migration incident record for deployment evidence.
 This distinction follows the October 4 DUT outage: one CC relay bubble-edit
 timeout blocked all topics. The exact live intent was classified without
 restarting or replaying; the permanent source guard passed 929 offline checks

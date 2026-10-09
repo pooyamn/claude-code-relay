@@ -149,6 +149,8 @@ public static class MixedRoutingTests
         }
         using (var ledger = new Ledger(Path.Combine(directory, "router.db")))
         {
+            var failedUpload = ledger.Attempt("telegram/sendDocument", new { chat_id = bindings[2].Chat, message_thread_id = 99, filename = "fixture.zip" });
+            ledger.Outcome(failedUpload, "unknown");
             for (var i = 0; i < bindings.Length; i++)
             {
                 ledger.Bind(bindings[i]); ledger.Put("bubble/" + bindings[i].ThreadId, new { chat = bindings[i].Chat, topic = bindings[i].Topic,
@@ -174,6 +176,8 @@ public static class MixedRoutingTests
                 Check(win.Starts.Single().GetProperty("threadId").GetString() == bindings[0].ThreadId &&
                     linux.Starts.Single().GetProperty("threadId").GetString() == bindings[1].ThreadId && claude.Inputs.Count == 1 && other.Inputs.Count == 0,
                     "One Telegram poller selects exact Windows Codex, Linux Codex or Claude source for matching topic numbers");
+                Check(ledger.Unknown == 1 && bindings.All(b => ledger.InputUnknown(b) == 0) && ledger.Query("SELECT status FROM operations WHERE id=?", failedUpload)[0][0] == "unknown",
+                    "Unknown file upload stays unreplayed while Windows/Linux Codex and Claude admit unrelated owner messages");
                 // Correct ID on the WRONG native source must not route either.
                 win.Event("item/agentMessage/delta", new { threadId = bindings[1].ThreadId, turnId = "native-turn", delta = "FOREIGN-SOURCE" });
                 linux.Event("item/agentMessage/delta", new { threadId = bindings[0].ThreadId, turnId = "native-turn", delta = "FOREIGN-SOURCE" });

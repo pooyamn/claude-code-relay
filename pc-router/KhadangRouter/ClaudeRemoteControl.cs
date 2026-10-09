@@ -36,7 +36,7 @@ internal static class ClaudeRemoteControl
             if (prior == null) ledger.Put(key, new { phase = "ready", binding.ThreadId, receipt = current, at = DateTimeOffset.UtcNow });
             return current; // Read the live host's cached receipt; no native registration.
         }
-        if (ledger.Unknown != 0) throw new InvalidOperationException("Remote Control held by uncertain effects");
+        if (ledger.InputUnknown(binding) != 0) throw new InvalidOperationException("Remote Control held by uncertain effects");
         var request = new Dictionary<string, object?> { ["enabled"] = true, ["name"] = binding.Name, ["keep_session_on_exit"] = true };
         if (prior != null)
         {

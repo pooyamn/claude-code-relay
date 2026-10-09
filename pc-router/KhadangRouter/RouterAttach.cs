@@ -11,7 +11,7 @@ public sealed partial class Router
         // Adopt ONLY the durable exact ID before reads, so an observed
         // completion during recovery closes it rather than being discarded.
         lock (session.Gate) {
-            if (session.RestoreTurn != null && !session.Held && !session.SendUnknown && ledger.Unknown == 0)
+            if (session.RestoreTurn != null && !session.Held && !session.SendUnknown && ledger.InputUnknown(binding) == 0)
             { session.Turn = session.RestoreTurn; session.Busy = true; session.Status = "Working"; }
             resumeRevision = session.NativeStateRevision;
         }
@@ -29,7 +29,7 @@ public sealed partial class Router
             if (session.NativeStateRevision != resumeRevision) { session.RestoreTurn = null; return; }
             // A confirmed active snapshot is not authority to clear an older
             // unknown delivery/interrupted receipt or pending approval.
-            if (session.Held || session.SendUnknown || ledger.Unknown != 0) return;
+            if (session.Held || session.SendUnknown || ledger.InputUnknown(binding) != 0) return;
             if (status.TryGetProperty("activeFlags", out var flags) && flags.GetArrayLength() != 0)
             {
                 session.Held = true; session.Status = "Held — inspect pending native request"; Touch(session); return;
@@ -44,7 +44,7 @@ public sealed partial class Router
         if (string.IsNullOrWhiteSpace(id) || id.Length > 200 || id.Any(char.IsControl)) throw new InvalidDataException("Invalid native active-turn identity");
         lock (session.Gate)
         {
-            if (session.NativeStateRevision != revision || session.Held || session.SendUnknown || ledger.Unknown != 0) { session.RestoreTurn = null; return; }
+            if (session.NativeStateRevision != revision || session.Held || session.SendUnknown || ledger.InputUnknown(binding) != 0) { session.RestoreTurn = null; return; }
             if (approvals.Values.Any(a => a.Thread == binding.ThreadId) || questions.Values.Any(q => q.Thread == binding.ThreadId))
             { session.Held = true; session.Status = "Held — inspect pending native request"; Touch(session); return; }
             var advanced = session.RestoreTurn != null && id != session.RestoreTurn;

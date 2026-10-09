@@ -59,6 +59,40 @@ public sealed class Ledger : IDisposable
         .Select(row => (long.Parse(row[0]!), JsonDocument.Parse(row[1]!).RootElement.Clone())).ToList();
     public int Unknown => int.Parse(Rows("SELECT COUNT(*) FROM updates WHERE status='unknown'")[0][0]!) +
         int.Parse(Rows("SELECT COUNT(*) FROM operations WHERE status='unknown' AND kind<>'telegram/editMessageText'")[0][0]!);
+    // A timed-out output remains uncertain and MUST NOT be retried. Its exact
+    // destination fences that conversation, not every other company/topic.
+    // Native mutations, unknown intake, and malformed/unscoped effects retain
+    // the conservative global fence. Never infer delivery or erase a receipt.
+    public int InputUnknown(Binding binding)
+    {
+        lock (gate)
+        {
+            var count = int.Parse(Rows("SELECT COUNT(*) FROM updates WHERE status='unknown'")[0][0]!);
+            foreach (var row in Rows("SELECT kind,payload FROM operations WHERE status='unknown' AND kind<>'telegram/editMessageText'"))
+            {
+                if (row[0] is "telegram/sendMessage" or "telegram/sendRichMessage" or "telegram/sendPhoto" or "telegram/sendDocument")
+                {
+                    try
+                    {
+                        using var document = JsonDocument.Parse(row[1]!);
+                        var payload = document.RootElement;
+                        if (payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("chat_id", out var c) &&
+                            c.ValueKind == JsonValueKind.Number && c.TryGetInt64(out var chat) && chat < 0)
+                        {
+                            var topic = 0;
+                            if (payload.TryGetProperty("message_thread_id", out var t) &&
+                                (t.ValueKind != JsonValueKind.Number || !t.TryGetInt32(out topic) || topic <= 0))
+                            { count++; continue; }
+                            if (chat != binding.Chat || topic != binding.Topic) continue;
+                        }
+                    }
+                    catch (JsonException) { }
+                }
+                count++;
+            }
+            return count;
+        }
+    }
     // An edit addresses an existing Telegram message. Its uncertain display
     // outcome must remain visible, but cannot duplicate a model/external action
     // or justify stopping input to every unrelated native conversation.

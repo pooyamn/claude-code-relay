@@ -4083,3 +4083,48 @@ restored startup supervision. Telegram confirmed the recovered clean answer
 as [Futek topic message 109](https://t.me/c/4393585932/109). This is actual
 output-delivery evidence plus inert native-boundary regression coverage; no
 synthetic owner input or new phone-to-model fixture was submitted.
+
+## Uncertain upload isolated from unrelated topics (October 9)
+
+The router was Running and polling Telegram, but one timed-out 20,859,985-byte
+ZIP upload in Futek Display recovery (topic 2) left operation
+`a1271f1d97834aa2a9637031094c2198` unknown. Global admission checks then stopped
+unrelated Claude and Codex inputs. DUT updates 759322938/759322939 were retained
+before dispatch; DUT X and Base board updates 759322941/759322943 additionally
+acquired false persistent holds. This was an admission-isolation failure, not
+a stopped PC or disconnected Claude worker.
+
+`Ledger.InputUnknown(binding)` now retains the global uncertainty audit but
+scopes properly addressed initial Telegram text/rich/photo/document sends to
+their exact chat and topic. A matching topic number in another forum cannot
+be blocked. Unknown native actions, intake or malformed/unscoped effects still
+fail closed globally. The affected topic's output and pending-send fences stay
+intact; no send is automatically retried or assumed delivered. Codex
+pre-dispatch refusals no longer manufacture an uncertain-native-input hold.
+Admission, native observation reattachment, model/goal checks and late Claude
+acknowledgement use the scoped count; global provisioning/new-worker recovery
+remains conservative. Status distinguishes topic input blockers from the
+total unknown audit.
+
+Router-only release `daeeb991d43a4720a7f18743e51ebcb9`, DLL SHA256
+`C24CDDBEA27397E0EE6EEB4E1461AA23F2027CF4836D031E886B7E0AB17F7103`,
+passed 1,321 Linux and 1,324 actual protected Windows checks. Fixtures cover
+same-topic holds, cross-topic/forum isolation, malformed scopes, restart
+retention, native/intake fences and mixed Windows/Linux Codex plus Claude
+input with the unknown upload retained. Fresh SYSTEM OS proof at
+`2026-10-09T13:22:45.0248144+00:00` preserved code/credential/host ACL isolation;
+unchanged native Claude acceptance was explicitly reused.
+
+The fenced repair retained the complete DB preimage and cleared only the two
+exact idle false holds, proving their owner/secondary-account inputs had no
+native dispatch. A strict owner-only guard initially stopped on DUT X's
+already admitted secondary account; its transaction rolled back without
+writes, and the corrected exact-sender guard reused the original snapshot.
+Original input statuses, uncertain-upload intent, pending output, existing
+Web/Display holds and all native-input receipts were preserved. No input was
+replayed. At `2026-10-09T13:23:55.5045198+00:00` all sixteen routes and seven
+Claude connections were verified, with host PID 440, Linux Codex PID 479 and
+all worker epochs/pipes unchanged; DUT, DUT X and Base were ready. Startup
+supervision was reenabled. No synthetic native turn, fresh phone round trip,
+host restart or reboot was performed. Full identifiers are in
+[deployment-status.json](../pc-router/deployment-status.json).

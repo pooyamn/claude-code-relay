@@ -49,7 +49,7 @@ public sealed partial class Router
         if (source.Binding.Runtime != "linux" || linuxRpc == null || claudeTopics == null)
         { await Reply("This topic has no reviewed paired native launcher. No tool switch or prompt sent."); return; }
         lock (source.Gate)
-            if (source.Held || source.SendUnknown || ledger.Unknown != 0 || source.PendingAnswers.Any(a => a.Unknown) || source.Response.Answer.Unknown)
+            if (source.Held || source.SendUnknown || ledger.InputUnknown(source.Binding) != 0 || source.PendingAnswers.Any(a => a.Unknown) || source.Response.Answer.Unknown)
                 throw new InvalidOperationException("Reconcile uncertain delivery/approvals before switching tools; no handoff replay");
         if (source.Busy) { await Reply("Finish or /cancel the current work before switching tools. Pause an active /goal first. Both conversations are preserved."); return; }
         if (source.Claude != null && source.ClaudeState != "idle") { await Reply("Claude is not confirmed idle. No switch sent."); return; }
@@ -76,7 +76,7 @@ public sealed partial class Router
             gpt = found.TryGetProperty("model", out var value) ? value.GetString() : found.GetProperty("id").GetString();
         }
         await FlushBubble(source, stop);
-        if (source.Held || source.SendUnknown || ledger.Unknown != 0) throw new InvalidOperationException("Final delivery unconfirmed; tool switch held");
+        if (source.Held || source.SendUnknown || ledger.InputUnknown(source.Binding) != 0) throw new InvalidOperationException("Final delivery unconfirmed; tool switch held");
         var handoff = await SwitchHandoff(source, stop);
         var nonce = Guid.NewGuid().ToString("N");
         ledger.Put(ModelCommand.Slot(source.Binding.Address, source.Binding.Backend), source.Binding);

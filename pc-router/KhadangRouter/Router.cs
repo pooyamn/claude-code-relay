@@ -137,7 +137,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 // A kernel-authenticated SAME host/native epoch retained active
                 // work. This is a UI reattachment, not an interrupted agent.
                 // New generations and pre-existing/uncertain holds stay fenced.
-                var continuousClaude = session.Claude is ClaudeWorkerClient { ReattachedGeneration: true } && ledger.Unknown == 0;
+                var continuousClaude = session.Claude is ClaudeWorkerClient { ReattachedGeneration: true } && ledger.InputUnknown(binding) == 0;
                 session.Held = saved.GetProperty("held").GetBoolean() || saved.GetProperty("busy").GetBoolean() && session.RestoreTurn == null && !continuousClaude;
                 session.Status = session.Held ? "Held — reconcile interrupted turn" : saved.GetProperty("status").GetString()!;
                 session.Carried = TimeSpan.FromMilliseconds(saved.GetProperty("elapsedMs").GetDouble());
@@ -369,7 +369,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             {
                 lock (session.Gate)
                 {
-                    if (session.Held || ledger.Unknown != 0 || session.Busy && session.Turn == null)
+                    if (session.Held || ledger.InputUnknown(session.Binding) != 0 || session.Busy && session.Turn == null)
                         throw new AttachmentFailure("Native input identity is unconfirmed; attachment held before download");
                     mediaTurn = session.Busy ? session.Turn : null;
                 }
@@ -388,7 +388,8 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 string? active;
                 lock (session.Gate)
                 {
-                    if (session.Held || ledger.Unknown != 0) throw new InvalidOperationException("Uncertain prior effect; input held for reconciliation");
+                    if (ledger.InputUnknown(session.Binding) != 0) throw new AttachmentFailure("Uncertain prior effect in this conversation; input retained before native dispatch");
+                    if (session.Held) throw new InvalidOperationException("Uncertain prior effect; input held for reconciliation");
                     active = session.Busy ? session.Turn : null;
                     if (mediaTurn != null && active != mediaTurn) throw new AttachmentFailure("Active turn ended or changed during attachment download; staged files held, no fresh-turn fallback");
                     if (session.Busy && active == null) throw new InvalidOperationException("Native turn identity not yet confirmed; no queue fallback");
@@ -472,7 +473,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         {
             case "/help": answer = "PC Codex controls: /status, /limits, /remote, /cancel, /goal [objective | pause | resume | clear], /model [id], /effort <level>, /approve <nonce>, /deny <nonce>, /answer <nonce> <question-id> <text>. Photos and files download into a protected read-only cache (hosted Telegram limit 20 MB); captions stay with them. Images use native localImage; audio/video are files, not verified transcripts. Native Claude routing, large-file transport and albums remain pending; no Mac fallback is permitted."; break;
             case "/status": answer = "PC session: " + session.Binding.Name + "\nNative thread: " + session.Binding.ThreadId + "\n" +
-                (session.Held ? "Held — reconcile native/transport receipts before continuing." : session.Busy ? "Working; new messages steer this turn." : "Idle.") + "\nHeld/unknown operations: " + ledger.Unknown; break;
+                (session.Held ? "Held — reconcile native/transport receipts before continuing." : session.Busy ? "Working; new messages steer this turn." : "Idle.") + "\nInput-blocking unknowns here: " + ledger.InputUnknown(session.Binding) + "\nUnknown operations across relay: " + ledger.Unknown; break;
             case "/cancel":
                 string? turn; lock (session.Gate) turn = session.Turn;
                 if (turn == null || !session.Busy) { answer = "No active native turn."; break; }
@@ -570,7 +571,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         var current = session.Goal.Value;
         if (command.Action is "pause" or "resume" && (current == null || current.Value.GetProperty("status").GetString() == "complete"))
             return "No resumable goal. Set a new objective explicitly; a completed goal is not recreated.";
-        if (command.Action is "set" or "resume" && (session.Held || ledger.Unknown != 0))
+        if (command.Action is "set" or "resume" && (session.Held || ledger.InputUnknown(session.Binding) != 0))
             return "Goal activation held: reconcile uncertain effects first. No change sent.";
         var revision = session.Goal.Revision;
         var method = command.Action == "clear" ? "thread/goal/clear" : "thread/goal/set";
@@ -664,7 +665,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 if (started == session.Turn) return; // Duplicate start must not resurrect/rotate a completed response.
                 if (session.RestoreTurn != null && started != session.RestoreTurn)
                 {
-                    if (session.Held || session.SendUnknown || ledger.Unknown != 0 ||
+                    if (session.Held || session.SendUnknown || ledger.InputUnknown(session.Binding) != 0 ||
                         approvals.Values.Any(a => a.Thread == session.Binding.ThreadId) || questions.Values.Any(q => q.Thread == session.Binding.ThreadId) ||
                         session.Response.Answer.Unknown || session.PendingAnswers.Any(a => a.Unknown) ||
                         session.PendingBubbles.Any(r => r.SendUnknown || r.Answer.Unknown))

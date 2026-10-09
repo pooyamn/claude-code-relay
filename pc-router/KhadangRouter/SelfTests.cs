@@ -64,6 +64,37 @@ public static class SelfTests
         }
         using (var ledger = new Ledger(Path.Combine(root, "display-timeouts.db")))
             Check(ledger.Unknown == 3 && ledger.PresentationUnknown == 1, "Restart keeps uncertain native/send/dispatch holds and separate display audit");
+        var inputBinding = new Binding(-100123, 42, "Fixture", "C:\\Workspaces\\fixture", "scope-fixture");
+        foreach (var kind in new[] { "sendMessage", "sendRichMessage", "sendPhoto", "sendDocument" })
+        {
+            var scopedPath = Path.Combine(root, "scope-" + kind + ".db");
+            using (var scoped = new Ledger(scopedPath))
+            {
+                var unknown = scoped.Attempt("telegram/" + kind, new { chat_id = inputBinding.Chat, message_thread_id = inputBinding.Topic });
+                scoped.Outcome(unknown, "unknown");
+                Check(scoped.Unknown == 1 && scoped.InputUnknown(inputBinding) == 1, "Unknown output still fences its own topic: " + kind);
+                Check(scoped.InputUnknown(inputBinding with { Topic = 43 }) == 0 && scoped.InputUnknown(inputBinding with { Chat = -100456 }) == 0,
+                    "Unknown output cannot stop another topic or matching topic in another forum: " + kind);
+            }
+            using (var scoped = new Ledger(scopedPath))
+                Check(scoped.Unknown == 1 && scoped.InputUnknown(inputBinding with { Topic = 43 }) == 0 && scoped.Query("SELECT status FROM operations")[0][0] == "unknown",
+                    "Restart preserves output uncertainty without a global input freeze or replay: " + kind);
+        }
+        foreach (var malformed in new object[] { new { }, new { chat_id = "-100123", message_thread_id = 42 }, new { chat_id = -100456, message_thread_id = "42" },
+            new { chat_id = -100456, message_thread_id = 0 }, new { chat_id = -100456, message_thread_id = -1 }, new { chat_id = -100456, message_thread_id = 1.5 } })
+        {
+            using var scoped = new Ledger(Path.Combine(root, "malformed-scope-" + checks + ".db"));
+            var unknown = scoped.Attempt("telegram/sendDocument", malformed); scoped.Outcome(unknown, "unknown");
+            Check(scoped.InputUnknown(inputBinding) == 1, "Unscoped/malformed unknown output fails closed globally");
+        }
+        using (var scoped = new Ledger(Path.Combine(root, "native-scope.db")))
+        {
+            var native = scoped.Attempt("native/turn/steer", new { threadId = "another-thread" }); scoped.Outcome(native, "unknown");
+            Check(scoped.InputUnknown(inputBinding) == 1, "Native uncertainty is not mistaken for a harmless other-topic output");
+            scoped.Receive(1000, "{}"); scoped.Claim(1000);
+        }
+        using (var scoped = new Ledger(Path.Combine(root, "native-scope.db")))
+            Check(scoped.InputUnknown(inputBinding) == 2, "Uncertain intake/native effects retain conservative global fencing");
         checks += NativeViewTests.Run();
         checks += ClaudeTerminalTests.Run(root, policy);
         checks += NativeChannelTests.Run(root).GetAwaiter().GetResult();
