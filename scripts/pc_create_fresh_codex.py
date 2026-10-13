@@ -53,9 +53,11 @@ def create(args):
         raise ValueError('Fresh owner-controlled empty receipt directory required')
     os.chmod(directory, 0o700)
     attest_workspaces([args.workspace])
+    new_topic = getattr(args, 'mode', 'existing-topic') == 'new-topic'
+    topic_label = 'pending creation' if new_topic else str(args.topic)
     checkpoint = ('[Enrollment checkpoint; not a request to start work.] '
-                  f'Pouya requested a fresh session for the existing {args.name} topic '
-                  f'in forum {args.chat}, topic {args.topic}. Workspace: {args.workspace}. '
+                  f'Pouya requested a fresh session for the {"new" if new_topic else "existing"} {args.name} topic '
+                  f'in forum {args.chat}, topic {topic_label}. Workspace: {args.workspace}. '
                   'Do not replay historical messages or start project work or a goal. '
                   'Wait for the next human input. Other forum participants have conversation '
                   'access only when the router explicitly authorizes their accounts; they '
@@ -88,6 +90,19 @@ def create(args):
         call('initialize', {'clientInfo': {'name': 'ccrelay_fresh_enrollment', 'version': '1'},
                             'capabilities': {'experimentalApi': True}})
         channel.send({'method': 'initialized', 'params': {}}, time.monotonic() + 15)
+        if getattr(args, 'existing_thread', None):
+            stored = call('thread/read', {'threadId': args.existing_thread, 'includeTurns': False})['thread']
+            path = Path(stored['path'])
+            if (stored['id'] != args.existing_thread or stored['cwd'] != args.workspace or
+                    not str(path).startswith('/Users/pouya/.codex/sessions/') or path.is_symlink() or not path.is_file()):
+                raise RuntimeError('Existing exact persisted session required; no fallback or fork')
+            result = {'phase': 'native-session-ready-existing-session', 'thread': stored['id'],
+                      'chat': args.chat, 'topic': args.topic, 'name': args.name,
+                      'workspace': args.workspace, 'sourceUpdate': args.source_update,
+                      'backend': 'codex', 'runtime': 'linux', 'nativeOwnerUid': os.geteuid(),
+                      'modelsStarted': 0, 'unknownEffects': 0, 'complete': True, 'historyPreserved': True}
+            save_new(directory, 'result.json', result)
+            return result
         started = call('thread/start', {
             'cwd': args.workspace, 'approvalPolicy': 'never', 'approvalsReviewer': 'user',
             'permissions': ':danger-full-access', 'allowProviderModelFallback': False}, effect=True)
@@ -100,7 +115,7 @@ def create(args):
             'type': 'message', 'role': 'user',
             'content': [{'type': 'input_text', 'text': checkpoint}]}]}, effect=True)
         call('thread/name/set', {'threadId': thread_id,
-                                'name': f'{args.name} (topic {args.topic})'}, effect=True)
+                                'name': args.name if new_topic else f'{args.name} (topic {args.topic})'}, effect=True)
         stored = call('thread/read', {'threadId': thread_id, 'includeTurns': True})['thread']
         path = Path(stored['path'])
         if (stored['id'] != thread_id or stored['cwd'] != args.workspace or
@@ -111,7 +126,7 @@ def create(args):
         if not checkpoint_persisted(raw, thread_id, checkpoint):
             raise RuntimeError('Enrollment checkpoint not persisted; do not inject again')
         verify()
-        result = {'phase': 'native-session-ready-existing-topic', 'thread': thread_id,
+        result = {'phase': 'native-session-ready-new-topic' if new_topic else 'native-session-ready-existing-topic', 'thread': thread_id,
                   'chat': args.chat, 'topic': args.topic, 'name': args.name,
                   'workspace': args.workspace, 'sourceUpdate': args.source_update,
                   'backend': 'codex', 'runtime': 'linux', 'model': started['model'],
@@ -130,9 +145,12 @@ if __name__ == '__main__':
     parser.add_argument('--workspace', required=True)
     parser.add_argument('--name', required=True)
     parser.add_argument('--chat', type=int, required=True)
-    parser.add_argument('--topic', type=int, required=True)
+    parser.add_argument('--topic', type=int, default=0)
+    parser.add_argument('--mode', choices=('existing-topic', 'new-topic'), default='existing-topic')
+    parser.add_argument('--existing-thread', type=lambda value: str(uuid.UUID(value)))
     parser.add_argument('--source-update', type=int, required=True)
     args = parser.parse_args()
-    if args.chat >= 0 or args.topic <= 0 or args.source_update <= 0 or not 1 <= len(args.name) <= 128 or any(ord(c) < 32 for c in args.name):
+    valid_topic = args.topic == 0 if args.mode == 'new-topic' else args.topic > 0
+    if args.chat >= 0 or not valid_topic or args.source_update <= 0 or not 1 <= len(args.name) <= 128 or any(ord(c) < 32 for c in args.name):
         parser.error('Exact existing forum/topic/name receipt required')
     print(json.dumps(create(args), separators=(',', ':')))

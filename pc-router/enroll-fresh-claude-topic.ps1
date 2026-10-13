@@ -55,7 +55,7 @@ if($Phase -eq 'fence'){
  if([DateTimeOffset]$s.status.at -lt [DateTimeOffset]::UtcNow.AddMinutes(-2)){throw 'Stale live status'}
  $source=@($s.bindings|Where-Object ThreadId -eq $SourceThreadId)
  $created=Get-Content "$nativeRoot\codex-topic-$ThreadId\result.json" -Raw -Encoding UTF8|ConvertFrom-Json
- if($source.Count -ne 1 -or $source[0].Backend -ne 'claude' -or $source[0].Runtime -ne 'linux' -or
+ if($source.Count -ne 1 -or $source[0].Backend -notin @('claude','codex') -or $source[0].Runtime -ne 'linux' -or
   $created.phase -ne 'created-not-bound' -or $created.thread -ne $ThreadId -or $created.chat -ne $source[0].Chat -or
   @($s.bindings|Where-Object {$_.ThreadId -eq $ThreadId -or $_.Chat -eq $created.chat -and $_.Topic -eq $created.topic}).Count){throw 'Same-forum source and unbound exact creation result required'}
  $p=Get-Content "$root\config.json" -Raw -Encoding UTF8|ConvertFrom-Json
