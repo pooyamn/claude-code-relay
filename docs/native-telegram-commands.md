@@ -144,6 +144,15 @@ exact destination for inspection; no replacement conversation or replay.
 Legacy Claude model changes relaunch the same ID with `--model`, rather than
 relying on a live setting that can retain the previous cached model.
 
+October 14 correction: the Claude switch launcher now uses the same topic-scoped
+uncertainty fence as input dispatch and host admission. An ambiguous upload in
+another confirmed topic remains untouched but cannot block this switch. Own-topic,
+native, unscoped and uncertain intake effects still block it. Headfix's original
+`cc model opus` completed using its already-reserved Claude ID after protected
+inspection proved that no native launch or handoff had occurred. This narrow
+prelaunch continuation does not allow retrying ambiguous handoffs or replaying
+later held text. The regression fixtures run in the existing release gate.
+
 This paired launcher covers the nine activated **Linux** topic workspaces,
 including DUT and CC relay. Windows LG has no reviewed Claude launcher and
 refuses cross-tool switching. Existing native `/model` and other supported

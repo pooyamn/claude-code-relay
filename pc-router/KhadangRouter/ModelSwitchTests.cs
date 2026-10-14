@@ -18,7 +18,7 @@ public static class ModelSwitchTests
         var binding = new Binding(policy.ChatId, 42, "Model fixture", LinuxCodexRuntime.WorkspaceRoot + "/duts", "saved-codex", Runtime: "linux");
         var flags = BindingFlags.NonPublic | BindingFlags.Instance;
         var type = typeof(Router).GetNestedType("Session", BindingFlags.NonPublic)!;
-        foreach (var scenario in new[] { "roundtrip", "fresh-codex", "busy", "held", "active-goal", "invalid-model", "handoff-unknown", "wrong-slot" })
+        foreach (var scenario in new[] { "roundtrip", "fresh-codex", "busy", "held", "active-goal", "invalid-model", "handoff-unknown", "wrong-slot", "prelaunch-reconciled", "prelaunch-wrong-model", "prelaunch-ambiguous" })
         {
             using var ledger = new Ledger(Path.Combine(root, "model-switch-" + scenario + ".db"));
             var source = scenario == "fresh-codex" ? binding with { Backend = "claude", ThreadId = "ae788b3a-c096-4b34-aa27-7cb02009305f" } : binding;
@@ -43,16 +43,26 @@ public static class ModelSwitchTests
                 message_thread_id = source.Topic, text = "Preserve socket nets; ask me about PB15 before editing." } });
             ledger.Receive(1, update.GetRawText()); ledger.Claim(1); ledger.Finish(1, "accepted");
             if (scenario == "wrong-slot") ledger.Put(ModelCommand.Slot(source.Address, "claude"), source with { Backend = "claude", Topic = 43 });
+            var reserved = source with { Backend = "claude", ThreadId = "9140d09f-b2ac-40da-bc1a-197f3e4a5a25" };
+            if (scenario.StartsWith("prelaunch-", StringComparison.Ordinal))
+            {
+                ledger.Put(ModelCommand.Slot(source.Address, "claude"), reserved);
+                ledger.Put("model-switch/" + source.Chat + "/" + source.Topic, new { phase = "prelaunch-reconciled", source,
+                    target = reserved, requestedModel = scenario == "prelaunch-wrong-model" ? "sonnet" : "opus",
+                    nativeLaunchAttempted = false, handoffSent = scenario == "prelaunch-ambiguous",
+                    handoff = "Exact previously captured fixture context; no action replay." });
+            }
             async Task Switch(object current, string model) => await (Task)typeof(Router).GetMethod("SwitchModel", flags)!.Invoke(router, new[] { current, model, CancellationToken.None, (object)true })!;
             try
             {
                 await Switch(session, source.Backend == "claude" ? "cx" : scenario == "invalid-model" ? "opus\n--continue" : "opus");
-                if (scenario is "held" or "wrong-slot" or "handoff-unknown") throw new Exception("Unsafe switch accepted");
+                if (scenario is "held" or "wrong-slot" or "handoff-unknown" or "prelaunch-wrong-model" or "prelaunch-ambiguous") throw new Exception("Unsafe switch accepted");
             }
             catch (InvalidOperationException) when (scenario == "held") { checks++; }
             catch (InvalidDataException) when (scenario == "wrong-slot") { checks++; }
+            catch (InvalidDataException) when (scenario is "prelaunch-wrong-model" or "prelaunch-ambiguous") { checks++; }
             catch (IOException) when (scenario == "handoff-unknown") { checks++; }
-            if (scenario is "busy" or "held" or "active-goal" or "invalid-model" or "wrong-slot")
+            if (scenario is "busy" or "held" or "active-goal" or "invalid-model" or "wrong-slot" or "prelaunch-wrong-model" or "prelaunch-ambiguous")
             {
                 Check(ledger.Bindings().Single() == source && factory.Opened.Count == 0 && linux.Injects.Count == 0, "Rejected control cannot change topic or send a prompt: " + scenario);
                 continue;
@@ -66,6 +76,13 @@ public static class ModelSwitchTests
                 continue;
             }
             var destination = ledger.Bindings().Single();
+            if (scenario == "prelaunch-reconciled")
+            {
+                Check(destination == reserved && factory.Opened.Single().Fresh &&
+                    factory.Opened.Single().Native.Sends.Single() == "Exact previously captured fixture context; no action replay.",
+                    "Verified prelaunch continuation reuses reserved native ID and captured context, sends first handoff once");
+                continue;
+            }
             Check(destination.Address == source.Address && destination.Workspace == source.Workspace && destination.Runtime == "linux" && destination.Backend != source.Backend, "Switch preserves exact topic, runtime and worktree");
             var handoff = destination.Backend == "claude" ? factory.Opened.Single().Native.Sends.Single() : linux.Injects.Single();
             Check(handoff.Contains("PB15") && handoff.Contains("Preserve socket nets") && handoff.Contains(" M board.kicad_pcb") && handoff.Contains("No pending approval is transferred"), "Actual destination receives bounded task, answer, dirty worktree and approval handoff");

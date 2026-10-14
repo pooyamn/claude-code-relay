@@ -11,12 +11,13 @@ public static class ClaudeWorkerTests
         void Check(bool condition, string name) { if (!condition) throw new Exception(name); checks++; }
         var binding = new Binding(-100123, 42, "Idle fixture", "/Users/pouya/.openclaw/workspace/fixture",
             "98b493a3-a1a4-4ef2-b7da-b9bf48ece0fe", "claude", "linux");
-        foreach (var scenario in new[] { "other-topic-upload", "same-topic-upload", "native-unknown", "unscoped-upload", "dispatching-input" })
+        foreach (var scenario in new[] { "other-topic-upload", "same-topic-upload", "native-unknown", "unscoped-upload", "dispatching-input", "unknown-input" })
         {
             var sourcePath = Path.Combine(root, "host-admission-" + scenario + ".db"); string? effect = null;
             using (var source = new Ledger(sourcePath))
             {
                 if (scenario == "dispatching-input") { source.Receive(1,"{}"); source.Claim(1); }
+                else if (scenario == "unknown-input") { source.Receive(1,"{}"); source.Claim(1); source.Finish(1,"unknown"); }
                 else
                 {
                     effect = source.Attempt(scenario == "native-unknown" ? "native/turn/steer" : "telegram/sendDocument",
@@ -25,18 +26,29 @@ public static class ClaudeWorkerTests
                 }
                 if (scenario == "other-topic-upload")
                 {
+                    var before = source.Query("SELECT payload,status FROM operations WHERE id=?", effect!)[0];
+                    LinuxClaudeTopics.RequireSwitchAdmission(source, binding);
+                    Check(before.SequenceEqual(source.Query("SELECT payload,status FROM operations WHERE id=?", effect!)[0]),
+                        "Claude switch ignores only unrelated destination, leaving original upload payload/status byte-identical");
                     ClaudeWorkerHost.RequireSourceAdmission(source,binding,true);
                     Check(source.Unknown==1 && source.Query("SELECT status FROM operations WHERE id=?",effect!)[0][0]=="unknown",
                         "Restarted host may admit unrelated exact worker without confirming/replaying an uncertain upload");
                 }
                 else
                 {
+                    if (scenario == "dispatching-input")
+                    { LinuxClaudeTopics.RequireSwitchAdmission(source, binding); checks++; } // Current explicit command is dispatching.
+                    else
+                    {
+                        try { LinuxClaudeTopics.RequireSwitchAdmission(source, binding); throw new Exception("Unsafe switch admission"); }
+                        catch (InvalidDataException) { checks++; }
+                    }
                     try { ClaudeWorkerHost.RequireSourceAdmission(source,binding,true); throw new Exception("Unsafe worker admission"); }
                     catch(InvalidOperationException){checks++;}
                 }
             }
             using var resumed = Ledger.ReadOnly(sourcePath);
-            if(scenario=="other-topic-upload") {ClaudeWorkerHost.RequireSourceAdmission(resumed,binding,true);checks++;}
+            if(scenario=="other-topic-upload") {ClaudeWorkerHost.RequireSourceAdmission(resumed,binding,true);LinuxClaudeTopics.RequireSwitchAdmission(resumed,binding);checks+=2;}
             else {try {ClaudeWorkerHost.RequireSourceAdmission(resumed,binding,true);throw new Exception("Unsafe read-only admission");}catch(InvalidOperationException){checks++;}}
         }
         var path = Path.Combine(root, "claude-worker-private.db");

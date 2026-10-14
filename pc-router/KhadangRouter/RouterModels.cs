@@ -59,12 +59,21 @@ public sealed partial class Router
         { await Reply("Codex has active work, a goal, or a pending request. Pause /goal and finish or /cancel before switching."); return; }
         var key = ModelCommand.Slot(source.Binding.Address, backend);
         var intentKey = $"model-switch/{source.Binding.Chat}/{source.Binding.Topic}";
-        if (ledger.Get(intentKey) is { } unfinished && unfinished.GetProperty("phase").GetString() != "committed")
+        var unfinished = ledger.Get(intentKey);
+        var reconciled = unfinished is { } prior && prior.GetProperty("phase").GetString() == "prelaunch-reconciled";
+        if (unfinished is { } pending && pending.GetProperty("phase").GetString() != "committed" && !reconciled)
             throw new InvalidOperationException("Earlier switch is incomplete; inspect its exact destination and handoff, never create another session or replay it");
         Binding? target = ledger.Get(key) is { } slot ? JsonSerializer.Deserialize<Binding>(slot.GetRawText()) : null;
         if (backend == source.Binding.Backend) target = source.Binding;
         if (target != null && (target.Address != source.Binding.Address || target.Workspace != source.Binding.Workspace || target.Runtime != source.Binding.Runtime || target.Backend != backend))
             throw new InvalidDataException("Saved model slot does not belong to this topic/workspace");
+        if (reconciled && (backend != "claude" || source.Binding.Backend != "codex" || target == null ||
+            unfinished!.Value.GetProperty("source").Deserialize<Binding>() != source.Binding ||
+            unfinished.Value.GetProperty("target").Deserialize<Binding>() != target ||
+            !string.Equals(unfinished.Value.GetProperty("requestedModel").GetString(), model, StringComparison.OrdinalIgnoreCase) ||
+            unfinished.Value.GetProperty("nativeLaunchAttempted").ValueKind != JsonValueKind.False ||
+            unfinished.Value.GetProperty("handoffSent").ValueKind != JsonValueKind.False))
+            throw new InvalidDataException("Protected prelaunch reconciliation must match the exact source, reserved destination and model");
         // Resolve real GPT identifiers before making any new-session intent.
         string? gpt = null;
         if (backend == "codex" && model.ToLowerInvariant() is not ("cx" or "codex"))
@@ -77,11 +86,11 @@ public sealed partial class Router
         }
         await FlushBubble(source, stop);
         if (source.Held || source.SendUnknown || ledger.InputUnknown(source.Binding) != 0) throw new InvalidOperationException("Final delivery unconfirmed; tool switch held");
-        var handoff = await SwitchHandoff(source, stop);
+        var handoff = reconciled ? unfinished!.Value.GetProperty("handoff").GetString()! : await SwitchHandoff(source, stop);
         var nonce = Guid.NewGuid().ToString("N");
         ledger.Put(ModelCommand.Slot(source.Binding.Address, source.Binding.Backend), source.Binding);
         ledger.Put(intentKey, new { phase = "preparing", nonce, source = source.Binding, target, handoff, requestedModel = model });
-        var fresh = target == null;
+        var fresh = target == null || reconciled;
         Session destination; bool sourceClosed = false;
         if (backend == "codex")
         {

@@ -17,10 +17,11 @@ public sealed partial class LinuxClaudeTopics
     {
         if (runtime == null || !selected.TryGetValue(source.Address, out var enrolled) || enrolled.Workspace != source.Workspace ||
             source.Address != target.Address || source.Workspace != target.Workspace || source.Runtime != "linux" || target.Runtime != "linux" ||
-            target.Backend != "claude" || !LinuxClaudeRuntime.Session(target.ThreadId) || ledger.Unknown != 0 ||
+            target.Backend != "claude" || !LinuxClaudeRuntime.Session(target.ThreadId) ||
             ledger.Get(ModelCommand.Slot(target.Address, "claude")) is not { } slot || JsonSerializer.Deserialize<Binding>(slot.GetRawText()) != target)
             throw new InvalidDataException("Exact protected owner topic-switch enrollment required");
         policy.ValidateBindings([target]);
+        RequireSwitchAdmission(ledger, target);
         if (model != null && !System.Text.RegularExpressions.Regex.IsMatch(model, @"\A[A-Za-z0-9][A-Za-z0-9._\[\]-]*\z")) throw new InvalidDataException("Literal native model required");
         if (policy.PersistentClaudeWorkers)
             return await ClaudeWorkerClient.Open(policy, ledger, target, source, fresh, model, stop);
@@ -66,6 +67,14 @@ public sealed partial class LinuxClaudeTopics
         if (runtime.GuardedRecovery)
             ledger.Put(RecoveryKey(target), new { binding = target, sha256 = digest, model, state = "connected", at = DateTimeOffset.UtcNow });
         return new ClaudeNativeStream(channel, ledger, target.ThreadId);
+    }
+    internal static void RequireSwitchAdmission(Ledger ledger, Binding target)
+    {
+        // Match input and host admission: an uncertain send in an explicitly
+        // different topic cannot stop this owner-requested tool switch. Keep
+        // its receipt untouched; same-topic/native/unscoped effects still fence.
+        if (ledger.InputUnknown(target) != 0)
+            throw new InvalidDataException("Uncertain input holds this exact Claude switch; no replacement or replay");
     }
     private LinuxClaudeRuntime For(Binding target, string digest, string? model = null)
     {
