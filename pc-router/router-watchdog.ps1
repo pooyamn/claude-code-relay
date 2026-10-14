@@ -1,0 +1,75 @@
+param([switch]$SelfTest)
+$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
+
+# Pure decision function: no processes, credentials, files or native input.
+function Get-RouterWatchdogAction([hashtable]$Snapshot) {
+ if($Snapshot.service -notin @('Stopped','Running')){return 'Wait'}
+ if($Snapshot.recentAttempts -ge 3){return 'Cooldown'}
+ if($Snapshot.service -eq 'Stopped'){return 'Start'}
+ if($Snapshot.processAgeSeconds -lt 180){return 'Wait'}
+ if($Snapshot.statusAgeSeconds -le 90 -and $Snapshot.pollAgeSeconds -le 120){return 'Healthy'}
+ if($Snapshot.consecutiveBad -lt 2){return 'Observe'}
+ return 'RestartRouterOnly'
+}
+if($SelfTest){
+ $tests=0
+ function Check($Expected,[hashtable]$S){$script:tests++;if((Get-RouterWatchdogAction $S) -ne $Expected){throw 'Watchdog decision regression'}}
+ $healthy=@{service='Running';recentAttempts=0;processAgeSeconds=500;statusAgeSeconds=1;pollAgeSeconds=30;consecutiveBad=0}
+ Check 'Healthy' $healthy
+ $s=$healthy.Clone();$s.service='Stopped';Check 'Start' $s
+ $s=$healthy.Clone();$s.service='StartPending';Check 'Wait' $s
+ $s=$healthy.Clone();$s.processAgeSeconds=20;$s.statusAgeSeconds=500;Check 'Wait' $s
+ $s=$healthy.Clone();$s.statusAgeSeconds=95;$s.consecutiveBad=1;Check 'Observe' $s
+ $s.consecutiveBad=2;Check 'RestartRouterOnly' $s
+ $s=$healthy.Clone();$s.pollAgeSeconds=125;$s.consecutiveBad=2;Check 'RestartRouterOnly' $s
+ $s=$healthy.Clone();$s.recentAttempts=3;Check 'Cooldown' $s
+ $s.service='Stopped';Check 'Cooldown' $s
+ $s=$healthy.Clone();$s.pollAgeSeconds=60;Check 'Healthy' $s
+ [Console]::WriteLine("Passed $tests watchdog decisions (no services/network/models)");return
+}
+
+$root='C:\ProgramData\KhadangRouter';$native='C:\ProgramData\OracovaNativeRemote'
+$identity=[Security.Principal.WindowsIdentity]::GetCurrent()
+if($env:COMPUTERNAME -ne 'DESKTOP-8SO9HDK' -or -not $identity.IsSystem -or [Diagnostics.Process]::GetCurrentProcess().SessionId -ne 0){throw 'SYSTEM session-zero watchdog required'}
+$lease=$null
+try{
+ try{$lease=[IO.File]::Open("$root\state\watchdog.lock",'OpenOrCreate','ReadWrite','None')}catch [IO.IOException]{return}
+ $service=Get-CimInstance Win32_Service -Filter "Name='KhadangRouter'"
+ $expected='"'+$root+'\bin\KhadangRouter.exe" --service --config "'+$root+'\config.json"'
+ if(-not $service -or $service.StartName -ne 'LocalSystem' -or $service.PathName -cne $expected -or $service.StartMode -ne 'Manual'){throw 'Unexpected service configuration; no recovery'}
+ $proof=Get-Content "$root\state\probe.json" -Raw -Encoding UTF8|ConvertFrom-Json
+ if(-not $proof.verified -or -not $proof.credentialAndCodeDenied -or
+  (Get-FileHash "$root\bin\KhadangRouter.dll").Hash -ne $proof.routerSha256 -or
+  (Get-FileHash "$root\config.json").Hash -ne $proof.policySha256){throw 'Unreviewed code/policy; no recovery'}
+ $startup="$native\router-startup.ps1"
+ if((Get-FileHash $startup).Hash -ne '2B4692B2F9DDD8B3F73A42186546D3B892326C32A319FF816586AC3ED94D5665'){throw 'Startup supervisor changed; no recovery'}
+ $now=[DateTimeOffset]::UtcNow;$file="$root\state\watchdog.json"
+ $prior=if(Test-Path $file){Get-Content $file -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
+ $attempts=@($prior.attempts|Where-Object {[DateTimeOffset]$_ -gt $now.AddMinutes(-10)})
+ $statusAge=1e9;$pollAge=1e9;$processAge=0
+ if($service.State -eq 'Running'){
+  $process=Get-Process -Id $service.ProcessId -ErrorAction Stop
+  $processAge=($now-[DateTimeOffset]$process.StartTime).TotalSeconds
+  # A concurrent status write or missing heartbeat is an observation, not
+  # immediate permission to restart. Require two consecutive bad cycles.
+  try{$s=Get-Content "$root\state\status.json" -Raw -Encoding UTF8|ConvertFrom-Json
+   $statusAge=($now-[DateTimeOffset]$s.at).TotalSeconds
+   $pollAge=($now-[DateTimeOffset]$s.lastPollAttempt).TotalSeconds
+   if($statusAge -lt -30 -or $pollAge -lt -30){$statusAge=1e9;$pollAge=1e9}
+  }catch{$statusAge=1e9;$pollAge=1e9}
+ }
+ $bad=if($statusAge -gt 90 -or $pollAge -gt 120){1+[int]$prior.consecutiveBad}else{0}
+ $action=Get-RouterWatchdogAction @{service=$service.State;recentAttempts=$attempts.Count;processAgeSeconds=$processAge;statusAgeSeconds=$statusAge;pollAgeSeconds=$pollAge;consecutiveBad=$bad}
+ if($action -in @('Start','RestartRouterOnly')){$attempts+=($now.ToString('o'))}
+ # Commit the bounded attempt BEFORE the external lifecycle operation.
+ $record=@{at=$now.ToString('o');action=$action;attempts=$attempts;consecutiveBad=$bad;service=$service.State;statusAgeSeconds=$statusAge;pollAgeSeconds=$pollAge}|ConvertTo-Json -Compress
+ $tmp=$file+'.new';[IO.File]::WriteAllText($tmp,$record,[Text.UTF8Encoding]::new($false))
+ if(Test-Path $file){[IO.File]::Replace($tmp,$file,$null)}else{[IO.File]::Move($tmp,$file)}
+ if($action -eq 'RestartRouterOnly'){
+  # Never stop the independent Claude custody host or the Codex daemon;
+  # never alter, confirm, clear or replay delivery journals.
+  Stop-Service KhadangRouter
+  (Get-Service KhadangRouter).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(30))
+ }
+ if($action -in @('Start','RestartRouterOnly')){& $startup}
+}finally{if($lease){$lease.Dispose()}}

@@ -99,6 +99,7 @@ public sealed partial class Router
 
     private async Task FlushBubble(Session session, CancellationToken stop)
     {
+        if (session.PreserveSavedBubble) return; // Original opaque outbox remains untouched.
         await session.Output.WaitAsync(stop);
         try { await FlushBubbleCore(session, stop); }
         finally { session.Output.Release(); }

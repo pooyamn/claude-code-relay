@@ -52,6 +52,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         public bool SendUnknown { get => Response.SendUnknown; set => Response.SendUnknown = value; }
         public string Status = "Ready";
         public bool Busy, Dirty, Held;
+        public bool PreserveSavedBubble;
         public long Revision;
         public readonly Dictionary<string, JsonElement> Items = new();
         public readonly HashSet<string> DeltaItems = new();
@@ -75,6 +76,8 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
     private readonly IAttachments attachmentStore = attachments ?? new Attachments(policy, ledger, telegram);
     private readonly IOutboundFiles fileStore = outboundFiles ?? new OutboundFiles(policy, linuxRpc);
     private DateTimeOffset lastStart = DateTimeOffset.MinValue;
+    private readonly object statusGate = new();
+    private DateTimeOffset lastPollAttempt;
 
     public async Task Run(CancellationToken stop, bool canary = false)
     {
@@ -83,6 +86,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         var ownedClaude = new List<IClaudeNative>();
         Task edits = Task.CompletedTask;
         Task typing = Task.CompletedTask;
+        Task heartbeat = Task.CompletedTask;
         var bindings = ledger.Bindings();
         // Validate the WHOLE registry and bubble destinations before the first
         // native resume. A bad later row must not leave earlier tasks resumed.
@@ -115,12 +119,23 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         {
             var native = binding.Runtime == "linux" && binding.Backend == "codex" ? linuxRpc! : rpc;
             var session = new Session(binding, native);
+            Exception? attachmentError = null;
             if (binding.Backend == "claude")
             {
+              try
+              {
                 session.Claude = await claudeTopics!.Open(binding, stop);
                 ownedClaude.Add(session.Claude);
                 if (!session.Claude.Connected || session.Claude.SessionId != binding.ThreadId)
                     throw new InvalidDataException("Claude adapter does not own the exact selected session");
+              }
+              catch (Exception error) when (StartupRouteFailure(error, stop))
+              {
+                  if (session.Claude is { } acquired)
+                  { ownedClaude.Remove(acquired); await acquired.DisposeAsync(); }
+                  session.Claude = new UnavailableClaude(binding.ThreadId);
+                  attachmentError = error;
+              }
             }
             if (ledger.Get("bubble/" + binding.ThreadId) is { } saved)
             {
@@ -141,18 +156,31 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 session.Held = saved.GetProperty("held").GetBoolean() || saved.GetProperty("busy").GetBoolean() && session.RestoreTurn == null && !continuousClaude;
                 session.Status = session.Held ? "Held — reconcile interrupted turn" : saved.GetProperty("status").GetString()!;
                 session.Carried = TimeSpan.FromMilliseconds(saved.GetProperty("elapsedMs").GetDouble());
-                RestorePendingBubbles(session, saved);
-                RestoreAnswer(session.Response, saved);
+                try { RestorePendingBubbles(session, saved); RestoreAnswer(session.Response, saved); }
+                catch (Exception error) when (error is InvalidDataException or JsonException)
+                {
+                    // Keep the complete opaque original outbox. Do not truncate
+                    // it or persist a partially restored replacement.
+                    session.PreserveSavedBubble = true; attachmentError = error;
+                }
                 if (saved.TryGetProperty("lastAnswer", out var lastAnswer)) session.LastAnswer = lastAnswer.GetString()!;
                 if (saved.TryGetProperty("claudeDeliveryHold", out var deliveryHold) && deliveryHold.ValueKind == JsonValueKind.Object)
                     session.DeliveryHold = deliveryHold.Deserialize<ClaudeDeliveryHold>();
                 if (session.Response.Answer.Unknown) { session.Held = true; session.Status = "Held — final answer delivery unconfirmed"; }
                 session.Dirty = true;
             }
-            sessions[binding.Address] = session;
-            if (session.Claude == null) await ResumeCodex(session, stop);
-            if (session.Claude is { } claude)
+            if (session.PreserveSavedBubble && session.Claude is { } frozen && frozen is not UnavailableClaude)
             {
+                ownedClaude.Remove(frozen); await frozen.DisposeAsync();
+                session.Claude = new UnavailableClaude(binding.ThreadId);
+            }
+            sessions[binding.Address] = session;
+            if (attachmentError != null) HoldStartupRoute(session, attachmentError);
+            if (session.Claude == null) await ResumeCodex(session, stop);
+            if (session.Claude is { } claude && claude is not UnavailableClaude && !session.PreserveSavedBubble)
+            {
+              try
+              {
                 session.ClaudeHandler = message => OnClaude(session, message);
                 claude.Notification += session.ClaudeHandler;
                 var revision = session.ClaudeStateRevision;
@@ -180,6 +208,15 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                     session.ClaudeRemoteState = "ready"; session.ClaudeRemoteUrl = remoteReceipt.SessionUrl;
                     session.Bubble.Append("\nClaude app: " + remoteReceipt.SessionUrl + "\n"); Touch(session);
                 }
+                ledger.Exec("DELETE FROM meta WHERE key=?", "startup-held/" + binding.ThreadId);
+              }
+              catch (Exception error) when (StartupRouteFailure(error, stop))
+              {
+                  claude.Notification -= session.ClaudeHandler;
+                  ownedClaude.Remove(claude); await claude.DisposeAsync();
+                  session.Claude = new UnavailableClaude(binding.ThreadId);
+                  HoldStartupRoute(session, error);
+              }
             }
         }
         if (sessions.Count == 0) await CreateLg(stop);
@@ -195,6 +232,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         }
         edits = Task.Run(() => EditLoop(stop), stop);
         typing = Task.Run(() => TypingLoop(stop), stop);
+        heartbeat = Task.Run(() => HeartbeatLoop(stop), stop);
             await Menus(stop);
             if (canary && ledger.Get("native-canary") == null)
             {
@@ -210,7 +248,8 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             while (!stop.IsCancellationRequested)
             {
                 JsonElement batch;
-                try { batch = await telegram.Call("getUpdates", new { offset = ledger.Offset, timeout = 25, limit = 50,
+                try { lock(statusGate) lastPollAttempt = DateTimeOffset.UtcNow;
+                    batch = await telegram.Call("getUpdates", new { offset = ledger.Offset, timeout = 25, limit = 50,
                     allowed_updates = new[] { "message" } }, stop); }
                 catch (TelegramFailure error) when (error.Code is 0 or 429)
                 {
@@ -242,9 +281,29 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 }
             await Task.WhenAll(ownedClaude.Distinct<IClaudeNative>(ReferenceEqualityComparer.Instance).Select(c => c.DisposeAsync().AsTask()));
             await Task.WhenAll(switchedClaude.Values.Distinct<IClaudeNative>(ReferenceEqualityComparer.Instance).Select(c => c.DisposeAsync().AsTask()));
-            try { await Task.WhenAll(handlers.Values.Append(edits).Append(typing)); } catch (OperationCanceledException) { }
+            try { await Task.WhenAll(handlers.Values.Append(edits).Append(typing).Append(heartbeat)); } catch (OperationCanceledException) { }
             await receiptTyping.Drain();
         }
+    }
+
+    private static bool StartupRouteFailure(Exception error, CancellationToken stop) => !stop.IsCancellationRequested &&
+        error is IOException or InvalidDataException or InvalidOperationException or UnauthorizedAccessException or TimeoutException or JsonException;
+
+    private void HoldStartupRoute(Session session, Exception error)
+    {
+        session.Held = true; session.Status = "Held — exact native worker unavailable; input not replayed";
+        // Availability is not evidence of an interrupted/uncertain native
+        // action. Keep the original recovery evidence byte-for-byte so a
+        // temporary refusal cannot manufacture a permanent native hold.
+        session.PreserveSavedBubble = true; session.Dirty = false;
+        ledger.Put("startup-held/" + session.Binding.ThreadId, new { binding = session.Binding,
+            errorType = error.GetType().Name, preservesOriginalOutbox = session.PreserveSavedBubble, at = DateTimeOffset.UtcNow });
+    }
+
+    private async Task HeartbeatLoop(CancellationToken stop)
+    {
+        while (!stop.IsCancellationRequested)
+        { StatusFile(); await Task.Delay(TimeSpan.FromSeconds(15), stop); }
     }
 
     private async Task CreateLg(CancellationToken stop)
@@ -327,6 +386,13 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             // backend. Synthetic deployment inputs and service events are quiet.
             if (updateId >= 0 && new[] { "text", "photo", "document", "audio", "video", "voice", "animation", "sticker", "video_note" }
                 .Any(key => message.TryGetProperty(key, out _))) receiptTyping.Observe(address, stop);
+            if (session.Claude is UnavailableClaude || session.PreserveSavedBubble)
+            {
+                ledger.Finish(updateId, "held-no-replay");
+                await telegram.Send(address.Chat, address.Topic,
+                    "This exact topic is held for native recovery. Your message is retained, not sent to another session or replayed. Other healthy topics remain available.", stop);
+                return;
+            }
             if (message.TryGetProperty("text", out var modelText) && modelText.ValueKind == JsonValueKind.String &&
                 !new[] { "photo", "document", "audio", "video", "voice", "animation", "sticker", "video_note", "media_group_id" }.Any(key => message.TryGetProperty(key, out _)) &&
                 ModelCommand.TryParse(modelText.GetString()!, policy.BotUsername, out var requestedModel))
@@ -856,6 +922,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
     private static string NativeStateKey(string key, string runtime) => runtime == "windows" ? key : key + "/" + runtime;
     private void Persist(Session session)
     {
+        if (session.PreserveSavedBubble) return;
         var goal = session.Goal.Snapshot;
         ledger.Put("bubble/" + session.Binding.ThreadId, new {
             chat = session.Binding.Chat, topic = session.Binding.Topic,
@@ -880,7 +947,8 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             result.GetProperty("sandbox").GetProperty("type").GetString() != policy.NativeSandboxType ||
             (id != null && result.GetProperty("thread").GetProperty("id").GetString() != id)) throw new InvalidOperationException("Native identity/workspace/security readback mismatch");
     }
-    private void StatusFile() => File.WriteAllText(Path.Combine(policy.StateDirectory, "status.json"), JsonSerializer.Serialize(new {
+    private void StatusFile()
+    { lock(statusGate) File.WriteAllText(Path.Combine(policy.StateDirectory, "status.json"), JsonSerializer.Serialize(new {
         host = Environment.MachineName, pcOnly = true, bot = policy.BotUsername, nativePid = rpc.Pid, offset = ledger.Offset,
         unknown = ledger.Unknown, presentationUnknown = ledger.PresentationUnknown, receiptTyping = receiptTyping.Snapshot,
         bindings = sessions.Values.Select(s => s.Binding), nativeQuota = quota.Snapshot,
@@ -888,5 +956,6 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         nativeLinuxRemote = linuxRemote.Snapshot,
         heldSessions = sessions.Values.Count(s => s.Held),
         nativeSessions = sessions.Values.Select(s => new { binding = s.Binding, pid = s.Claude?.Pid ?? s.Native.Pid,
-            claudeConnected = s.Claude?.Connected, held = s.Held, busy = s.Busy, status = DisplayStatus(s), turn = s.Turn }), at = DateTimeOffset.UtcNow }));
+            claudeConnected = s.Claude?.Connected, held = s.Held, busy = s.Busy, status = DisplayStatus(s), turn = s.Turn }),
+        lastPollAttempt, at = DateTimeOffset.UtcNow })); }
 }

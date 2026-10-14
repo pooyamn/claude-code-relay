@@ -78,14 +78,55 @@ public static class MixedRoutingTests
             catch (InvalidDataException) { Check(win.Calls.Count == 0 && linux.Calls.Count == 0 && topics.Opened.Count == 0 && bot.Menus.Count == 0,
                 "Mixed registry/provider preflight precedes ALL native/bot effects: " + bad); }
         }
-        foreach (var bad in new[] { "foreign-pin", "initialization-failure" })
+        foreach (var bad in new[] { "foreign-pin", "initialization-failure", "open-refused", "oversized-outbox" })
         {
             var path = Path.Combine(directory, bad); Directory.CreateDirectory(path);
-            using var ledger = new Ledger(Path.Combine(path, "router.db")); ledger.Bind(bindings[2]); ledger.Bind(bindings[3]);
-            var topics = new Topics(bad); var win = new Codex(policy); var bot = new Bot(policy, bindings);
-            try { await new Router(policy with { StateDirectory = path }, ledger, bot, win, claudeTopics: topics).Run(CancellationToken.None); throw new Exception("Bad Claude startup accepted"); }
-            catch (Exception error) when (error is InvalidDataException or IOException)
-            { Check(topics.Opened.Count == 2 && topics.Opened.All(c => c.Disposed) && bot.Menus.Count == 0, "Startup failure closes all acquired Claude streams, including the unregistered one: " + bad); }
+            using var ledger = new Ledger(Path.Combine(path, "router.db")); foreach(var b in bindings) ledger.Bind(b);
+            var unrelated = ledger.Attempt("telegram/sendDocument", new { chat_id = bindings[2].Chat, message_thread_id = 999 });
+            ledger.Outcome(unrelated, "unknown"); var original = ledger.Query("SELECT payload,status FROM operations WHERE id=?", unrelated)[0];
+            var topics = new Topics(bad); var win = new Codex(policy); var linux = new Codex(policy); var bot = new Bot(policy, bindings);
+            string? originalBubble = null;
+            if(bad!="oversized-outbox")
+            {
+                ledger.Put("bubble/"+Pin2,new {chat=bindings[3].Chat,topic=bindings[3].Topic,backend="claude",runtime="linux",
+                    tail="Original recovery evidence",message=903,sendUnknown=false,held=false,busy=false,status="Ready",elapsedMs=0});
+                originalBubble=ledger.Get("bubble/"+Pin2)!.Value.GetRawText();
+            }
+            if(bad=="oversized-outbox")
+            {
+                var answer = new FinalAnswerState(); answer.Consider("Retain this answer",true);answer.Complete();
+                ledger.Put("bubble/"+Pin2,new {chat=bindings[3].Chat,topic=bindings[3].Topic,backend="claude",runtime="linux",
+                    tail="Original",message=903,sendUnknown=false,held=true,busy=false,status="Held — original uncertainty",elapsedMs=0,
+                    pendingAnswers=Enumerable.Repeat(answer,257).ToArray(),customEvidence="must not be discarded"});
+                originalBubble=ledger.Get("bubble/"+Pin2)!.Value.GetRawText();
+            }
+            using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(12));
+            var run = new Router(policy with { StateDirectory = path }, ledger, bot, win, claudeTopics: topics, linuxRpc: linux).Run(stop.Token);
+            try
+            {
+                await bot.Ready.Task.WaitAsync(stop.Token);
+                Check(bot.Menus.Count == 3 && ledger.Get("startup-held/" + Pin2) != null,
+                    "Refused/mismatched Claude route is held without terminating Telegram intake: " + bad);
+                Check(topics.Opened.First().Connected && (bad == "open-refused" || topics.Opened.Last().Disposed),
+                    "Healthy worker stays attached; invalid acquired stream is detached: " + bad);
+                bot.Post(bot.Update(1, bindings[0], "Windows works"), bot.Update(2, bindings[1], "Linux works"),
+                    bot.Update(3, bindings[3], "Held worker input"), bot.Update(4, bindings[3], "cc model opus"));
+                await Wait(() => Enumerable.Range(1,4).All(i => Done(ledger,i)), stop.Token);
+                Check(win.Starts.Count == 1 && linux.Starts.Count == 1 && linux.Starts.All(s => s.GetProperty("threadId").GetString() == "linux-thread"),
+                    "Both healthy Codex runtimes dispatch despite unrelated upload and worker refusal: " + bad);
+                Check(ledger.Query("SELECT status FROM updates WHERE id IN (3,4)").All(r => r[0] == "held-no-replay") &&
+                    topics.Opened.All(c => c.Inputs.Count == 0), "Held Claude text/control never falls back to Codex or gets replayed: " + bad);
+                var retained = ledger.Query("SELECT payload,status FROM operations WHERE id=?", unrelated)[0];
+                Check(original.SequenceEqual(retained) && ledger.Unknown == 1, "Unknown document receipt remains byte-identical: " + bad);
+                if(originalBubble!=null) Check(ledger.Get("bubble/"+Pin2)!.Value.GetRawText()==originalBubble,
+                    "Original topic recovery/outbox evidence stays entirely byte-identical; no false permanent hold, truncation or replay");
+                var heartbeat = JsonDocument.Parse(File.ReadAllText(Path.Combine(path,"status.json"))).RootElement;
+                Check(heartbeat.TryGetProperty("lastPollAttempt",out _) && heartbeat.GetProperty("nativeSessions").EnumerateArray().Any(s =>
+                    s.GetProperty("binding").GetProperty("ThreadId").GetString()==Pin2 && s.GetProperty("pid").GetUInt32()==0),
+                    "Watchdog observes fresh intake and explicitly unavailable route without a fake native PID");
+            }
+            finally {stop.Cancel();try {await run;} catch(OperationCanceledException){} }
+            Check(topics.Opened.All(c=>c.Disposed), "Shutdown detaches every acquired client: "+bad);
         }
         foreach (var scenario in new[] { "initialize-race", "initialize-question", "media-race", "slow-usage", "failed-usage", "late-delivery", "ack-timeout-race", "late-unrelated-hold" })
         {
@@ -384,6 +425,7 @@ public static class MixedRoutingTests
         public List<Claude> Opened = [];
         public Task<IClaudeNative> Open(Binding binding, CancellationToken stop)
         {
+            if (failure == "open-refused" && binding.ThreadId == Pin2) throw new IOException("Claude host refused this exact session; no replacement or replay");
             var claude = new Claude(failure == "foreign-pin" && Opened.Count == 1 ? Guid.NewGuid().ToString("D") : binding.ThreadId,
                 failInitialize: failure == "initialization-failure" && Opened.Count == 1, scenario: failure, ledger: ledger);
             Opened.Add(claude); return Task.FromResult<IClaudeNative>(claude);

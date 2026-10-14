@@ -106,8 +106,7 @@ internal sealed class ClaudeWorkerHost : IAsyncDisposable
             current.Pipe.Dispose();
             await current.Broker.DisposeAsync(); current.Stop.Dispose(); workers.Remove(target.ThreadId);
         }
-        if (source.Unknown != 0 || request.Source == null && source.Query("SELECT id FROM updates WHERE status='dispatching'").Count != 0)
-            throw new InvalidOperationException("Uncertain router input holds native launch");
+        RequireSourceAdmission(source, target, request.Source == null);
         var directory = Root + "\\state\\" + target.ThreadId;
         if (!Directory.Exists(directory))
         {
@@ -149,6 +148,15 @@ internal sealed class ClaudeWorkerHost : IAsyncDisposable
             return endpoint;
         }
         catch { await broker.DisposeAsync(); throw; }
+    }
+    internal static void RequireSourceAdmission(Ledger source, Binding target, bool normalAttachment)
+    {
+        // Preserve every uncertain effect. Only a confirmed other-topic
+        // Telegram destination is irrelevant to this worker's admission.
+        // Native/unscoped uncertainty remains a conservative global fence.
+        if (source.InputUnknown(target) != 0 || normalAttachment &&
+            source.Query("SELECT id FROM updates WHERE status='dispatching'").Count != 0)
+            throw new InvalidOperationException("Uncertain router input holds this exact native launch");
     }
     private static async Task ServeWorker(NativeBroker broker, WindowsProtectedPipe pipe, CancellationToken stop)
     {

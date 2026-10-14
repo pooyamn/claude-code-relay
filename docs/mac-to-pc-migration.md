@@ -4128,3 +4128,43 @@ all worker epochs/pipes unchanged; DUT, DUT X and Base were ready. Startup
 supervision was reenabled. No synthetic native turn, fresh phone round trip,
 host restart or reboot was performed. Full identifiers are in
 [deployment-status.json](../pc-router/deployment-status.json).
+
+## Startup worker isolation and liveness watchdog (October 14, prepared)
+
+Read-only inspection found the router repeatedly stopping before Telegram
+polling with `Claude host refused this exact session; no replacement or replay`.
+The independent host had restarted, while the preserved Display upload was
+still unknown. Its global `source.Unknown` admission check unnecessarily
+blocked unrelated worker attachment; a worker refusal then terminated the
+entire router. The protected controller binding itself was correct.
+
+The candidate uses the existing topic-scoped `InputUnknown(binding)` gate for
+host source admission. Native, malformed and unscoped uncertainty still fences
+recovery, and worker-private journals/checkpoints retain all existing guards.
+Each unavailable/mismatched worker becomes an explicitly disabled Claude
+route, never a Codex fallback. Healthy exact routes continue polling and
+dispatching. Startup availability holds and oversized outboxes leave the
+original recovery/outbox JSON byte-identical rather than manufacturing a
+permanent native hold or truncating evidence.
+
+`router-watchdog.ps1` observes an independent 15-second status heartbeat and
+the latest Telegram poll attempt. A running service alone is insufficient.
+Two bad observations, three-minute startup grace, and at most three lifecycle
+attempts per ten minutes bound router-only recovery. It never restarts the
+Claude custody host or Codex daemon, clears receipts, or replays native input.
+Reviewed code/policy proof and the pinned existing startup supervisor remain
+required. Existing startup scheduling must be inspected and preserved when
+installing the separate watchdog task.
+
+The full `--self-test` suite includes host-restart admission, failed worker
+isolation, both healthy Codex runtimes, held controls/input without fallback,
+and byte-identical uncertainty/outbox retention. Before each Windows release,
+run `pc-router/test-startup-recovery.ps1` with the explicit candidate directory
+and reviewed DLL SHA256 as the ordinary Windows owner. It runs the 127 inert
+Windows startup fixtures and ten watchdog decisions; it neither installs nor
+activates anything. Fresh SYSTEM OS/ACL proof is still required for deployment.
+
+This is prepared/tested source, not a live deployment claim. Owner requested
+Fidior VPN profile publication first; that update awaits two exact top-five
+configs in the unreachable Mac test cache. No production service, protected
+policy, native input or subscription response has changed during preparation.

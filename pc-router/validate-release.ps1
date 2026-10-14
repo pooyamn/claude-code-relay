@@ -16,13 +16,18 @@ if (-not ($runtime.runtimeOptions.includedFrameworks | Where-Object name -eq 'Mi
 }
 $assembly=Join-Path $candidate 'KhadangRouter.dll'
 $before=(Get-FileHash -LiteralPath $assembly -Algorithm SHA256).Hash
-foreach($suite in @('--self-test-input-isolation','--self-test')) {
+foreach($suite in @('--self-test-input-isolation','--self-test-startup-isolation','--self-test')) {
     $output=(& $executable $suite) -join "`n"
     if($LASTEXITCODE -ne 0) { throw "Release validation failed: $suite" }
     # A missing CLI/suite must not be mistaken for an accepted release.
-    $expected=if($suite -eq '--self-test'){'All \d+ PC-router checks passed'}else{'Passed \d+ upload-timeout/input-isolation checks'}
+    $expected=switch($suite){
+        '--self-test' {'All \d+ PC-router checks passed'}
+        '--self-test-startup-isolation' {'Passed \d+ startup-isolation checks'}
+        default {'Passed \d+ upload-timeout/input-isolation checks'}
+    }
     if($output -notmatch $expected) { throw "Missing regression-suite receipt: $suite" }
     Write-Output $output
 }
+& (Join-Path $PSScriptRoot 'router-watchdog.ps1') -SelfTest
 if((Get-FileHash -LiteralPath $assembly -Algorithm SHA256).Hash -ne $before) { throw 'Candidate changed during validation' }
 Write-Output "Release validation passed; router SHA256: $before"
