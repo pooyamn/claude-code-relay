@@ -4129,7 +4129,7 @@ supervision was reenabled. No synthetic native turn, fresh phone round trip,
 host restart or reboot was performed. Full identifiers are in
 [deployment-status.json](../pc-router/deployment-status.json).
 
-## Startup worker isolation and liveness watchdog (October 14, prepared)
+## Startup worker isolation and liveness watchdog (October 14, deployed)
 
 Read-only inspection found the router repeatedly stopping before Telegram
 polling with `Claude host refused this exact session; no replacement or replay`.
@@ -4162,9 +4162,27 @@ and byte-identical uncertainty/outbox retention. Before each Windows release,
 run `pc-router/test-startup-recovery.ps1` with the explicit candidate directory
 and reviewed DLL SHA256 as the ordinary Windows owner. It runs the 127 inert
 Windows startup fixtures and ten watchdog decisions; it neither installs nor
-activates anything. Fresh SYSTEM OS/ACL proof is still required for deployment.
+activates anything. The watchdog suite now includes 17 checks, including empty
+first-run history and repeated real atomic writes under Windows PowerShell.
+Fresh SYSTEM OS/ACL proof is still required for deployment.
 
-This is prepared/tested source, not a live deployment claim. Owner requested
-Fidior VPN profile publication first; that update awaits two exact top-five
-configs in the unreachable Mac test cache. No production service, protected
-policy, native input or subscription response has changed during preparation.
+Published the five exact measured entries to both existing Fidior profile URLs
+first. Public downloads and released Hiddify 4.1.0 parse/build each retain all
+14 selectable proxies; the cascade additionally retains 14 hidden entry hops.
+Original Home subscription remained unchanged. This is importer validation,
+not proof of an individual phone's refreshed list or long-term node reliability.
+
+Sealed candidate passed 1,381 Windows checks. Fresh SYSTEM OS/ACL proof at
+09:52:46Z preceded activation and verified live status at 09:54:49Z: 17 unchanged
+bindings, six connected Claude workers, three preserved held sessions, native
+Codex daemon PID 479 unchanged and original unknown upload byte-identical.
+Only the empty restarted Claude host was retired during installation; no live
+worker custody was interrupted, no policy changed and no input was replayed.
+The probe service waits for SCM cancellation after writing proof; the deployment
+helper now explicitly stops it once fresh proof is verified.
+
+Installed a separately protected SYSTEM `Oracova-KhadangWatchdog` task with
+startup and one-minute triggers, bounded runtime and no overlapping executions.
+Existing `Oracova-KhadangStartup` was preserved and re-enabled. Guarded native
+acceptance evidence was explicitly reused with annotation; no paid synthetic
+model turn or physical PC reboot was used as a deployment test.

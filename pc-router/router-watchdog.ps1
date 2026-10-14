@@ -1,6 +1,18 @@
 param([switch]$SelfTest)
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 
+function Get-RecentWatchdogAttempts($Prior,[DateTimeOffset]$Now) {
+ if($null -eq $Prior -or $null -eq $Prior.attempts){return}
+ foreach($attempt in $Prior.attempts){
+  if($null -ne $attempt -and [DateTimeOffset]$attempt -gt $Now.AddMinutes(-10)){$attempt}
+ }
+}
+function Save-WatchdogRecord([string]$File,[string]$Record) {
+ $tmp=$File+'.new';[IO.File]::WriteAllText($tmp,$Record,[Text.UTF8Encoding]::new($false))
+ # Windows PowerShell converts plain $null to an empty backup filename.
+ if(Test-Path $File){[IO.File]::Replace($tmp,$File,[System.Management.Automation.Language.NullString]::Value)}else{[IO.File]::Move($tmp,$File)}
+}
+
 # Pure decision function: no processes, credentials, files or native input.
 function Get-RouterWatchdogAction([hashtable]$Snapshot) {
  if($Snapshot.service -notin @('Stopped','Running')){return 'Wait'}
@@ -16,6 +28,18 @@ if($SelfTest){
  function Check($Expected,[hashtable]$S){$script:tests++;if((Get-RouterWatchdogAction $S) -ne $Expected){throw 'Watchdog decision regression'}}
  $healthy=@{service='Running';recentAttempts=0;processAgeSeconds=500;statusAgeSeconds=1;pollAgeSeconds=30;consecutiveBad=0}
  Check 'Healthy' $healthy
+ $now=[DateTimeOffset]::UtcNow
+ foreach($prior in @($null,@{},@{attempts=@()},@{attempts=@($null,$now.AddMinutes(-11).ToString('o'))})){
+  $tests++;if(@(Get-RecentWatchdogAttempts $prior $now).Count -ne 0){throw 'First-run watchdog budget regression'}
+ }
+ $tests++;if(@(Get-RecentWatchdogAttempts @{attempts=@($now.ToString('o'))} $now).Count -ne 1){throw 'Recent attempt budget regression'}
+ $fixture=Join-Path ([IO.Path]::GetTempPath()) ('watchdog-fixture-'+[Guid]::NewGuid().ToString('N')+'.json')
+ try {
+  foreach($text in @('{"attempts":[]}','{"attempts":["retained"]}')){
+   Save-WatchdogRecord $fixture $text;$tests++
+   if([IO.File]::ReadAllText($fixture) -cne $text){throw 'Atomic watchdog write regression'}
+  }
+ }finally{if(Test-Path $fixture){Remove-Item -LiteralPath $fixture};if(Test-Path ($fixture+'.new')){Remove-Item -LiteralPath ($fixture+'.new')}}
  $s=$healthy.Clone();$s.service='Stopped';Check 'Start' $s
  $s=$healthy.Clone();$s.service='StartPending';Check 'Wait' $s
  $s=$healthy.Clone();$s.processAgeSeconds=20;$s.statusAgeSeconds=500;Check 'Wait' $s
@@ -45,7 +69,7 @@ try{
  if((Get-FileHash $startup).Hash -ne '2B4692B2F9DDD8B3F73A42186546D3B892326C32A319FF816586AC3ED94D5665'){throw 'Startup supervisor changed; no recovery'}
  $now=[DateTimeOffset]::UtcNow;$file="$root\state\watchdog.json"
  $prior=if(Test-Path $file){Get-Content $file -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
- $attempts=@($prior.attempts|Where-Object {[DateTimeOffset]$_ -gt $now.AddMinutes(-10)})
+ $attempts=@(Get-RecentWatchdogAttempts $prior $now)
  $statusAge=1e9;$pollAge=1e9;$processAge=0
  if($service.State -eq 'Running'){
   $process=Get-Process -Id $service.ProcessId -ErrorAction Stop
@@ -63,8 +87,7 @@ try{
  if($action -in @('Start','RestartRouterOnly')){$attempts+=($now.ToString('o'))}
  # Commit the bounded attempt BEFORE the external lifecycle operation.
  $record=@{at=$now.ToString('o');action=$action;attempts=$attempts;consecutiveBad=$bad;service=$service.State;statusAgeSeconds=$statusAge;pollAgeSeconds=$pollAge}|ConvertTo-Json -Compress
- $tmp=$file+'.new';[IO.File]::WriteAllText($tmp,$record,[Text.UTF8Encoding]::new($false))
- if(Test-Path $file){[IO.File]::Replace($tmp,$file,$null)}else{[IO.File]::Move($tmp,$file)}
+ Save-WatchdogRecord $file $record
  if($action -eq 'RestartRouterOnly'){
   # Never stop the independent Claude custody host or the Codex daemon;
   # never alter, confirm, clear or replay delivery journals.
