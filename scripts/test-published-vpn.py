@@ -114,34 +114,52 @@ def variants(node):
 
 def main():
     parser = argparse.ArgumentParser(); parser.add_argument('settings'); parser.add_argument('--variants', action='store_true')
+    parser.add_argument('--ranks', nargs='+', type=int, choices=range(1,6))
+    parser.add_argument('--home-transport', choices=('published','reality'), default='published')
+    parser.add_argument('--entry-variant', choices=('published','standard-tls'), default='published')
     args = parser.parse_args(); root = pathlib.Path(args.settings).resolve().parent
     settings = json.loads(pathlib.Path(args.settings).read_text()); core = root / 'HiddifyCli'
     profiles = {}
     for name, address in settings['urls'].items():
         req = urllib.request.Request(address, headers={'User-Agent': 'Hiddify/4.1.1', 'Cache-Control': 'no-cache'})
         with urllib.request.urlopen(req, timeout=15) as response: body = response.read()
-        (root / ('published-' + name + '.json')).write_bytes(body)
+        downloaded=root / ('published-' + name + '.json')
+        downloaded.write_bytes(body); downloaded.chmod(0o600)
         profiles[name] = json.loads(body)
-    expected_ip = next(node['server'] for node in profiles['original']['outbounds']
-                       if node.get('tls', {}).get('reality', {}).get('enabled'))
+    reality_home = next(node for node in profiles['original']['outbounds']
+                        if node.get('tls', {}).get('reality', {}).get('enabled'))
+    expected_ip = reality_home['server']
     entries = [node for node in profiles['ava']['outbounds'] if node['tag'].startswith('Free tested ')]
     entries.sort(key=lambda node: (not node['tag'].startswith('Free tested 2 '), node['tag']))
+    if args.ranks:
+        entries=[node for node in entries if int(node['tag'].split()[2]) in args.ranks]
     homes = {node['tag']: node for node in profiles['home']['outbounds']}
     results = []
     previous = root / 'exact-results.json'
     baseline = json.loads(previous.read_text()) if args.variants and previous.exists() else []
     failed_ranks = {row['label'].split('-')[1] for row in baseline if not row.get('passed')}
+    report_name = ('variants-results' if args.variants else 'exact-results')
+    if args.home_transport != 'published' or args.entry_variant != 'published':
+        report_name += '-'+args.home_transport+'-'+args.entry_variant
     def run(label, outbound, entry=None, home=False):
         result = probe(core, root, label, outbound, entry, expected_ip if home else None, settings.get('raw_core', False))
         results.append(result)
         print(json.dumps(result), flush=True)
-        (root / ('variants-results.json' if args.variants else 'exact-results.json')).write_text(json.dumps(results, indent=2))
+        (root / (report_name+'.json')).write_text(json.dumps(results, indent=2))
     for entry in entries:
         rank = entry['tag'].split()[2]; chain = homes['US Home via ' + entry['tag'] + ' - Cloudflare']
         hidden = homes[chain['detour']]
         if not args.variants:
-            run('entry-' + rank, entry)
-            run('home-' + rank, chain, hidden, True)
+            suffix=''
+            if args.entry_variant != 'published' and rank != '2':
+                entry=dict(variants(entry))[args.entry_variant]
+                hidden=copy.deepcopy(entry);hidden['tag']=chain['detour']
+                suffix+='-'+args.entry_variant
+            if args.home_transport=='reality':
+                tag=chain['tag'];chain=copy.deepcopy(reality_home)
+                chain['tag']=tag;chain['detour']=hidden['tag']
+            run('entry-' + rank + suffix, entry)
+            run('home-' + rank + ('-reality' if args.home_transport=='reality' else '') + suffix, chain, hidden, True)
         else:
             if baseline and rank not in failed_ranks: continue
             for name, variant in variants(entry):
