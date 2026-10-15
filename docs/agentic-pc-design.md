@@ -658,6 +658,17 @@ R2 setup (one time, by Pouya)
 
 One outbound scheduler in the router owns every Telegram send, with priorities: approvals and alerts first, final replies next, bus and status last. It tracks the group's ~20 messages/minute budget, coalesces, and honours `retry_after` durably.
 
+Automatic output additionally has a durable 100-new-message budget per forum/topic
+per Pacific calendar day. Initial bubbles, clean answer parts and attachments
+consume slots; live-bubble edits, typing and owner-control replies do not. Reserve
+before sending, refund only explicit Telegram rejection, and retain ambiguous
+attempts against the budget. Excess output remains saved until the next day.
+Do not impose a queue-length recovery cap: validate each saved record and restore
+large valid backlogs without converting rate exhaustion into a native-input hold.
+An owner-requested recovery can isolate an exact uncertain outgoing file in a
+protected, payload-hash-bound quarantine without resending or confirming it;
+this never authorizes replay of held incoming messages or native mutations.
+
 Uncertain display edits and uncertain actions are separate failure domains.
 A timed-out edit of an already known bubble remains explicitly unconfirmed,
 with its original intent/payload retained, but must not globally stop incoming

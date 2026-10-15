@@ -94,7 +94,10 @@ public static class MixedRoutingTests
             }
             if(bad=="oversized-outbox")
             {
+                // A large queue is now valid. Retain coverage of genuinely
+                // invalid per-item receipts, which still fail closed.
                 var answer = new FinalAnswerState(); answer.Consider("Retain this answer",true);answer.Complete();
+                answer.Parts[0].Part = new(new string('x',3901), []);
                 ledger.Put("bubble/"+Pin2,new {chat=bindings[3].Chat,topic=bindings[3].Topic,backend="claude",runtime="linux",
                     tail="Original",message=903,sendUnknown=false,held=true,busy=false,status="Held — original uncertainty",elapsedMs=0,
                     pendingAnswers=Enumerable.Repeat(answer,257).ToArray(),customEvidence="must not be discarded"});

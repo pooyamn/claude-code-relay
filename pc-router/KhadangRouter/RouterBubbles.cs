@@ -4,8 +4,9 @@ namespace KhadangRouter;
 
 public sealed partial class Router
 {
-    private static string DisplayStatus(Session session) => !session.Held || session.Status.StartsWith("Held", StringComparison.Ordinal)
-        ? session.Status : "Held — Telegram input blocked; inspect native/transport receipts";
+    private static string DisplayStatus(Session session) => session.Held
+        ? session.Status.StartsWith("Held", StringComparison.Ordinal) ? session.Status : "Held — Telegram input blocked; inspect native/transport receipts"
+        : session.Status + (session.OutputRateLimited ? " · 100/day reached; backlog saved until Pacific midnight" : "");
 
     private string RenderBubble(Session session) => session.Bubble.Render(
         session.Carried + session.Elapsed.Elapsed, session.Claude == null ? session.Goal.Footer : null, DisplayStatus(session));
@@ -49,7 +50,6 @@ public sealed partial class Router
         if (saved.TryGetProperty("pendingAnswers", out var answers))
             foreach (var value in answers.EnumerateArray())
             {
-                if (session.PendingAnswers.Count >= 256) throw new InvalidDataException("Pending answer outbox exceeds bound");
                 var answer = JsonSerializer.Deserialize<FinalAnswerState>(value.GetRawText())!; answer.Validate();
                 if (!answer.Completed) throw new InvalidDataException("Pending answer lacks a final boundary");
                 session.PendingAnswers.Enqueue(answer);
@@ -66,6 +66,11 @@ public sealed partial class Router
                 SendUnknown = receipt.GetProperty("sendUnknown").GetBoolean()
             };
             RestoreAnswer(response, receipt);
+            if (receipt.TryGetProperty("progressSuperseded", out var superseded) && superseded.GetBoolean())
+            {
+                if (response.Message != null || response.SendUnknown) throw new InvalidDataException("Cannot supersede sent/uncertain progress");
+                response.ProgressSuperseded = true;
+            }
             if (response.Message != null) response.SendUnknown = false;
             session.PendingBubbles.Enqueue(response);
             if (response.SendUnknown || response.Answer.Unknown) { session.Held = true; session.Status = "Held — reconcile uncertain response delivery"; }
@@ -77,6 +82,15 @@ public sealed partial class Router
         if (!saved.TryGetProperty("finalAnswer", out var answer)) return; // Legacy progress has no final outbox.
         response.Answer = JsonSerializer.Deserialize<FinalAnswerState>(answer.GetRawText()) ?? throw new InvalidDataException("Missing saved final answer");
         response.Answer.Validate();
+    }
+    internal static object ValidateSavedOutbox(Binding binding, JsonElement saved)
+    {
+        // Offline structural preflight only. This temporary object never
+        // enters routing and Restore* cannot call a transport or native tool.
+        var session = new Session(binding, null!);
+        RestorePendingBubbles(session, saved); RestoreAnswer(session.Response, saved);
+        return new { valid=true, pendingAnswers=session.PendingAnswers.Count, pendingBubbles=session.PendingBubbles.Count,
+            uncertain=session.Held || session.Response.Answer.Unknown };
     }
     private void CompleteAnswer(Session session)
     {
@@ -106,6 +120,9 @@ public sealed partial class Router
     }
     private async Task FlushBubbleCore(Session session, CancellationToken stop)
     {
+        // A delivery-rate pause is not a native-input hold. Keep an existing
+        // rolling bubble editable, even while old clean answers wait overnight.
+        if (session.OutputRateLimited || session.PendingAnswers.Count > 0) await RefreshRateLimitedBubble(session, stop);
         // Completed goal answers have a separate durable outbox. Native work
         // and frequent progress edits must not starve their notification.
         if (!await FlushGoalAnswers(session, stop)) return;
@@ -117,23 +134,28 @@ public sealed partial class Router
                 // Finish an earlier response before sending the next. Even a turn
                 // completed between editor ticks gets its own terminal message.
                 while (session.PendingBubbles.TryPeek(out var completed) &&
-                    !completed.SendUnknown && completed.Text == completed.LastRendered && completed.Answer.Delivered)
+                    !completed.SendUnknown && (completed.ProgressSuperseded || completed.Text == completed.LastRendered) && completed.Answer.Delivered)
                     session.PendingBubbles.Dequeue();
                 response = session.PendingBubbles.TryPeek(out var pending) ? pending : session.Response;
                 if (response.SendUnknown && response.Message == null || response.Answer.Unknown) return;
                 text = ReferenceEquals(response, session.Response) ? RenderBubble(session) : response.Text;
                 message = response.Message; revision = session.Revision;
             }
-            if (text != response.LastRendered) try
+            if (!response.ProgressSuperseded && text != response.LastRendered) try
             {
                 if (message == null)
                 {
                     lock (session.Gate) { response.SendUnknown = true; Persist(session); }
-                    var sent = await telegram.SendBubble(session.Binding.Chat, session.Binding.Topic, text, stop);
-                    lock (session.Gate) { response.Message = sent.GetProperty("message_id").GetInt32(); response.SendUnknown = false; Persist(session); }
+                    var sent = await deliveryTelegram.SendBubble(session.Binding.Chat, session.Binding.Topic, text, stop);
+                    lock (session.Gate) { response.Message = sent.GetProperty("message_id").GetInt32(); response.SendUnknown = false; session.OutputRateLimited = false; Persist(session); }
                 }
                 else await telegram.EditBubble(session.Binding.Chat, message.Value, text, stop);
                 lock (session.Gate) { Delivered(); }
+            }
+            catch (DailyOutputLimit)
+            {
+                lock (session.Gate) { response.SendUnknown = false; session.OutputRateLimited = true; Persist(session); }
+                return;
             }
             catch (TelegramFailure failure)
             {
@@ -149,7 +171,7 @@ public sealed partial class Router
             // Finish/acknowledge progress before the separate final answer. No
             // late edit can overtake it; each part has its own durable intent.
             lock (session.Gate)
-                if (response.SendUnknown || response.LastRendered != text ||
+                if (response.SendUnknown || !response.ProgressSuperseded && response.LastRendered != text ||
                     ReferenceEquals(response, session.Response) && revision != session.Revision) return;
             lock (session.Gate)
                 if ((ReferenceEquals(response, session.Response) ? RenderBubble(session) : response.Text) != text) continue;
@@ -163,8 +185,13 @@ public sealed partial class Router
                 }
                 try
                 {
-                    var sent = await telegram.SendAnswer(session.Binding.Chat, session.Binding.Topic, part.Part, stop);
-                    lock (session.Gate) { part.Message = sent.GetProperty("message_id").GetInt32(); part.SendUnknown = false; Persist(session); }
+                    var sent = await deliveryTelegram.SendAnswer(session.Binding.Chat, session.Binding.Topic, part.Part, stop);
+                    lock (session.Gate) { part.Message = sent.GetProperty("message_id").GetInt32(); part.SendUnknown = false; session.OutputRateLimited = false; Persist(session); }
+                }
+                catch (DailyOutputLimit)
+                {
+                    lock (session.Gate) { part.SendUnknown = false; session.OutputRateLimited = true; Persist(session); }
+                    return;
                 }
                 catch (TelegramFailure failure)
                 {
@@ -214,8 +241,16 @@ public sealed partial class Router
                 }
                 try
                 {
-                    var sent = await telegram.SendAnswer(session.Binding.Chat, session.Binding.Topic, part.Part, stop);
-                    lock (session.Gate) { part.Message = sent.GetProperty("message_id").GetInt32(); part.SendUnknown = false; Persist(session); }
+                    var sent = await deliveryTelegram.SendAnswer(session.Binding.Chat, session.Binding.Topic, part.Part, stop);
+                    lock (session.Gate) { part.Message = sent.GetProperty("message_id").GetInt32(); part.SendUnknown = false; session.OutputRateLimited = false; Persist(session); }
+                    // One goal-answer part per editor pass keeps other topics
+                    // and the live bubble responsive during backlog recovery.
+                    return false;
+                }
+                catch (DailyOutputLimit)
+                {
+                    lock (session.Gate) { part.SendUnknown = false; session.OutputRateLimited = true; Persist(session); }
+                    return false;
                 }
                 catch (TelegramFailure failure)
                 {
@@ -263,14 +298,19 @@ public sealed partial class Router
             try
             {
                 JsonElement sent;
-                try { sent = await telegram.Upload(session.Binding.Chat, session.Binding.Topic, OutboundFiles.Filename(file.Path), bytes, !file.Document, stop); }
+                try { sent = await deliveryTelegram.Upload(session.Binding.Chat, session.Binding.Topic, OutboundFiles.Filename(file.Path), bytes, !file.Document, stop); }
                 catch (TelegramFailure rejected) when (rejected.Code == 400 && !file.Document)
                 {
                     // Explicit rejection only, never ambiguous timeout fallback.
                     lock (session.Gate) { file.Document = true; Persist(session); }
-                    sent = await telegram.Upload(session.Binding.Chat, session.Binding.Topic, OutboundFiles.Filename(file.Path), bytes, false, stop);
+                    sent = await deliveryTelegram.Upload(session.Binding.Chat, session.Binding.Topic, OutboundFiles.Filename(file.Path), bytes, false, stop);
                 }
-                lock (session.Gate) { file.Message = sent.GetProperty("message_id").GetInt32(); file.SendUnknown = false; Persist(session); }
+                lock (session.Gate) { file.Message = sent.GetProperty("message_id").GetInt32(); file.SendUnknown = false; session.OutputRateLimited = false; Persist(session); }
+            }
+            catch (DailyOutputLimit)
+            {
+                lock (session.Gate) { file.SendUnknown = false; session.OutputRateLimited = true; Persist(session); }
+                return false;
             }
             catch (TelegramFailure failure)
             {
@@ -299,5 +339,35 @@ public sealed partial class Router
             }
         }
         return true;
+    }
+    private async Task RefreshRateLimitedBubble(Session session, CancellationToken stop)
+    {
+        ResponseMessage response; string text; int? message;
+        lock (session.Gate)
+        {
+            response = session.Response;
+            if (response.SendUnknown && response.Message == null || session.PendingAnswers.Any(a => a.Unknown)) return;
+            message = response.Message; text = RenderBubble(session);
+            if (response.LastRendered == text) return;
+            if (message == null) { response.SendUnknown = true; Persist(session); }
+        }
+        try
+        {
+            if (message is { } existing) await telegram.EditBubble(session.Binding.Chat, existing, text, stop);
+            else
+            {
+                var sent = await deliveryTelegram.SendBubble(session.Binding.Chat, session.Binding.Topic, text, stop);
+                message = sent.GetProperty("message_id").GetInt32();
+            }
+            lock (session.Gate) { response.Message = message; response.LastRendered = text; response.SendUnknown = false; Persist(session); }
+        }
+        catch (TelegramFailure failure) when (failure.NotModified)
+        { lock (session.Gate) { response.LastRendered = text; response.SendUnknown = false; Persist(session); } }
+        catch (DailyOutputLimit)
+        { lock (session.Gate) { response.SendUnknown = false; session.OutputRateLimited = true; Persist(session); } }
+        catch (TelegramFailure failure)
+        {
+            lock (session.Gate) { if (message == null) response.SendUnknown = failure.Code != 429; Persist(session); }
+        } // Cosmetic edit may be amended; never replay an uncertain new send.
     }
 }

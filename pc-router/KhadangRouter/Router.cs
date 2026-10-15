@@ -7,7 +7,8 @@ namespace KhadangRouter;
 // Owner-only PC migration adapter. It does not claim company/role gates or
 // replace the prepared WSL authorization/admission/deployment components.
 public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot telegram, INative rpc, IAttachments? attachments = null,
-    NativeRemote? nativeRemote = null, IClaudeTopics? claudeTopics = null, INative? linuxRpc = null, IOutboundFiles? outboundFiles = null)
+    NativeRemote? nativeRemote = null, IClaudeTopics? claudeTopics = null, INative? linuxRpc = null, IOutboundFiles? outboundFiles = null,
+    TimeProvider? deliveryClock = null)
 {
     private sealed class Session(Binding binding, INative native)
     {
@@ -53,6 +54,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         public string Status = "Ready";
         public bool Busy, Dirty, Held;
         public bool PreserveSavedBubble;
+        public bool OutputRateLimited;
         public long Revision;
         public readonly Dictionary<string, JsonElement> Items = new();
         public readonly HashSet<string> DeltaItems = new();
@@ -70,6 +72,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
     private readonly ConcurrentDictionary<string, IClaudeNative> switchedClaude = new();
     private readonly NativeQuota quota = new();
     private readonly ReceiptTyping receiptTyping = new(telegram);
+    private readonly IBot deliveryTelegram = new DailyLimitedBot(telegram, new DailyOutputBudget(ledger, deliveryClock));
     private readonly NativeRemote remote = nativeRemote ?? new();
     private readonly NativeQuota linuxQuota = new();
     private readonly NativeRemote linuxRemote = new();
@@ -154,7 +157,9 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 // New generations and pre-existing/uncertain holds stay fenced.
                 var continuousClaude = session.Claude is ClaudeWorkerClient { ReattachedGeneration: true } && ledger.InputUnknown(binding) == 0;
                 session.Held = saved.GetProperty("held").GetBoolean() || saved.GetProperty("busy").GetBoolean() && session.RestoreTurn == null && !continuousClaude;
-                session.Status = session.Held ? "Held — reconcile interrupted turn" : saved.GetProperty("status").GetString()!;
+                session.Status = session.Held ? "Held — reconcile interrupted turn" :
+                    saved.TryGetProperty("nativeStatus", out var nativeStatus) ? nativeStatus.GetString()! : saved.GetProperty("status").GetString()!;
+                if (saved.TryGetProperty("outputRateLimited", out var limited)) session.OutputRateLimited = limited.GetBoolean();
                 session.Carried = TimeSpan.FromMilliseconds(saved.GetProperty("elapsedMs").GetDouble());
                 try { RestorePendingBubbles(session, saved); RestoreAnswer(session.Response, saved); }
                 catch (Exception error) when (error is InvalidDataException or JsonException)
@@ -176,6 +181,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             }
             sessions[binding.Address] = session;
             if (attachmentError != null) HoldStartupRoute(session, attachmentError);
+            else ledger.Exec("DELETE FROM meta WHERE key=?", "startup-held/" + binding.ThreadId);
             if (session.Claude == null) await ResumeCodex(session, stop);
             if (session.Claude is { } claude && claude is not UnavailableClaude && !session.PreserveSavedBubble)
             {
@@ -930,13 +936,14 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             claudeState = session.Claude == null ? null : session.ClaudeState,
             tail = session.Bubble.Tail, message = session.Message, sendUnknown = session.SendUnknown, held = session.Held,
             claudeDeliveryHold = session.DeliveryHold,
-            pendingResponses = session.PendingBubbles.Select(r => new { text = r.Text, message = r.Message, lastRendered = r.LastRendered, sendUnknown = r.SendUnknown, finalAnswer = r.Answer }).ToArray(),
+            pendingResponses = session.PendingBubbles.Select(r => new { text = r.Text, message = r.Message, lastRendered = r.LastRendered, sendUnknown = r.SendUnknown, progressSuperseded = r.ProgressSuperseded, finalAnswer = r.Answer }).ToArray(),
             pendingAnswers = session.PendingAnswers.ToArray(),
             goalReplyPending = session.GoalReplyPending, goalReplyExcludedItems = session.GoalReplyExcludedItems.ToArray(),
             completedItems = session.CompletedOrder.ToArray(),
             finalAnswer = session.Response.Answer,
+            outputRateLimited = session.OutputRateLimited,
             lastAnswer = session.LastAnswer,
-            busy = session.Busy, status = DisplayStatus(session), elapsedMs = (session.Carried + session.Elapsed.Elapsed).TotalMilliseconds,
+            busy = session.Busy, status = DisplayStatus(session), nativeStatus = session.Status, elapsedMs = (session.Carried + session.Elapsed.Elapsed).TotalMilliseconds,
             turn = session.Turn,
             goal = goal.Goal, goalKnown = goal.Known, goalObservedAt = goal.ObservedAt });
     }

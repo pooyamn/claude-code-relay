@@ -8,6 +8,25 @@ try
         WindowsService.Run(ClaudeWorkerHost.Run, ClaudeWorkerHost.ServiceName); return;
     }
     if (args.SequenceEqual(new[] { "--self-test" })) { SelfTests.Run(); return; }
+    if (args.SequenceEqual(new[] { "--validate-outbox" }))
+    {
+        using var value=JsonDocument.Parse(Console.In.ReadToEnd());
+        var binding=value.RootElement.GetProperty("binding").Deserialize<Binding>() ?? throw new InvalidDataException("Missing validation binding");
+        Console.WriteLine(JsonSerializer.Serialize(Router.ValidateSavedOutbox(binding,value.RootElement.GetProperty("bubble"))));return;
+    }
+    if (args.SequenceEqual(new[] { "--self-test-daily-output" }))
+    {
+        var testRoot=Path.Combine(Path.GetTempPath(),"khadang-daily-tests-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(testRoot);
+        try
+        {
+            var fixture=new RouterPolicy("TheKhadangBot",123,456,-100123,"S-1-5-21-1-2-3-1001",
+                "C:\\Native\\codex.exe",new string('a',64),"C:\\Protected\\token.dpapi",testRoot,"C:\\Workspaces");
+            var checks=await DailyOutputTests.Run(testRoot,fixture)+await GoalAnswerTests.Run(testRoot,fixture)+await BubbleBoundaryTests.Run(testRoot,fixture);
+            Console.WriteLine("Passed "+checks+" daily-output/backlog checks (no credentials/network/models).");
+        }
+        finally{Directory.Delete(testRoot,recursive:true);}
+        return;
+    }
     if (args.SequenceEqual(new[] { "--self-test-startup-isolation" }))
     {
         // Inert integration fixtures run under the ordinary Windows owner.

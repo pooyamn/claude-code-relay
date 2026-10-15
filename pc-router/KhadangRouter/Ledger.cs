@@ -68,7 +68,7 @@ public sealed class Ledger : IDisposable
         lock (gate)
         {
             var count = int.Parse(Rows("SELECT COUNT(*) FROM updates WHERE status='unknown'")[0][0]!);
-            foreach (var row in Rows("SELECT kind,payload FROM operations WHERE status='unknown' AND kind<>'telegram/editMessageText'"))
+            foreach (var row in Rows("SELECT kind,payload,id FROM operations WHERE status='unknown' AND kind<>'telegram/editMessageText'"))
             {
                 if (row[0] is "telegram/sendMessage" or "telegram/sendRichMessage" or "telegram/sendPhoto" or "telegram/sendDocument")
                 {
@@ -84,6 +84,7 @@ public sealed class Ledger : IDisposable
                                 (t.ValueKind != JsonValueKind.Number || !t.TryGetInt32(out topic) || topic <= 0))
                             { count++; continue; }
                             if (chat != binding.Chat || topic != binding.Topic) continue;
+                            if (OutputQuarantined(row[2]!, binding, row[1]!)) continue;
                         }
                     }
                     catch (JsonException) { }
@@ -92,6 +93,24 @@ public sealed class Ledger : IDisposable
             }
             return count;
         }
+    }
+    internal bool OutputQuarantined(string operation, Binding binding, string payload)
+    {
+        // Only protected maintenance can write this owner-recovery record.
+        // Keep the unknown operation and quarantined file intact; do not
+        // mistake this isolation for delivery confirmation or retry authority.
+        if (Get("owner-output-quarantine/" + operation) is not { } value) return false;
+        try
+        {
+            return value.GetProperty("schema").GetString() == "ccrelay.owner_output_quarantine.v1" &&
+                value.GetProperty("operation").GetString() == operation &&
+                value.GetProperty("chat").GetInt64() == binding.Chat && value.GetProperty("topic").GetInt32() == binding.Topic &&
+                value.GetProperty("workspace").GetString() == binding.Workspace &&
+                value.GetProperty("action").GetString() == "retain-no-resend" &&
+                value.GetProperty("payloadSha256").GetString() == Convert.ToHexString(
+                    System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(payload))).ToLowerInvariant();
+        }
+        catch (Exception error) when (error is JsonException or InvalidOperationException or KeyNotFoundException or FormatException) { return false; }
     }
     // An edit addresses an existing Telegram message. Its uncertain display
     // outcome must remain visible, but cannot duplicate a model/external action

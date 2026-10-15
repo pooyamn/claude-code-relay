@@ -8,6 +8,7 @@ internal sealed class ResponseMessage
     public int? Message;
     public string LastRendered = "";
     public bool SendUnknown;
+    public bool ProgressSuperseded;
     public string Text = ""; // Frozen final text for an earlier response.
     public FinalAnswerState Answer = new();
 }
