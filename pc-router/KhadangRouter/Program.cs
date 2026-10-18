@@ -8,6 +8,18 @@ try
         WindowsService.Run(ClaudeWorkerHost.Run, ClaudeWorkerHost.ServiceName); return;
     }
     if (args.SequenceEqual(new[] { "--self-test" })) { SelfTests.Run(); return; }
+    if (args.SequenceEqual(new[] { "--self-test-claude-questions" }))
+    {
+        var testRoot=Path.Combine(Path.GetTempPath(),"khadang-question-tests-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(testRoot);
+        try
+        {
+            var fixture=new RouterPolicy("TheKhadangBot",123,456,-100123,"S-1-5-21-1-2-3-1001",
+                "C:\\Native\\codex.exe",new string('a',64),"C:\\Protected\\token.dpapi",testRoot,"C:\\Workspaces");
+            Console.WriteLine("Passed "+await ClaudeQuestionTests.Run(testRoot,fixture)+" Claude question checks (no credentials/network/models).");
+        }
+        finally{Directory.Delete(testRoot,recursive:true);}
+        return;
+    }
     if (args.SequenceEqual(new[] { "--validate-outbox" }))
     {
         using var value=JsonDocument.Parse(Console.In.ReadToEnd());

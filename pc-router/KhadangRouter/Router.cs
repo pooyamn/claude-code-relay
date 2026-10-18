@@ -142,7 +142,8 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             }
             if (ledger.Get("bubble/" + binding.ThreadId) is { } saved)
             {
-                session.Bubble.Append(saved.GetProperty("tail").GetString()!);
+                var savedTail = saved.GetProperty("tail").GetString()!;
+                session.Bubble.Append(binding.Backend == "claude" ? RemoveSavedClaudeQuestions(savedTail) : savedTail);
                 session.Message = saved.GetProperty("message").ValueKind == JsonValueKind.Number ? saved.GetProperty("message").GetInt32() : null;
                 // A retained ID came from a confirmed initial send. An edit of
                 // that same message may be amended again without duplicating

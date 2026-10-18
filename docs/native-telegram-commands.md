@@ -38,6 +38,20 @@ was verified; the owner's phone display was not independently observed.
 
 ## Claude terminal-like stream bubble
 
+Pending Claude questions and approval requests also get a separate plain-text
+Telegram notification, not just an edit to the silent code-block bubble. These
+owner-action notices bypass automatic-answer pacing and request notifications;
+the Telegram client's own mute settings still apply. Reviewable questions show
+the full question/options and `/answer <nonce> <question-number> <answer>`.
+Sensitive or oversized requests remain native-review-only with a deny action.
+
+Each exact native request has a durable notification receipt and stable nonce.
+Restart re-arms only requests the native worker still reports pending, without
+duplicating confirmed or uncertain sends. Known 429 rejections honor retry_after.
+Cancelled/answered prompts leave the rolling view; stale flattened prompts are
+removed during restart before live native requests are restored. No question or
+permission is automatically answered, approved or replayed.
+
 Claude's PC bubble is reconstructed from its native `stream-json` events, not
 an interactive TUI or a transcript poll. Assistant text uses `⏺` rows; tools use
 `⏺ Tool(description)` with an indented `⎿` running/result row. Bash prefers the

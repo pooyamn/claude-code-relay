@@ -113,6 +113,7 @@ public static class SelfTests
         checks += RichTableTests.Run();
         checks += GoalAnswerTests.Run(root, policy).GetAwaiter().GetResult();
         checks += DailyOutputTests.Run(root, policy).GetAwaiter().GetResult();
+        checks += ClaudeQuestionTests.Run(root, policy).GetAwaiter().GetResult();
         checks += ModelSwitchTests.Run(root, policy).GetAwaiter().GetResult();
         checks += ActiveAttachmentTests.Run(root, policy).GetAwaiter().GetResult();
         checks += GoalTests.Run(root, policy).GetAwaiter().GetResult();

@@ -23,7 +23,7 @@ public sealed partial class Router
         session.Bubble.Append("\nLate native acknowledgement verified. Original input was received; nothing was resent.\n"); Touch(session);
     }
     private sealed record ClaudeRequest(string Id, TopicAddress Address, string Pin, long WorkRevision,
-        JsonElement Request, bool Question, bool Reviewable, Dictionary<int, string> Answers);
+        JsonElement Request, bool Question, bool Reviewable, Dictionary<int, string> Answers, ClaudeQuestionNotice Notice);
     private readonly ConcurrentDictionary<string, ClaudeRequest> claudeRequests = new();
 
     private async Task HandleClaude(long updateId, JsonElement message, Session session, CancellationToken stop)
@@ -179,6 +179,7 @@ public sealed partial class Router
                 else
                 {
                     if (!claudeRequests.TryRemove(argument, out _)) { answer = "Decision already consumed."; break; }
+                    lock (session.Gate) session.Bubble.Remove("question:" + argument);
                     object decision = command[0].Equals("/approve", StringComparison.OrdinalIgnoreCase) ?
                         new { behavior = "allow", updatedInput = approval.Request.GetProperty("input") } :
                         new { behavior = "deny", message = "Denied by the owner in the bound Telegram topic" };
@@ -199,6 +200,7 @@ public sealed partial class Router
                 else
                 {
                     if (!claudeRequests.TryRemove(response[0], out _)) { answer = "Answers already consumed."; break; }
+                    lock (session.Gate) session.Bubble.Remove("question:" + response[0]);
                     // Claude keys answers by FULL question text, not a Codex ID.
                     // Preserve every other original tool-input field as well.
                     var input = question.Request.GetProperty("input").EnumerateObject().ToDictionary(p => p.Name, p => (object)p.Value.Clone());
@@ -280,7 +282,8 @@ public sealed partial class Router
                 else if (kind == "control_cancel_request")
                 {
                     var id = frame.GetProperty("request_id").GetString();
-                    foreach (var item in claudeRequests.Where(p => p.Value.Pin == session.Binding.ThreadId && p.Value.Id == id)) claudeRequests.TryRemove(item.Key, out _);
+                    foreach (var item in claudeRequests.Where(p => p.Value.Pin == session.Binding.ThreadId && p.Value.Id == id))
+                    { claudeRequests.TryRemove(item.Key, out _); session.Bubble.Remove("question:" + item.Key); }
                 }
                 else if (kind == "control_request") ClaudeQuestion(session, frame);
                 else if (kind == "system")
@@ -421,12 +424,15 @@ public sealed partial class Router
         var clean = NativeGoal.Literal(detail);
         var reviewable = detail.Length <= 1600 && !clean.Contains("[REDACTED]", StringComparison.Ordinal) &&
             ClaudeInput.Reviewable(request) && (!isQuestion || detail.Length > 0);
-        var nonce = Guid.NewGuid().ToString("N")[..12];
+        var notice = RestoreClaudeQuestionNotice(session, id, request);
+        var nonce = notice.Nonce;
         claudeRequests[nonce] = new(id, session.Binding.Address, session.Binding.ThreadId, session.ClaudeWorkRevision,
-            request.Clone(), isQuestion, reviewable, new());
-        session.Bubble.Upsert("question:" + nonce, "\nClaude " + (isQuestion ? "question" : "approval") + ": " + NativeGoal.Literal(tool ?? "") + "\n" +
+            request.Clone(), isQuestion, reviewable, new(), notice);
+        var prompt = "Claude " + (isQuestion ? "question" : "approval") + ": " + NativeGoal.Literal(tool ?? "") + "\n" +
             (reviewable ? detail + "\n" + (isQuestion ? "/answer " + nonce + " <question-number> <answer>\n" : "/approve " + nonce + "\n") :
-                "Full request requires the native PC review surface; no approval of redacted/truncated input.\n") + "/deny " + nonce + "\n");
+                "Full request requires the native PC review surface; no approval of redacted/truncated input.\n") + "/deny " + nonce + "\n";
+        notice.Text = prompt; SaveClaudeQuestionNotice(session, notice);
+        session.Bubble.Upsert("question:" + nonce, "\n" + prompt);
     }
 }
 

@@ -558,6 +558,7 @@ public static class MixedRoutingTests
             if (index < 0) throw new Exception("Wrong mixed-topic send destination");
             Edits[bindings[index].Address] = text; return Task.FromResult(Json(new { message_id = 9000 + index }));
         }
+        public Task<JsonElement> SendAttention(long chat, int topic, string text, CancellationToken stop) => Send(chat, topic, text, stop);
         public Task Edit(long chat, int message, string text, CancellationToken stop)
         { var index = message >= 9000 ? message - 9000 : message - 900; if (bindings[index].Chat != chat) throw new Exception("Wrong mixed-topic chat"); Edits[bindings[index].Address] = text; return Task.CompletedTask; }
         public Task<JsonElement> SendAnswer(long chat, int topic, AnswerPart part, CancellationToken stop)

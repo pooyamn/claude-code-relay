@@ -14,6 +14,8 @@ public interface IBot
     Task<bool> Typing(long chat, int topic, CancellationToken stop) => Task.FromResult(false);
     Task<JsonElement> Call(string method, object parameters, CancellationToken stop, bool effect = false);
     Task<JsonElement> Send(long chat, int topic, string text, CancellationToken stop);
+    Task<JsonElement> SendAttention(long chat, int topic, string text, CancellationToken stop) =>
+        Call("sendMessage", Telegram.AttentionParameters(chat, topic, text), stop, effect: true);
     Task Edit(long chat, int message, string text, CancellationToken stop);
     Task<JsonElement> SendBubble(long chat, int topic, string text, CancellationToken stop) => Send(chat, topic, text, stop);
     Task EditBubble(long chat, int message, string text, CancellationToken stop) => Edit(chat, message, text, stop);

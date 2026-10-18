@@ -105,6 +105,18 @@ public sealed class Telegram : IBot, IDisposable
         if (topic > 0) parameters["message_thread_id"] = topic;
         return parameters;
     }
+    internal static Dictionary<string, object> AttentionParameters(long chat, int topic, string text)
+    {
+        var parameters = SendParameters(chat, topic, text);
+        parameters["disable_notification"] = false;
+        return parameters;
+    }
+    public async Task<JsonElement> SendAttention(long chat, int topic, string text, CancellationToken stop)
+    {
+        await outbound.WaitAsync(stop);
+        try { return await Call("sendMessage", AttentionParameters(chat, topic, text), stop, effect: true); }
+        finally { outbound.Release(); }
+    }
     public async Task Edit(long chat, int message, string text, CancellationToken stop)
     {
         await outbound.WaitAsync(stop);

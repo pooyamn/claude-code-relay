@@ -120,6 +120,7 @@ public sealed partial class Router
     }
     private async Task FlushBubbleCore(Session session, CancellationToken stop)
     {
+        await FlushClaudeQuestions(session, stop);
         // A delivery-rate pause is not a native-input hold. Keep an existing
         // rolling bubble editable, even while old clean answers wait overnight.
         if (session.OutputRateLimited || session.PendingAnswers.Count > 0) await RefreshRateLimitedBubble(session, stop);

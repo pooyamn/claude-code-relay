@@ -70,3 +70,10 @@ exercise a real Telegram round trip, run models, clear uncertain receipts or
 restart services. Published-release validation reports failure; it does not
 retroactively unpublish a release. Requiring the two status checks in GitHub
 branch protection is a separate repository setting, not enabled by this file.
+
+`--self-test-claude-questions` covers standalone notified question/approval text,
+exact destinations, exhausted automatic quotas, stable restart nonces, confirmed
+and ambiguous-send deduplication, 429 waits, cancellation, sensitive-request
+redaction and removal of legacy prompts. This suite is also mandatory inside
+`--self-test` on every push, PR and release; its fixtures cannot answer a real
+native request or call Telegram.
