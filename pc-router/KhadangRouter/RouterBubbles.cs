@@ -6,7 +6,7 @@ public sealed partial class Router
 {
     private static string DisplayStatus(Session session) => session.Held
         ? session.Status.StartsWith("Held", StringComparison.Ordinal) ? session.Status : "Held — Telegram input blocked; inspect native/transport receipts"
-        : session.Status + (session.OutputRateLimited ? " · 100/day reached; backlog saved until Pacific midnight" : "");
+        : session.Status;
 
     private string RenderBubble(Session session) => session.Bubble.Render(
         session.Carried + session.Elapsed.Elapsed, session.Claude == null ? session.Goal.Footer : null, DisplayStatus(session));
@@ -121,9 +121,8 @@ public sealed partial class Router
     private async Task FlushBubbleCore(Session session, CancellationToken stop)
     {
         await FlushClaudeQuestions(session, stop);
-        // A delivery-rate pause is not a native-input hold. Keep an existing
-        // rolling bubble editable, even while old clean answers wait overnight.
-        if (session.OutputRateLimited || session.PendingAnswers.Count > 0) await RefreshRateLimitedBubble(session, stop);
+        // Keep live progress responsive while a saved goal-answer backlog drains.
+        if (session.PendingAnswers.Count > 0) await RefreshBacklogBubble(session, stop);
         // Completed goal answers have a separate durable outbox. Native work
         // and frequent progress edits must not starve their notification.
         if (!await FlushGoalAnswers(session, stop)) return;
@@ -147,16 +146,11 @@ public sealed partial class Router
                 if (message == null)
                 {
                     lock (session.Gate) { response.SendUnknown = true; Persist(session); }
-                    var sent = await deliveryTelegram.SendBubble(session.Binding.Chat, session.Binding.Topic, text, stop);
-                    lock (session.Gate) { response.Message = sent.GetProperty("message_id").GetInt32(); response.SendUnknown = false; session.OutputRateLimited = false; Persist(session); }
+                    var sent = await telegram.SendBubble(session.Binding.Chat, session.Binding.Topic, text, stop);
+                    lock (session.Gate) { response.Message = sent.GetProperty("message_id").GetInt32(); response.SendUnknown = false; Persist(session); }
                 }
                 else await telegram.EditBubble(session.Binding.Chat, message.Value, text, stop);
                 lock (session.Gate) { Delivered(); }
-            }
-            catch (DailyOutputLimit)
-            {
-                lock (session.Gate) { response.SendUnknown = false; session.OutputRateLimited = true; Persist(session); }
-                return;
             }
             catch (TelegramFailure failure)
             {
@@ -186,13 +180,8 @@ public sealed partial class Router
                 }
                 try
                 {
-                    var sent = await deliveryTelegram.SendAnswer(session.Binding.Chat, session.Binding.Topic, part.Part, stop);
-                    lock (session.Gate) { part.Message = sent.GetProperty("message_id").GetInt32(); part.SendUnknown = false; session.OutputRateLimited = false; Persist(session); }
-                }
-                catch (DailyOutputLimit)
-                {
-                    lock (session.Gate) { part.SendUnknown = false; session.OutputRateLimited = true; Persist(session); }
-                    return;
+                    var sent = await telegram.SendAnswer(session.Binding.Chat, session.Binding.Topic, part.Part, stop);
+                    lock (session.Gate) { part.Message = sent.GetProperty("message_id").GetInt32(); part.SendUnknown = false; Persist(session); }
                 }
                 catch (TelegramFailure failure)
                 {
@@ -242,15 +231,10 @@ public sealed partial class Router
                 }
                 try
                 {
-                    var sent = await deliveryTelegram.SendAnswer(session.Binding.Chat, session.Binding.Topic, part.Part, stop);
-                    lock (session.Gate) { part.Message = sent.GetProperty("message_id").GetInt32(); part.SendUnknown = false; session.OutputRateLimited = false; Persist(session); }
+                    var sent = await telegram.SendAnswer(session.Binding.Chat, session.Binding.Topic, part.Part, stop);
+                    lock (session.Gate) { part.Message = sent.GetProperty("message_id").GetInt32(); part.SendUnknown = false; Persist(session); }
                     // One goal-answer part per editor pass keeps other topics
                     // and the live bubble responsive during backlog recovery.
-                    return false;
-                }
-                catch (DailyOutputLimit)
-                {
-                    lock (session.Gate) { part.SendUnknown = false; session.OutputRateLimited = true; Persist(session); }
                     return false;
                 }
                 catch (TelegramFailure failure)
@@ -299,19 +283,14 @@ public sealed partial class Router
             try
             {
                 JsonElement sent;
-                try { sent = await deliveryTelegram.Upload(session.Binding.Chat, session.Binding.Topic, OutboundFiles.Filename(file.Path), bytes, !file.Document, stop); }
+                try { sent = await telegram.Upload(session.Binding.Chat, session.Binding.Topic, OutboundFiles.Filename(file.Path), bytes, !file.Document, stop); }
                 catch (TelegramFailure rejected) when (rejected.Code == 400 && !file.Document)
                 {
                     // Explicit rejection only, never ambiguous timeout fallback.
                     lock (session.Gate) { file.Document = true; Persist(session); }
-                    sent = await deliveryTelegram.Upload(session.Binding.Chat, session.Binding.Topic, OutboundFiles.Filename(file.Path), bytes, false, stop);
+                    sent = await telegram.Upload(session.Binding.Chat, session.Binding.Topic, OutboundFiles.Filename(file.Path), bytes, false, stop);
                 }
-                lock (session.Gate) { file.Message = sent.GetProperty("message_id").GetInt32(); file.SendUnknown = false; session.OutputRateLimited = false; Persist(session); }
-            }
-            catch (DailyOutputLimit)
-            {
-                lock (session.Gate) { file.SendUnknown = false; session.OutputRateLimited = true; Persist(session); }
-                return false;
+                lock (session.Gate) { file.Message = sent.GetProperty("message_id").GetInt32(); file.SendUnknown = false; Persist(session); }
             }
             catch (TelegramFailure failure)
             {
@@ -341,7 +320,7 @@ public sealed partial class Router
         }
         return true;
     }
-    private async Task RefreshRateLimitedBubble(Session session, CancellationToken stop)
+    private async Task RefreshBacklogBubble(Session session, CancellationToken stop)
     {
         ResponseMessage response; string text; int? message;
         lock (session.Gate)
@@ -357,15 +336,13 @@ public sealed partial class Router
             if (message is { } existing) await telegram.EditBubble(session.Binding.Chat, existing, text, stop);
             else
             {
-                var sent = await deliveryTelegram.SendBubble(session.Binding.Chat, session.Binding.Topic, text, stop);
+                var sent = await telegram.SendBubble(session.Binding.Chat, session.Binding.Topic, text, stop);
                 message = sent.GetProperty("message_id").GetInt32();
             }
             lock (session.Gate) { response.Message = message; response.LastRendered = text; response.SendUnknown = false; Persist(session); }
         }
         catch (TelegramFailure failure) when (failure.NotModified)
         { lock (session.Gate) { response.LastRendered = text; response.SendUnknown = false; Persist(session); } }
-        catch (DailyOutputLimit)
-        { lock (session.Gate) { response.SendUnknown = false; session.OutputRateLimited = true; Persist(session); } }
         catch (TelegramFailure failure)
         {
             lock (session.Gate) { if (message == null) response.SendUnknown = failure.Code != 429; Persist(session); }

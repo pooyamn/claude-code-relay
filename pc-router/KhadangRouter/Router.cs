@@ -54,7 +54,6 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         public string Status = "Ready";
         public bool Busy, Dirty, Held;
         public bool PreserveSavedBubble;
-        public bool OutputRateLimited;
         public long Revision;
         public readonly Dictionary<string, JsonElement> Items = new();
         public readonly HashSet<string> DeltaItems = new();
@@ -72,7 +71,6 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
     private readonly ConcurrentDictionary<string, IClaudeNative> switchedClaude = new();
     private readonly NativeQuota quota = new();
     private readonly ReceiptTyping receiptTyping = new(telegram);
-    private readonly IBot deliveryTelegram = new DailyLimitedBot(telegram, new DailyOutputBudget(ledger, deliveryClock));
     private readonly NativeRemote remote = nativeRemote ?? new();
     private readonly NativeQuota linuxQuota = new();
     private readonly NativeRemote linuxRemote = new();
@@ -160,7 +158,6 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 session.Held = saved.GetProperty("held").GetBoolean() || saved.GetProperty("busy").GetBoolean() && session.RestoreTurn == null && !continuousClaude;
                 session.Status = session.Held ? "Held — reconcile interrupted turn" :
                     saved.TryGetProperty("nativeStatus", out var nativeStatus) ? nativeStatus.GetString()! : saved.GetProperty("status").GetString()!;
-                if (saved.TryGetProperty("outputRateLimited", out var limited)) session.OutputRateLimited = limited.GetBoolean();
                 session.Carried = TimeSpan.FromMilliseconds(saved.GetProperty("elapsedMs").GetDouble());
                 try { RestorePendingBubbles(session, saved); RestoreAnswer(session.Response, saved); }
                 catch (Exception error) when (error is InvalidDataException or JsonException)
@@ -942,7 +939,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             goalReplyPending = session.GoalReplyPending, goalReplyExcludedItems = session.GoalReplyExcludedItems.ToArray(),
             completedItems = session.CompletedOrder.ToArray(),
             finalAnswer = session.Response.Answer,
-            outputRateLimited = session.OutputRateLimited,
+            outputRateLimited = false, // Legacy daily budgets are audit only; no application daily limit.
             lastAnswer = session.LastAnswer,
             busy = session.Busy, status = DisplayStatus(session), nativeStatus = session.Status, elapsedMs = (session.Carried + session.Elapsed.Elapsed).TotalMilliseconds,
             turn = session.Turn,

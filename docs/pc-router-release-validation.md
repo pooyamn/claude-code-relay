@@ -27,15 +27,16 @@ release gates: run `validate-release.ps1` on the actual candidate before any
 maintenance fence or service stop. Preserve the independent Claude host and
 native agents during routine router deployment.
 
-## Durable output pacing and large-backlog recovery
+## Unlimited output and large-backlog recovery
 
-`--self-test-daily-output` exercises persistent per-forum/topic budgets, restart,
-Pacific-midnight rollover, explicit-rejection refunds, ambiguous-send accounting,
-and restoration/draining of more than 256 saved answers. The complete self-test
-also runs these checks on every release. The limit is 100 new automatic Telegram
-messages per topic per Pacific calendar day, including initial live bubbles,
-clean answer parts and attachments. Edits, typing and owner-control replies are
-not limited. Excess output remains queued; exhaustion is not a recovery hold.
+`--self-test-output-recovery` restores/drains 300 saved answers in the same day,
+ignores exhausted legacy daily-budget records, clears stale rate-limited flags,
+and verifies restart/uncertain-send deduplication and known 429 recovery. The old
+`--self-test-daily-output` CLI spelling remains an alias for maintenance tooling,
+not a daily limit. The complete self-test runs these checks on every release.
+The application daily cap was removed at the owner's request on October 18
+Pacific; native work and output no longer wait until midnight. Telegram's own
+retry_after limits still apply, and ambiguous sends are never retried.
 
 There is no queue-length recovery cap. Individual saved records still undergo
 validation, and genuinely uncertain sends remain non-replayable. The offline

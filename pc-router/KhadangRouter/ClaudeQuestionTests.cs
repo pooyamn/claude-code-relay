@@ -31,8 +31,8 @@ public static class ClaudeQuestionTests
             void Event((Router Router,object Session) item,object value)=>on.Invoke(item.Router,new[]{item.Session,(object)JsonSerializer.SerializeToElement(value)});
             Task Flush((Router Router,object Session) item)=>(Task)flush.Invoke(item.Router,new[]{item.Session,CancellationToken.None})!;
             var current=Setup();Event(current,Request());
-            // Owner questions must not disappear behind the automatic daily cap.
-            var budget=new DailyOutputBudget(ledger,clock);for(int i=0;i<100;i++)budget.Reserve(binding.Chat,binding.Topic);
+            // Legacy exhausted-budget records are audit data, not delivery gates.
+            ledger.Put("telegram/daily-output/"+binding.Chat+"/"+binding.Topic+"/2026-10-17",new{Seeded=100,Reserved=Array.Empty<string>()});
             await Flush(current);await Flush(current);
             Check(bot.Calls==1,"Pending question sends once even with an exhausted answer budget");
             Check(bot.Last.GetProperty("disable_notification").ValueKind==JsonValueKind.False && !bot.Last.TryGetProperty("entities",out _) &&
