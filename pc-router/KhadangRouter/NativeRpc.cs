@@ -4,7 +4,11 @@ using System.Text;
 
 namespace KhadangRouter;
 
-public sealed class NativeRpc : INative, IAsyncDisposable
+// Availability only, never native identity or authority to retry an action.
+public interface INativeConnection { bool Connected { get; } string? DisconnectReason { get; } }
+public sealed class NativeNotSubmitted() : IOException("Native transport unavailable before dispatch; no input sent");
+
+public sealed class NativeRpc : INative, INativeConnection, IAsyncDisposable
 {
     private readonly INativeChannel channel;
     private readonly Ledger ledger;
@@ -15,9 +19,14 @@ public sealed class NativeRpc : INative, IAsyncDisposable
     private long sequence;
     private int initializationAttempts;
     private volatile bool disconnected;
+    private string? disconnectReason;
+    private long lastRoundTripUnixMs;
+    internal TimeSpan ReplyTimeout { get; init; } = TimeSpan.FromSeconds(30);
     public event Action<JsonElement>? Notification;
     public uint Pid => channel.Pid;
     public bool Connected => !disconnected;
+    public string? DisconnectReason => disconnectReason;
+    public DateTimeOffset? LastRoundTripAt => Interlocked.Read(ref lastRoundTripUnixMs) is var stamp && stamp != 0 ? DateTimeOffset.FromUnixTimeMilliseconds(stamp) : null;
     public int InitializationAttempts => Volatile.Read(ref initializationAttempts);
     public NativeRpc(WindowsOwnerProcess process, Ledger ledger) : this(new StdioNativeChannel(process), ledger) { }
     public NativeRpc(INativeChannel channel, Ledger ledger)
@@ -35,7 +44,9 @@ public sealed class NativeRpc : INative, IAsyncDisposable
     }
     public async Task<JsonElement> Call(string method, object parameters, CancellationToken token, bool effect = true)
     {
-        if (disconnected) throw new IOException("Native stream disconnected; no replay");
+        // This check precedes both the durable mutation intent AND the write.
+        // Only this proven pre-dispatch failure may avoid a sticky input hold.
+        if (disconnected) throw new NativeNotSubmitted();
         var id = Interlocked.Increment(ref sequence);
         var completion = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (!pending.TryAdd(id, completion)) throw new InvalidOperationException("RPC ID collision");
@@ -43,7 +54,8 @@ public sealed class NativeRpc : INative, IAsyncDisposable
         try
         {
             await Write(new { id, method, @params = parameters }, token);
-            var response = await completion.Task.WaitAsync(TimeSpan.FromSeconds(30), token);
+            var response = await completion.Task.WaitAsync(ReplyTimeout, token);
+            Interlocked.Exchange(ref lastRoundTripUnixMs, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
             if (response.TryGetProperty("error", out var error))
             {
                 if (operation != null) ledger.Reject(operation, error);
@@ -61,6 +73,20 @@ public sealed class NativeRpc : INative, IAsyncDisposable
         finally { pending.TryRemove(id, out _); }
     }
     public async Task Reply(JsonElement id, object result, CancellationToken token) => await Write(new { id, result }, token);
+    internal async Task CheckLiveness(CancellationToken token)
+    {
+        if (!Connected || LastRoundTripAt is { } seen && DateTimeOffset.UtcNow - seen < TimeSpan.FromMinutes(1)) return;
+        try { await Call("thread/loaded/list", new { }, token, effect: false); }
+        catch (NativeRejected)
+        { /* An explicit rejection still proves this authenticated link replied. */ }
+        catch (Exception error) when (error is IOException or TimeoutException)
+        {
+            // A read-only probe has no mutation to replay or acknowledge. Stop
+            // new writes; the normal observer/supervisor path reattaches only
+            // where independent custody or idle Windows work makes it safe.
+            disconnectReason = "ReadProbe" + error.GetType().Name; disconnected = true;
+        }
+    }
     private async Task Write(object message, CancellationToken token)
     {
         await writes.WaitAsync(token);
@@ -81,8 +107,9 @@ public sealed class NativeRpc : INative, IAsyncDisposable
                 else Notification?.Invoke(message);
             }
         }
-        catch (Exception error) when (error is IOException or OperationCanceledException or JsonException or InvalidDataException or InvalidOperationException or KeyNotFoundException or DecoderFallbackException) { }
-        finally { disconnected = true; foreach (var request in pending.Values) request.TrySetException(new IOException("Native stream disconnected; no replay")); }
+        catch (Exception error) when (error is IOException or OperationCanceledException or JsonException or InvalidDataException or InvalidOperationException or KeyNotFoundException or DecoderFallbackException)
+        { disconnectReason = error.GetType().Name; }
+        finally { disconnectReason ??= "EndOfStream"; disconnected = true; foreach (var request in pending.Values) request.TrySetException(new IOException("Native stream disconnected; no replay")); }
     }
     public async ValueTask DisposeAsync()
     {

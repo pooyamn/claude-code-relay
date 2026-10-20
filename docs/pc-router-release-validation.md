@@ -78,3 +78,38 @@ and ambiguous-send deduplication, 429 waits, cancellation, sensitive-request
 redaction and removal of legacy prompts. This suite is also mandatory inside
 `--self-test` on every push, PR and release; its fixtures cannot answer a real
 native request or call Telegram.
+
+## Native transport health and recovery
+
+`--self-test-transport-health` is mandatory both as a named artifact gate and
+inside the complete suite. Its inert fixtures cover a closed transport before
+dispatch, disconnect after a write, open-but-unresponsive transport, restart
+selection without replay, per-topic malformed-event isolation, and the actual
+observer shutdown path. Run the watchdog's `-SelfTest` for its lifecycle guards.
+
+Health is the authenticated transport's availability, not a cached PID or fresh
+Telegram polling timestamp. Every five seconds the observer checks its required
+Codex transports. After a minute without a successful RPC round trip it sends
+only `thread/loaded/list`, a read-only probe with no model turn. A timed-out read
+or closed connection requests supervised same-session reattachment. Critical
+output/typing/health task failures also make the observer unhealthy rather than
+leaving a service that polls indefinitely without delivering output.
+
+The watchdog preserves its startup grace, two-observation check and maximum
+three lifecycle attempts per ten minutes. It restarts the router only, never the
+independent Claude host or Linux Codex daemon. Active or uncertain Windows
+app-server work blocks that restart because this legacy worker is owned by the
+router itself. Such a case remains visibly degraded for inspection; it is not
+permission to kill native work or remove its hold.
+
+Only a failure proven to precede both native mutation intent and transport write
+is classified `retained-unsubmitted`. It cannot manufacture a permanent topic
+hold or survive as a fake busy-without-turn reservation. The input remains
+retained and is **not automatically replayed**. Any failure after a possible
+write remains unknown/held. Malformed routed events fence their exact topic
+without terminating the shared reader; diagnostics retain bounded error types
+and scope, not raw model/tool content.
+
+Deployment verification must check all bindings, same native daemon/host,
+connection and background health, unchanged unknown operations, and unchanged
+unrelated holds. A successful offline gate is not evidence of a phone round trip.

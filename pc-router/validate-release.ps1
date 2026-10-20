@@ -16,13 +16,14 @@ if (-not ($runtime.runtimeOptions.includedFrameworks | Where-Object name -eq 'Mi
 }
 $assembly=Join-Path $candidate 'KhadangRouter.dll'
 $before=(Get-FileHash -LiteralPath $assembly -Algorithm SHA256).Hash
-foreach($suite in @('--self-test-input-isolation','--self-test-startup-isolation','--self-test')) {
+foreach($suite in @('--self-test-input-isolation','--self-test-startup-isolation','--self-test-transport-health','--self-test')) {
     $output=(& $executable $suite) -join "`n"
     if($LASTEXITCODE -ne 0) { throw "Release validation failed: $suite" }
     # A missing CLI/suite must not be mistaken for an accepted release.
     $expected=switch($suite){
         '--self-test' {'All \d+ PC-router checks passed'}
         '--self-test-startup-isolation' {'Passed \d+ startup-isolation checks'}
+        '--self-test-transport-health' {'Passed \d+ transport-health checks'}
         default {'Passed \d+ upload-timeout/input-isolation checks'}
     }
     if($output -notmatch $expected) { throw "Missing regression-suite receipt: $suite" }

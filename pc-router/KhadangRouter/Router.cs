@@ -81,9 +81,13 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
     private DateTimeOffset lastStart = DateTimeOffset.MinValue;
     private readonly object statusGate = new();
     private DateTimeOffset lastPollAttempt;
+    private string? backgroundFailure;
+    internal TimeSpan HeartbeatInterval { get; init; } = TimeSpan.FromSeconds(5);
 
     public async Task Run(CancellationToken stop, bool canary = false)
     {
+        var callerStop = stop;
+        var transportLost = 0;
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(stop);
         stop = lifetime.Token;
         var ownedClaude = new List<IClaudeNative>();
@@ -238,7 +242,15 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         }
         edits = Task.Run(() => EditLoop(stop), stop);
         typing = Task.Run(() => TypingLoop(stop), stop);
-        heartbeat = Task.Run(() => HeartbeatLoop(stop), stop);
+        heartbeat = Task.Run(() => HeartbeatLoop(stop, () => { Volatile.Write(ref transportLost, 1); lifetime.Cancel(); }), stop);
+        // A dead output/health task is not a healthy Telegram bridge. Exit the
+        // observer through the existing supervisor instead of polling forever.
+        foreach (var critical in new[] { edits, typing, heartbeat })
+            _ = critical.ContinueWith(failed => {
+                Volatile.Write(ref backgroundFailure, failed.Exception?.GetBaseException().GetType().Name ?? "TaskFault");
+                if (NativeObserverRestartSafe()) lifetime.Cancel();
+            }, CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             await Menus(stop);
             if (canary && ledger.Get("native-canary") == null)
             {
@@ -253,6 +265,8 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             }
             while (!stop.IsCancellationRequested)
             {
+                if (Volatile.Read(ref backgroundFailure) != null && NativeObserverRestartSafe())
+                    throw new IOException("Observer background task stopped; supervised same-session reattachment required");
                 JsonElement batch;
                 try { lock(statusGate) lastPollAttempt = DateTimeOffset.UtcNow;
                     batch = await telegram.Call("getUpdates", new { offset = ledger.Offset, timeout = 25, limit = 50,
@@ -275,6 +289,8 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 StatusFile();
             }
         }
+        catch (OperationCanceledException) when (Volatile.Read(ref transportLost) == 1 && !callerStop.IsCancellationRequested)
+        { throw new IOException("Required native observer disconnected; supervised same-session reattachment required, no replay"); }
         finally
         {
             lifetime.Cancel();
@@ -306,10 +322,16 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             errorType = error.GetType().Name, preservesOriginalOutbox = session.PreserveSavedBubble, at = DateTimeOffset.UtcNow });
     }
 
-    private async Task HeartbeatLoop(CancellationToken stop)
+    private async Task HeartbeatLoop(CancellationToken stop, Action connectionLost)
     {
         while (!stop.IsCancellationRequested)
-        { StatusFile(); await Task.Delay(TimeSpan.FromSeconds(15), stop); }
+        {
+            await ProbeNativeConnections(stop);
+            var restart = CheckNativeConnections();
+            StatusFile();
+            if (restart) { connectionLost(); return; }
+            await Task.Delay(HeartbeatInterval, stop);
+        }
     }
 
     private async Task CreateLg(CancellationToken stop)
@@ -377,6 +399,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
     private async Task Handle(long updateId, JsonElement update, CancellationToken stop)
     {
         Session? target = null;
+        var preparedStart = false;
         try
         {
             if (!update.TryGetProperty("message", out var message) || !policy.ConversationMessage(message)) { ledger.Finish(updateId, "denied"); return; }
@@ -526,6 +549,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                         if (wait > TimeSpan.Zero) await Task.Delay(wait, stop);
                         lock (session.Gate)
                         {
+                            preparedStart = true;
                             BeginBubble(session); session.Elapsed.Restart(); session.Carried = TimeSpan.Zero;
                             session.Status = "Working"; session.Busy = true; session.Turn = null; session.Items.Clear(); session.DeltaItems.Clear(); session.CompletedItems.Clear(); session.CompletedOrder.Clear(); Touch(session);
                         }
@@ -546,6 +570,27 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             // the current turn/goal and keep subsequent owner inputs usable.
             ledger.Finish(updateId, "held-media");
             if (target != null) lock (target.Gate) { target.Bubble.Append("\nAttachment input " + updateId + " held: " + error.Message + "\n"); Touch(target); }
+        }
+        catch (NativeNotSubmitted)
+        {
+            // NativeRpc proved no intent/write happened. Retain the input, but
+            // do not poison a healthy conversation with an ambiguous-action
+            // hold. The health loop exits this observer for the existing SCM
+            // supervisor; no input is retried by this or the next generation.
+            ledger.Finish(updateId, "retained-unsubmitted");
+            if (target != null)
+            {
+                ledger.Put("native/unsubmitted/" + updateId, new { target.Binding, reason = "connection-unavailable-before-dispatch", at = DateTimeOffset.UtcNow });
+                lock (target.Gate)
+                {
+                    // Undo only our unsubmitted start's UI reservation. A
+                    // busy-with-no-ID placeholder must not become a crash hold
+                    // on the next generation. Existing work/holds stay intact.
+                    if (preparedStart && target.Turn == null && !target.Held)
+                    { target.Busy = false; target.Elapsed.Stop(); target.Status = "Reconnecting — input not sent"; }
+                    target.Bubble.Append("\nInput " + updateId + " retained before sending: native connection is recovering. It will not be replayed automatically.\n"); Touch(target);
+                }
+            }
         }
         catch (Exception error) when (error is not OperationCanceledException)
         {
@@ -720,8 +765,8 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         }
     }
 
-    private void OnNative(JsonElement message) => ObserveCodex(rpc, message);
-    private void OnLinuxNative(JsonElement message) => ObserveCodex(linuxRpc!, message);
+    private void OnNative(JsonElement message) => ObserveCodexSafely(rpc, message);
+    private void OnLinuxNative(JsonElement message) => ObserveCodexSafely(linuxRpc!, message);
     private void ObserveCodex(INative source, JsonElement message)
     {
         var remote = ReferenceEquals(source, rpc) ? this.remote : linuxRemote;
@@ -999,13 +1044,16 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
     }
     private void StatusFile()
     { lock(statusGate) File.WriteAllText(Path.Combine(policy.StateDirectory, "status.json"), JsonSerializer.Serialize(new {
-        host = Environment.MachineName, pcOnly = true, bot = policy.BotUsername, nativePid = rpc.Pid, offset = ledger.Offset,
+        host = Environment.MachineName, pcOnly = true, bot = policy.BotUsername, nativePid = rpc.Pid, nativeConnected = Connection(rpc), nativeLastRoundTrip = (rpc as NativeRpc)?.LastRoundTripAt, offset = ledger.Offset,
+        nativeTransportHealthy = !sessions.Values.Any(s => s.Claude == null && Connection(s.Native) == false),
+        nativeObserverRestartSafe = NativeObserverRestartSafe(),
+        backgroundHealthy = Volatile.Read(ref backgroundFailure) == null,
         unknown = ledger.Unknown, presentationUnknown = ledger.PresentationUnknown, receiptTyping = receiptTyping.Snapshot,
         bindings = sessions.Values.Select(s => s.Binding), nativeQuota = quota.Snapshot,
-        nativeRemote = remote.Snapshot, nativeLinuxPid = linuxRpc?.Pid, nativeLinuxQuota = linuxQuota.Snapshot,
+        nativeRemote = remote.Snapshot, nativeLinuxPid = linuxRpc?.Pid, nativeLinuxConnected = Connection(linuxRpc), nativeLinuxLastRoundTrip = (linuxRpc as NativeRpc)?.LastRoundTripAt, nativeLinuxQuota = linuxQuota.Snapshot,
         nativeLinuxRemote = linuxRemote.Snapshot,
         heldSessions = sessions.Values.Count(s => s.Held),
         nativeSessions = sessions.Values.Select(s => new { binding = s.Binding, pid = s.Claude?.Pid ?? s.Native.Pid,
-            claudeConnected = s.Claude?.Connected, held = s.Held, busy = s.Busy, status = DisplayStatus(s), turn = s.Turn }),
+            claudeConnected = s.Claude?.Connected, nativeConnected = s.Claude?.Connected ?? Connection(s.Native), held = s.Held, busy = s.Busy, status = DisplayStatus(s), turn = s.Turn }),
         lastPollAttempt, at = DateTimeOffset.UtcNow })); }
 }
