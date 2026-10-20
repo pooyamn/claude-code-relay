@@ -39,6 +39,14 @@ jobs:
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           dotnet-version: '8.0.425'
+      - name: Validate Linux connector recovery gates
+        if: runner.os == 'Linux'
+        shell: bash
+        working-directory: .
+        env:
+          PYTHONPATH: scripts
+        run: |
+          python3 -m unittest scripts.tests.test_core_pc_claude_stdio scripts.tests.test_core_pc_native_stdio scripts.tests.test_pc_topic_operations
       - name: Publish self-contained candidate
         env:
           RELEASE_RID: ${{ matrix.rid }}

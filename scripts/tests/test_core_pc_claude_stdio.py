@@ -48,6 +48,35 @@ class PcClaudeStdioTests(unittest.TestCase):
             with self.subTest(rows=rows), self.assertRaises(Denied):
                 bridge.quiescent_history(self.history(*rows), SESSION, WORKSPACE)
 
+    def test_guarded_history_accepts_exact_absorbed_mid_turn_removal(self):
+        final = {'type': 'assistant', 'message': {'role': 'assistant', 'content': [], 'stop_reason': 'end_turn'}}
+        removal = {'type': 'queue-operation', 'operation': 'remove', 'reason': 'absorbed_mid_turn',
+                   'content': 'steering fixture', 'commandUuid': SESSION,
+                   'deliveryId': '98b493a3-a1a4-4ef2-b7da-b9bf48ece0ff'}
+        bridge.quiescent_history(self.history(
+            {'type': 'queue-operation', 'operation': 'enqueue', 'content': 'steering fixture'},
+            removal, final), SESSION, WORKSPACE)
+
+    def test_guarded_history_removal_never_clears_ambiguous_or_unfinished_work(self):
+        final = {'type': 'assistant', 'message': {'role': 'assistant', 'content': [], 'stop_reason': 'end_turn'}}
+        enqueue = {'type': 'queue-operation', 'operation': 'enqueue', 'content': 'steering fixture'}
+        removal = {'type': 'queue-operation', 'operation': 'remove', 'reason': 'absorbed_mid_turn',
+                   'content': 'steering fixture', 'commandUuid': SESSION, 'deliveryId': SESSION}
+        cases = [
+            [removal, final], [enqueue, enqueue, removal, final],
+            [enqueue, removal], [enqueue, removal, removal, final],
+            [enqueue, {**enqueue, 'content': 'still queued'}, removal, final],
+            [enqueue, removal, {'type': 'assistant', 'message': {'role': 'assistant', 'content':
+                [{'type': 'tool_use', 'id': 'pending'}], 'stop_reason': 'tool_use'}}, final],
+        ]
+        for field, bad in [('reason', 'cancelled'), ('reason', 'unknown'), ('content', 'other'),
+                           ('content', ''), ('content', None), ('commandUuid', None),
+                           ('commandUuid', 'not-a-uuid'), ('deliveryId', False)]:
+            cases.append([enqueue, {**removal, field: bad}, final])
+        for rows in cases:
+            with self.subTest(rows=rows), self.assertRaises(Denied):
+                bridge.quiescent_history(self.history(*rows), SESSION, WORKSPACE)
+
     def test_fresh_start_requires_exact_protected_owner_manifest_and_unused_native_id(self):
         value = {'schema': 'ccrelay.personal_claude_start.v1', 'session_id': SESSION, 'workspace': WORKSPACE,
                  'source_writer': 'owner_switch', 'uncertain_actions': [], 'history': None, 'profile': str(bridge.OWNER / '.claude')}

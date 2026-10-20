@@ -371,7 +371,7 @@ def quiescent_history(source, session, workspace):
     assistant turn alone is insufficient if a tool, queue or background task
     remains outstanding. Do not infer that a crash cancelled an external action.
     """
-    tools, queued, terminal = set(), 0, False
+    tools, queued, terminal = set(), [], False
     metadata = {'attachment', 'atis-latch', 'last-prompt', 'cost-state', 'mode', 'bridge-session',
                 'system', 'summary', 'file-history-snapshot', 'progress'}
     for body in source:
@@ -385,8 +385,20 @@ def quiescent_history(source, session, workspace):
         kind = row.get('type')
         if kind == 'queue-operation':
             operation = row.get('operation')
-            if operation == 'enqueue': queued += 1
-            elif operation == 'dequeue' and queued > 0: queued -= 1
+            if operation == 'enqueue': queued.append(row.get('content'))
+            elif operation == 'dequeue' and queued: queued.pop(0)
+            elif operation == 'remove':
+                # Native 2.1.288 records a steered message absorbed by the
+                # active turn as remove, not dequeue. Accept only that known
+                # terminal queue transition, matched to one exact pending
+                # payload. Never let cancellation/unknown removal clear work.
+                content = row.get('content')
+                if row.get('reason') != 'absorbed_mid_turn' or type(content) is not str or not content or \
+                        queued.count(content) != 1 or any(type(row.get(key)) is not str or
+                            not re.fullmatch(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', row[key])
+                            for key in ('commandUuid', 'deliveryId')):
+                    raise Denied('Unmatched or unknown native queue removal')
+                queued.remove(content)
             else: raise Denied('Unknown or unmatched native queue operation')
         elif kind in ('user', 'assistant'):
             message = row.get('message')
