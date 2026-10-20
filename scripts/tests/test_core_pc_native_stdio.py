@@ -1,6 +1,9 @@
 """Migration adapter path/owner gates only; never touch a native socket/profile."""
 from contextlib import contextmanager
 import hashlib
+import json
+import socket
+import time
 from pathlib import Path
 import stat
 import tempfile
@@ -10,9 +13,97 @@ from unittest import mock
 
 import pc_native_stdio as adapter
 from relay_core.identity import Denied
+from relay_core.native_rpc import IOTimedOut
+from relay_core.native_ws import UnixWSChannel
 
 
 class PcNativeStdioTests(unittest.TestCase):
+    def test_quiet_ping_keeps_same_native_channel_and_later_reply(self):
+        owner, peer = socket.socketpair()
+        owner.setblocking(False)
+        native = UnixWSChannel(owner.detach(), timeout_ms=100, max_frame_bytes=512)
+        native.upgraded = True
+        verify = mock.Mock()
+        try:
+            peer.sendall(b'\x89\x05alive')
+            self.assertIsNone(adapter.receive_native(native, verify, time.monotonic() + .01))
+            self.assertFalse(native.closed)
+            pong = peer.recv(128)
+            self.assertEqual(pong[:2], b'\x8a\x85')
+            event = {'method': 'fixture/alive', 'params': {}}
+            body = json.dumps(event).encode()
+            peer.sendall(bytes((0x81, len(body))) + body)
+            self.assertEqual(adapter.receive_native(native, verify, time.monotonic() + .1), event)
+            self.assertEqual(verify.call_count, 2)
+        finally:
+            native.close(); peer.close()
+
+    def test_partial_inbound_frame_survives_quiet_wait_without_replay(self):
+        owner, peer = socket.socketpair(); owner.setblocking(False)
+        native = UnixWSChannel(owner.detach(), timeout_ms=100, max_frame_bytes=512)
+        native.upgraded = True
+        try:
+            body = b'{"id":7,"result":{"ok":true}}'
+            peer.sendall(bytes((0x81, len(body))) + body[:4])
+            self.assertIsNone(adapter.receive_native(native, lambda: None, time.monotonic() + .01))
+            self.assertFalse(native.closed)
+            peer.sendall(body[4:])
+            self.assertEqual(adapter.receive_native(native, lambda: None, time.monotonic() + .1), json.loads(body))
+        finally:
+            native.close(); peer.close()
+
+    def test_timed_out_control_write_is_not_mistaken_for_quiet_read(self):
+        owner, peer = socket.socketpair(); owner.setblocking(False)
+        native = UnixWSChannel(owner.detach(), timeout_ms=100, max_frame_bytes=512)
+        native.upgraded = True
+        try:
+            peer.sendall(b'\x89\x05alive')
+            with mock.patch.object(native, '_write_bytes', side_effect=IOTimedOut('fixture partial pong')):
+                with self.assertRaises(Denied):
+                    adapter.receive_native(native, lambda: None, time.monotonic() + .1)
+            self.assertTrue(native.closed)
+        finally:
+            native.close(); peer.close()
+
+    def test_idle_read_never_bypasses_peer_or_workspace_changes(self):
+        native = mock.Mock()
+        native.receive.side_effect = IOTimedOut('fixture idle')
+        with self.assertRaises(Denied):
+            adapter.receive_native(native, mock.Mock(side_effect=Denied('fixture changed peer')), 1)
+        native.current.assert_called_once()
+        native.send.assert_not_called()
+
+    def test_operational_loop_survives_idle_then_forwards_later_event_once(self):
+        native = mock.Mock(fds=(123, 124), buffer=bytearray())
+        event = {'method': 'fixture/alive', 'params': {}}
+        native.receive.side_effect = [IOTimedOut('fixture quiet ping'), (event, b'{}')]
+        stdio = mock.Mock(buffer=bytearray())
+        selector = mock.MagicMock(); selector.__enter__.return_value = selector
+        selector.select.side_effect = [[(SimpleNamespace(data='native'), None)],
+                                       [(SimpleNamespace(data='native'), None)],
+                                       [(SimpleNamespace(data='input'), None)]]
+        with mock.patch.object(adapter, 'connect', return_value=(native, mock.Mock(), {})), \
+                mock.patch.object(adapter.os, 'dup', side_effect=[100, 101]), mock.patch.object(adapter.os, 'set_blocking'), \
+                mock.patch.object(adapter.os, 'read', return_value=b''), mock.patch.object(adapter, 'JSONLChannel', return_value=stdio), \
+                mock.patch.object(adapter.selectors, 'DefaultSelector', return_value=selector):
+            adapter.bridge(str(adapter.SOCKET))
+        self.assertEqual(stdio.send.call_count, 2)  # Ready + the later unchanged event.
+        self.assertEqual(stdio.send.call_args.args[0], event)
+        native.send.assert_not_called(); native.close.assert_called_once()
+
+    def test_partial_native_buffer_does_not_starve_ready_owner_input(self):
+        native = mock.Mock(fds=(123, 124), buffer=bytearray(b'\x81'))
+        native.receive.side_effect = Denied('fixture native frame is still incomplete')
+        stdio = mock.Mock(buffer=bytearray())
+        selector = mock.MagicMock(); selector.__enter__.return_value = selector
+        selector.select.return_value = [(SimpleNamespace(data='input'), None)]
+        with mock.patch.object(adapter, 'connect', return_value=(native, mock.Mock(), {})), \
+                mock.patch.object(adapter.os, 'dup', side_effect=[100, 101]), mock.patch.object(adapter.os, 'set_blocking'), \
+                mock.patch.object(adapter.os, 'read', return_value=b''), mock.patch.object(adapter, 'JSONLChannel', return_value=stdio), \
+                mock.patch.object(adapter.selectors, 'DefaultSelector', return_value=selector):
+            adapter.bridge(str(adapter.SOCKET))
+        native.receive.assert_not_called(); selector.select.assert_called_once_with(0)
+
     @contextmanager
     def workspace_fixture(self):
         path = adapter.WORKSPACE_ROOT / 'fixture-repo'

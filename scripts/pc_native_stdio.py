@@ -19,7 +19,7 @@ import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from relay_core.identity import Denied, peer_credentials, proc_stat
-from relay_core.native_rpc import JSONLChannel
+from relay_core.native_rpc import IOTimedOut, JSONLChannel
 from relay_core.native_ws import UnixWSChannel
 
 OWNER = Path('/Users/pouya')
@@ -426,6 +426,24 @@ def connect(value):
         raise
 
 
+def receive_native(native, verify, deadline):
+    """A quiet read is not a broken transport or a failed native mutation.
+
+    WebSocket ping/pong or an incomplete inbound frame can consume a poll's
+    deadline without producing an application message. Retain that same
+    channel and its buffered bytes. A partial control-frame WRITE closes the
+    channel inside UnixWSChannel and must still fail closed here.
+    """
+    try:
+        message, _ = native.receive(deadline)
+        verify()
+        return message
+    except IOTimedOut:
+        native.current()
+        verify()
+        return None
+
+
 def bridge(value, workspaces=None):
     verify_workspaces = None
     if workspaces is not None:
@@ -483,12 +501,10 @@ def bridge(value, workspaces=None):
                     else:
                         native.send(message, time.monotonic() + 30)
                     continue
-                if native.buffer:
-                    message, _ = native.receive(time.monotonic() + 30)
-                    verify()
-                    stdio.send(message, time.monotonic() + 30)
-                    continue
-                for key, _ in selector.select():
+                # Keep owner input serviceable while a partial native frame
+                # waits for more bytes. Buffered bytes do not justify blocking
+                # the other direction or replaying a timed-out request.
+                for key, _ in selector.select(0 if native.buffer else None):
                     if key.data == 'input':
                         body = os.read(read_fd, min(65536, MAX_FRAME + 1 - len(stdio.buffer)))
                         if not body:
@@ -499,8 +515,12 @@ def bridge(value, workspaces=None):
                         if len(stdio.buffer) > MAX_FRAME and b'\n' not in stdio.buffer:
                             raise Denied('Native request exceeds complete-frame bound')
                     else:
-                        message, _ = native.receive(time.monotonic() + 30)
-                        verify()
+                        message = receive_native(native, verify, time.monotonic() + 0.25)
+                        if message is not None:
+                            stdio.send(message, time.monotonic() + 30)
+                if native.buffer:
+                    message = receive_native(native, verify, time.monotonic() + 0.25)
+                    if message is not None:
                         stdio.send(message, time.monotonic() + 30)
     finally:
         native.close()

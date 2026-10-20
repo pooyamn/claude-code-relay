@@ -44,9 +44,9 @@ jobs:
         shell: bash
         working-directory: .
         env:
-          PYTHONPATH: scripts
+          PYTHONPATH: scripts:scripts/tests
         run: |
-          python3 -m unittest scripts.tests.test_core_pc_claude_stdio scripts.tests.test_core_pc_native_stdio scripts.tests.test_pc_topic_operations
+          python3 -m unittest scripts.tests.test_core_pc_claude_stdio scripts.tests.test_core_pc_native_stdio scripts.tests.test_pc_topic_operations scripts.tests.test_core_native_ws
       - name: Publish self-contained candidate
         env:
           RELEASE_RID: ${{ matrix.rid }}
