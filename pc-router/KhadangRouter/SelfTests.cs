@@ -121,6 +121,7 @@ public static class SelfTests
         checks += AttachmentTests.Run(root, policy).GetAwaiter().GetResult();
         checks += RoutingTests.Run(root, policy).GetAwaiter().GetResult();
         checks += ParticipantTests.Run(root, policy).GetAwaiter().GetResult();
+        checks += TopicCreationTests.Run(root, policy).GetAwaiter().GetResult();
         checks += ReceiptTypingTests.Run(root, policy).GetAwaiter().GetResult();
         checks += MixedRoutingTests.Run(root, policy).GetAwaiter().GetResult();
         checks += MixedRoutingTests.RunInputIsolation(root, policy).GetAwaiter().GetResult();

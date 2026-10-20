@@ -11,6 +11,30 @@ existing session/history; new projects get fresh sessions. Default to the
 requesting forum and its backend. Without an explicit folder, a new project
 uses /Users/pouya/.openclaw/workspace/<topic-slug>. Never fork/repoint the source.
 
+## Direct Telegram Codex fast path
+
+The owner can send `/topic Motorcontrol Plant --model sol6.1` in a bound forum
+topic. The running bridge handles this directly: same forum, fresh Codex session,
+explicit model, owner-side folder preparation, durable checkpoint, one Telegram
+creation and hot binding. No agent planning turn, SSH, service restart, or
+reconnection of other sessions is needed. The exact quoted English form
+`Make a new topic “Motorcontrol Plant” Using codex , sol6.1 model` also matches.
+Other wording/backends continue through the controller workflow below; do not
+pretend that an agent message is the owner's `/topic` command.
+
+Healthy-path target is about 10 seconds, not a guarantee during capacity,
+transport or permission failures. Report actual elapsed time/phase receipts.
+Registration may perform one short ready-and-wait Codex turn, without tools,
+project work, a goal or delegation. A raw injected checkpoint alone is hidden
+from Codex's native list (`has_user_event=0`); readiness requires the exact ID,
+name and folder to appear in native `thread/list`, not just `thread/read`.
+Lost registration/creation acknowledgments must not be retried automatically.
+
+Native allocation must run under the existing ordinary-owner Windows/WSL lane.
+Elevated SSH followed by `wsl.exe -u pou` is NOT equivalent: its DrvFS context
+can still open protected credentials. Keep the actual credential-denial check;
+do not disable it or alter ACLs to make allocation pass.
+
 ## Other topics: one routed request
 
 Read talk-to-sessions. Use pc_ccrelay.list_sessions (registry:pc-native) to

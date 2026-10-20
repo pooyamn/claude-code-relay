@@ -106,6 +106,134 @@ def local_artifact_response(message, workspaces):
         return {'id': message['id'], 'error': {'code': -32602, 'message': 'Project artifact read refused'}}
 
 
+def prepare_workspace(parameters, workspaces):
+    """Bounded owner-side directory preparation, never an elevated WSL call."""
+    require_owner()
+    if workspaces is None or type(parameters) is not dict or set(parameters) != {'workspace'}:
+        raise Denied('Attested operational transport required')
+    value = parameters['workspace']
+    if type(value) is not str or not re.fullmatch(re.escape(str(WORKSPACE_ROOT)) + r'/[a-z0-9][a-z0-9-]{0,127}', value):
+        raise Denied('One literal project child required')
+    # Recheck the existing trusted root/ancestors and credential denial first.
+    attest_workspaces(workspaces)()
+    descriptor = os.open(WORKSPACE_ROOT, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        try:
+            os.mkdir(value.rsplit('/', 1)[1], mode=0o700, dir_fd=descriptor)
+        except FileExistsError:
+            pass
+        added = list(workspaces) if value in workspaces else [*workspaces, value]
+        verifier = attest_workspaces(added)
+        verifier()
+        workspaces[:] = added
+        return verifier, {'workspace': value, 'uid': 1000, 'credentialDenied': True}
+    finally:
+        os.close(descriptor)
+
+
+def verify_checkpoint(parameters, workspaces):
+    """Read back only the expected inert checkpoint; never export history."""
+    require_owner()
+    if workspaces is None or type(parameters) is not dict or set(parameters) != {'workspace', 'threadId', 'path', 'checkpoint'}:
+        raise Denied('Exact checkpoint verification required')
+    workspace, thread, value, checkpoint = (parameters[k] for k in ('workspace', 'threadId', 'path', 'checkpoint'))
+    if workspace not in workspaces or type(thread) is not str or not re.fullmatch(r'[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}', thread) or \
+            type(value) is not str or not value.startswith(str(OWNER / '.codex/sessions') + '/') or \
+            not value.endswith('-' + thread + '.jsonl') or any(p in ('', '.', '..') for p in value.split('/')[1:]) or \
+            type(checkpoint) is not str or not 1 <= len(checkpoint) <= 4096:
+        raise Denied('Checkpoint identity differs')
+    descriptors = []
+    try:
+        directory = os.open('/', os.O_RDONLY | os.O_DIRECTORY)
+        descriptors.append(directory)
+        for part in value.split('/')[1:-1]:
+            directory = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory)
+            descriptors.append(directory)
+        descriptor = os.open(value.rsplit('/', 1)[1], os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory)
+        descriptors.append(descriptor)
+        before = os.fstat(descriptor)
+        if before.st_uid != 1000 or not stat.S_ISREG(before.st_mode) or not 0 < before.st_size <= 2_000_000:
+            raise Denied('Bounded owner rollout required')
+        raw = os.read(descriptor, before.st_size + 1)
+        if len(raw) != before.st_size or _file_identity(os.fstat(descriptor)) != _file_identity(before):
+            raise Denied('Checkpoint changed during read')
+        import json
+        identity = found = False
+        for line in raw.splitlines():
+            item = json.loads(line)
+            payload = item['payload']
+            if item['type'] == 'session_meta':
+                if payload['id'] != thread or payload.get('cwd') != workspace:
+                    raise Denied('Checkpoint session differs')
+                identity = True
+            if item['type'] == 'response_item' and payload.get('type') == 'message' and payload.get('role') == 'user':
+                found |= any(p.get('type') == 'input_text' and p.get('text') == checkpoint for p in payload.get('content', []))
+        if not identity or not found:
+            raise Denied('Checkpoint not persisted')
+        return {'threadId': thread, 'workspace': workspace, 'persisted': True}
+    finally:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+
+
+def add_catalog_binding(parameters, workspaces):
+    """Publish one token-free routing entry as its ordinary owner, not SYSTEM."""
+    import json
+    import datetime
+    import secrets
+    require_owner()
+    fields = {'Chat', 'Topic', 'Name', 'Workspace', 'ThreadId', 'Backend', 'Runtime'}
+    if type(parameters) is not dict or set(parameters) != fields or workspaces is None or \
+            parameters['Workspace'] not in workspaces or parameters['Backend'] != 'codex' or parameters['Runtime'] != 'linux' or \
+            type(parameters['Chat']) is not int or not str(parameters['Chat']).startswith('-100') or \
+            not -4_503_599_627_370_495 <= parameters['Chat'] < 0 or type(parameters['Topic']) is not int or not 0 < parameters['Topic'] <= 2_147_483_647 or \
+            type(parameters['Name']) is not str or not 1 <= len(parameters['Name']) <= 128 or any(ord(c) < 32 for c in parameters['Name']) or \
+            type(parameters['ThreadId']) is not str or not re.fullmatch(r'[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}', parameters['ThreadId']):
+        raise Denied('Exact prepared Codex routing entry required')
+    directory = OWNER / '.config/ccrelay'
+    for path in [OWNER / '.config', directory]:
+        metadata = path.lstat()
+        if not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != 1000 or metadata.st_mode & 0o022:
+            raise Denied('Literal private owner catalog directory required')
+    fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    temporary = None
+    try:
+        descriptor = os.open('pc-topics.json', os.O_RDONLY | os.O_NOFOLLOW, dir_fd=fd)
+        with os.fdopen(descriptor, 'rb') as source:
+            metadata = os.fstat(source.fileno())
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != 1000 or not 0 < metadata.st_size < 2_000_000:
+                raise Denied('Bounded owner routing catalog required')
+            catalog = json.loads(source.read(2_000_001))
+        if catalog.get('schema') != 'ccrelay.pc_topics.v1' or type(catalog.get('bindings')) is not list or len(catalog['bindings']) >= 256:
+            raise Denied('Routing catalog differs')
+        alias = parameters['Workspace'].rsplit('/', 1)[1]
+        entry = dict(parameters, Alias=alias)
+        matches = [b for b in catalog['bindings'] if b.get('ThreadId') == entry['ThreadId'] or
+                   b.get('Alias') == alias or (b.get('Chat'), b.get('Topic')) == (entry['Chat'], entry['Topic'])]
+        if matches:
+            if len(matches) != 1 or matches[0] != entry:
+                raise Denied('Existing routing entry differs')
+            return {'published': True, 'threadId': entry['ThreadId']}
+        catalog['bindings'].append(entry)
+        catalog['observedAt'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        temporary = '.pc-topics-' + secrets.token_hex(12)
+        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=fd)
+        with os.fdopen(descriptor, 'w') as target:
+            json.dump(catalog, target, ensure_ascii=False)
+            target.flush()
+            os.fsync(target.fileno())
+        if _file_identity(os.stat('pc-topics.json', dir_fd=fd, follow_symlinks=False)) != _file_identity(metadata):
+            raise Denied('Routing catalog changed during publication')
+        os.replace(temporary, 'pc-topics.json', src_dir_fd=fd, dst_dir_fd=fd)
+        temporary = None
+        os.fsync(fd)
+        return {'published': True, 'threadId': entry['ThreadId']}
+    finally:
+        if temporary is not None:
+            os.unlink(temporary, dir_fd=fd)
+        os.close(fd)
+
+
 def attest_workspaces(values):
     """Actual literal directory/UID and OS denial checks, no native/tool action."""
     if not 1 <= len(values) <= 256 or len(set(values)) != len(values):
@@ -311,6 +439,24 @@ def bridge(value, workspaces=None):
             verify_workspaces()
         verify_peer()
 
+    def local_response(message):
+        nonlocal verify_workspaces
+        method = message.get('method')
+        if method not in ('ccrelay/workspace/prepare', 'ccrelay/checkpoint/verify', 'ccrelay/catalog/add'):
+            return local_artifact_response(message, workspaces)
+        if type(message.get('id')) is not int:
+            raise Denied('Local operations require an identified request')
+        try:
+            if method == 'ccrelay/workspace/prepare':
+                verify_workspaces, result = prepare_workspace(message.get('params'), workspaces)
+            elif method == 'ccrelay/checkpoint/verify':
+                result = verify_checkpoint(message.get('params'), workspaces)
+            else:
+                result = add_catalog_binding(message.get('params'), workspaces)
+            return {'id': message['id'], 'result': result}
+        except (Denied, OSError, ValueError, KeyError, TypeError):
+            return {'id': message['id'], 'error': {'code': -32602, 'message': 'Local owner operation refused'}}
+
     if verify_workspaces is not None:
         observed.update(binarySha256=BINARY_SHA256, credentialDenied=True, workspaces=list(workspaces))
     stdio = None
@@ -331,7 +477,7 @@ def bridge(value, workspaces=None):
                 if b'\n' in stdio.buffer:
                     message, _ = stdio.receive(time.monotonic() + 30)
                     verify()
-                    local = local_artifact_response(message, workspaces)
+                    local = local_response(message)
                     if local is not None:
                         stdio.send(local, time.monotonic() + 30)
                     else:

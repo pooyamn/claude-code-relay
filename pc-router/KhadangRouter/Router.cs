@@ -62,6 +62,8 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
     }
     private readonly ConcurrentDictionary<TopicAddress, Session> sessions = new();
     private readonly ConcurrentDictionary<long, Task> handlers = new();
+    private TopicProvisioner? topicProvisioner;
+    private readonly object topicProvisionerGate = new();
     private sealed record Approval(JsonElement Id, string Method, TopicAddress Address, string Thread, string Turn, bool CanApprove);
     private readonly ConcurrentDictionary<string, Approval> approvals = new();
     private sealed record Question(JsonElement Id, TopicAddress Address, string Thread, string Turn, JsonElement Questions,
@@ -390,6 +392,49 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             // backend. Synthetic deployment inputs and service events are quiet.
             if (updateId >= 0 && new[] { "text", "photo", "document", "audio", "video", "voice", "animation", "sticker", "video_note" }
                 .Any(key => message.TryGetProperty(key, out _))) receiptTyping.Observe(address, stop);
+            if (message.TryGetProperty("text", out var topicText) && topicText.ValueKind == JsonValueKind.String &&
+                !new[] { "photo", "document", "audio", "video", "voice", "animation", "sticker", "video_note", "media_group_id" }.Any(key => message.TryGetProperty(key, out _)) &&
+                TopicCreateRequest.TryParse(topicText.GetString()!, policy.BotUsername, out var topicRequest))
+            {
+                if (!policy.OwnerMessage(message) || linuxRpc == null)
+                { ledger.Finish(updateId, "denied"); return; }
+                target = null; // A provisioning failure must not hold the source conversation.
+                TopicProvisioner provisioner;
+                lock (topicProvisionerGate) provisioner = topicProvisioner ??= new TopicProvisioner(policy, ledger, telegram, linuxRpc, (binding, _) => {
+                    policy.ValidateBindings(ledger.Bindings().Append(binding).ToArray());
+                    if (sessions.ContainsKey(binding.Address) || sessions.Values.Any(s => s.Binding.ThreadId == binding.ThreadId))
+                        throw new InvalidDataException("Duplicate live binding; no repoint");
+                    ledger.Bind(binding);
+                    if (!sessions.TryAdd(binding.Address, new Session(binding, linuxRpc)))
+                        throw new InvalidDataException("Live topic registration collision");
+                    StatusFile(); return Task.CompletedTask;
+                });
+                TopicCreateResult created;
+                await starts.WaitAsync(stop);
+                try
+                {
+                    if (sessions.Values.Count(s => s.Busy) >= policy.MaximumSessions)
+                        throw new InvalidOperationException("Active session cap reached; topic request retained without creation");
+                    var wait = lastStart.AddSeconds(policy.StartSpacingSeconds) - DateTimeOffset.UtcNow;
+                    if (wait > TimeSpan.Zero) await Task.Delay(wait, stop);
+                    created = await provisioner.Create(updateId, message, session.Binding, topicRequest!, stop);
+                    if (created.Phase == "ready") lastStart = DateTimeOffset.UtcNow;
+                }
+                catch (Exception error) when (error is not OperationCanceledException)
+                {
+                    ledger.Finish(updateId, "topic-held-no-replay");
+                    var retained = ledger.Get("topic-create/" + address.Chat + "/" + updateId);
+                    var phase = retained?.GetProperty("phase").GetString() ?? "preflight";
+                    await telegram.Send(address.Chat, address.Topic, "Topic request stopped at " + phase + " (" + error.GetType().Name +
+                        "). Request " + updateId + " is retained; no uncertain creation was retried. Existing topics were not restarted or repointed.", stop);
+                    return;
+                }
+                finally { starts.Release(); }
+                ledger.Finish(updateId, "topic-ready");
+                await telegram.Send(address.Chat, address.Topic, created.Binding.Name + " ready · Codex " + created.Model +
+                    " · " + (created.ElapsedMs / 1000).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "s\n" + created.Link, stop);
+                return;
+            }
             if (session.Claude is UnavailableClaude || session.PreserveSavedBubble)
             {
                 ledger.Finish(updateId, "held-no-replay");
