@@ -79,7 +79,15 @@ $code=(Get-FileHash "$root\bin\KhadangRouter.dll").Hash;$policy=(Get-FileHash "$
 $proof=Get-Content "$root\state\probe.json" -Raw -Encoding UTF8|ConvertFrom-Json
 if(-not $proof.verified -or $proof.routerSha256 -ne $code -or $proof.policySha256 -ne $policy){throw 'Matching native proof required before effects'}
 function InvokeHelper([string]$File,[hashtable]$Arguments){
- $output=@(& powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $package $File) @Arguments)
+ # Windows PowerShell -File cannot bind a string value to a switch. Native
+ # hashtable splatting turns $true into a string; emit enabled switches alone.
+ $nativeArgs=@()
+ foreach($entry in $Arguments.GetEnumerator()){
+  if($entry.Value -is [bool] -or $entry.Value -is [Management.Automation.SwitchParameter]){
+   if([bool]$entry.Value){$nativeArgs+=('-'+$entry.Key)}
+  }else{$nativeArgs+=('-'+$entry.Key);$nativeArgs+=[string]$entry.Value}
+ }
+ $output=@(& powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $package $File) @nativeArgs)
  if($LASTEXITCODE -ne 0){throw ('Workflow stopped at '+$File+'; inspect retained receipts, never replay unknown effects')}
  return $output
 }

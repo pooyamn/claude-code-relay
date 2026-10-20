@@ -45,7 +45,14 @@ $rows=[RouterReceipts]::Read("SELECT payload FROM updates WHERE id=$SourceUpdate
 if($rows.Length -ne 1){throw 'Original owner request missing'};$request=($rows[0][0]|ConvertFrom-Json).message
 if($request.from.id -ne $policy.OwnerId -or $request.from.is_bot -or $request.chat.id -ne $source.Chat -or $request.message_thread_id -ne $source.Topic -or $request.forward_origin -or $request.sender_chat -or $request.via_bot -or $request.text -notmatch [regex]::Escape($created.name)){throw 'Original authenticated owner request differs'}
 $before=Get-Content "$root\state\status.json" -Raw|ConvertFrom-Json
-if((Get-Service KhadangRouter).Status -ne 'Running' -or [DateTimeOffset]$before.at -lt [DateTimeOffset]::UtcNow.AddMinutes(-2) -or @($before.nativeSessions|Where-Object {$_.binding.Backend -eq 'claude' -and -not $_.claudeConnected}).Count){throw 'Fresh live router and connected native Claude required'}
+function DisconnectedActiveClaude($Sessions,$PreviouslyHeldIds){
+ @($Sessions|Where-Object {$_.binding.Backend -eq 'claude' -and -not $_.claudeConnected -and $_.binding.ThreadId -notin $PreviouslyHeldIds})
+}
+# An existing scoped hold is intentionally disconnected. Preserve it, without
+# making unrelated topic creation depend on recovering that native history.
+# Freeze the allowlist before restart: a NEW hold must still fail verification.
+$heldClaudeIds=@($before.nativeSessions|Where-Object {$_.binding.Backend -eq 'claude' -and $_.held}|ForEach-Object {$_.binding.ThreadId})
+if((Get-Service KhadangRouter).Status -ne 'Running' -or [DateTimeOffset]$before.at -lt [DateTimeOffset]::UtcNow.AddMinutes(-2) -or @(DisconnectedActiveClaude $before.nativeSessions $heldClaudeIds).Count){throw 'Fresh live router and connected non-held native Claude required'}
 $binding=[ordered]@{Chat=$created.chat;Topic=$created.topic;Name=$created.name;Workspace=$Workspace;ThreadId=$ThreadId;Backend='codex';Runtime='linux'}
 function SafeDb($Db){
  if([int]$Db.Read("SELECT COUNT(*) FROM updates WHERE status IN ('received','dispatching','unknown')")[0][0]){throw 'Unsettled incoming delivery; no enrollment'}
@@ -116,7 +123,7 @@ if(($retained|ConvertTo-Json -Compress) -cne ($prior|ConvertTo-Json -Compress)){
 $nowUncertain=[RouterReceipts]::Read("SELECT id,kind,payload,status,result FROM operations WHERE status='unknown' AND kind<>'telegram/editMessageText' ORDER BY id")
 if(($nowUncertain|ConvertTo-Json -Compress) -cne ($uncertain|ConvertTo-Json -Compress)){throw 'Uncertain effects changed; inspect'}
 foreach($row in $held){$current=[RouterReceipts]::Read("SELECT value FROM meta WHERE key='$($row[0])'");if($current.Length -ne 1 -or -not ($current[0][0]|ConvertFrom-Json).held){throw 'Existing hold cleared; inspect'}}
-if(@($status.nativeSessions|Where-Object {$_.binding.Backend -eq 'claude' -and -not $_.claudeConnected}).Count){throw 'Old Claude connection lost; inspect'}
+if(@(DisconnectedActiveClaude $status.nativeSessions $heldClaudeIds).Count){throw 'Old Claude connection lost; inspect'}
 if($watchdog){Enable-ScheduledTask Oracova-KhadangStartup|Out-Null}
 $link='https://t.me/c/'+([string]$binding.Chat).Substring(4)+'/'+$binding.Topic
 $result=@{binding=$binding;initialBinding=$binding;link=$link;source=$source;existingRoutesPreserved=$true;sharedDaemonUnchanged=$true;policyUnchanged=$true;existingUnknownsPreserved=$true;startupRestored=$true;phoneRoundTripVerified=$false;at=[DateTimeOffset]::UtcNow.ToString('o')}
