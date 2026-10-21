@@ -544,7 +544,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                     await starts.WaitAsync(stop);
                     try
                     {
-                        if (sessions.Values.Count(s => s.Busy) >= policy.MaximumSessions) throw new InvalidOperationException("Active session cap reached; input held");
+                        if (sessions.Values.Count(s => s.Busy) >= policy.MaximumSessions) throw new CapacityDenied(policy.MaximumSessions);
                         var wait = lastStart.AddSeconds(policy.StartSpacingSeconds) - DateTimeOffset.UtcNow;
                         if (wait > TimeSpan.Zero) await Task.Delay(wait, stop);
                         lock (session.Gate)
@@ -563,6 +563,23 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 ledger.Finish(updateId, "accepted");
             }
             finally { session.Dispatch.Release(); }
+        }
+        catch (CapacityDenied error)
+        {
+            // Capacity is checked before a native start/UI reservation. Keep
+            // the original input out of the dispatch queue, without holding
+            // the topic or changing existing work/approvals/uncertain receipts.
+            ledger.Finish(updateId, "retained-capacity");
+            if (target != null)
+            {
+                var notice = "System busy: all " + error.Maximum + " active-session slots are occupied. Input " + updateId +
+                    " was retained but NOT sent to the agent. Nothing is queued or replayed automatically. Please resend when a slot is free. /status remains available.";
+                ledger.Put("capacity-retained/" + updateId, new { target.Binding, maximum = error.Maximum, nativeSubmitted = false, at = DateTimeOffset.UtcNow });
+                lock (target.Gate) { target.Bubble.Append("\n" + notice + "\n"); Touch(target); }
+                try { await telegram.Send(target.Binding.Chat, target.Binding.Topic, notice, stop); }
+                catch (TelegramFailure failure)
+                { ledger.Put("capacity-notice/" + updateId, new { code = failure.Code, retry = false, at = DateTimeOffset.UtcNow }); }
+            }
         }
         catch (AttachmentFailure error)
         {

@@ -88,7 +88,7 @@ public sealed partial class Router
                 if (!active)
                 {
                     if (sessions.Values.Count(s => s.Busy) >= policy.MaximumSessions)
-                        throw new AttachmentFailure("Active session cap reached; original input retained");
+                        throw new CapacityDenied(policy.MaximumSessions);
                     var wait = lastStart.AddSeconds(policy.StartSpacingSeconds) - DateTimeOffset.UtcNow;
                     if (wait > TimeSpan.Zero) await Task.Delay(wait, stop);
                     lock (session.Gate)

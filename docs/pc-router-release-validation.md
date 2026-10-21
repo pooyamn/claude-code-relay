@@ -113,3 +113,19 @@ and scope, not raw model/tool content.
 Deployment verification must check all bindings, same native daemon/host,
 connection and background health, unchanged unknown operations, and unchanged
 unrelated holds. A successful offline gate is not evidence of a phone round trip.
+
+## Capacity refusals are not native failures
+
+`--self-test-capacity` is required as a named artifact gate and inside the full
+suite. Its 56 checks cover Claude and Codex admission, exact-topic notices,
+confirmed notices, known rate refusals, uncertain notice delivery, status access
+while full, restart without replay, and fresh input after capacity returns.
+
+The configured maximum remains three active sessions. A full budget is detected
+before any new native start or busy reservation and records `retained-capacity`,
+not an attachment error or an uncertain native-input hold. A clean Telegram
+notice explains that the input was not sent and needs to be resent when a slot
+is free. It neither queues work nor automatically dispatches retained input.
+Existing active work, approvals and genuinely uncertain sends remain protected.
+If the notice itself has an uncertain send outcome, its original receipt remains
+unknown and scoped to that topic; there is no automatic notice resend.
