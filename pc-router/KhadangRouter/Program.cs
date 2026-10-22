@@ -8,6 +8,18 @@ try
         WindowsService.Run(ClaudeWorkerHost.Run, ClaudeWorkerHost.ServiceName); return;
     }
     if (args.SequenceEqual(new[] { "--self-test" })) { SelfTests.Run(); return; }
+    if (args.SequenceEqual(new[] { "--self-test-participants" }))
+    {
+        var root = Path.Combine(Path.GetTempPath(), "khadang-participant-tests-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+        try
+        {
+            var fixture = new RouterPolicy("TheKhadangBot", 123, 456, -100123, "S-1-5-21-1-2-3-1001",
+                "C:\\Native\\codex.exe", new string('a',64), "C:\\Protected\\token.dpapi", "C:\\Protected\\state", "C:\\Workspaces");
+            Console.WriteLine("Passed " + await ParticipantTests.Run(root, fixture) + " participant-access checks (no credentials/network/models).");
+        }
+        finally { Directory.Delete(root, recursive: true); }
+        return;
+    }
     if (args.SequenceEqual(new[] { "--self-test-controller-handoff" }))
     {
         var root = Path.Combine(Path.GetTempPath(), "khadang-handoff-tests-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);

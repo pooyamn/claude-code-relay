@@ -181,7 +181,7 @@ public sealed partial class Router
         JsonElement? goal = source.Goal.Value;
         var requests = ledger.Query("SELECT payload FROM updates WHERE status='accepted' ORDER BY id DESC LIMIT 100")
             .Select(row => JsonDocument.Parse(row[0]!).RootElement).Where(update => update.TryGetProperty("message", out var message) &&
-                policy.ConversationMessage(message) && policy.TryAddress(message, out var address) && address == source.Binding.Address)
+                TopicConversationAccess.Allows(policy, ledger, message) && policy.TryAddress(message, out var address) && address == source.Binding.Address)
             .Select(update => update.GetProperty("message")).Where(message => message.TryGetProperty("text", out _) || message.TryGetProperty("caption", out _))
             .Take(12).Reverse().Select(message => RollingBubble.SafeTail(message.TryGetProperty("text", out var text) ? text.GetString()! : message.GetProperty("caption").GetString()!, 2000)).ToArray();
         var data = JsonSerializer.Serialize(new { schema = "ccrelay.owner_tool_handoff.v1", source = source.Binding,

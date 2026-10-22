@@ -115,7 +115,8 @@ public sealed record RouterPolicy(string BotUsername, long BotId, long OwnerId, 
     // Normal conversation access across admitted chats/topics, never owner
     // authority. Slash controls and the legacy model-switch alias fail closed
     // before either native backend or attachment download can be invoked.
-    public bool ConversationMessage(JsonElement message)
+    public bool ConversationMessage(JsonElement message) => ConversationMessage(message, null);
+    internal bool ConversationMessage(JsonElement message, long[]? topicParticipants)
     {
         // Telegram's `from` is the human who sent this update. Forward origin
         // is untrusted content provenance, not a replacement sender identity.
@@ -123,7 +124,7 @@ public sealed record RouterPolicy(string BotUsername, long BotId, long OwnerId, 
         if (!HumanMessage(message, out var user, allowForwardedContent: true)) return false;
         if (!TryAddress(message, out var address)) return false;
         var chatParticipants = (AdditionalChats ?? []).FirstOrDefault(route => route.Chat == address.Chat)?.ParticipantIds ?? [];
-        if (user != OwnerId && !(ParticipantIds ?? []).Contains(user) && !chatParticipants.Contains(user)) return false;
+        if (user != OwnerId && !(ParticipantIds ?? []).Contains(user) && !chatParticipants.Contains(user) && !(topicParticipants ?? []).Contains(user)) return false;
         if (user == OwnerId && !IsForwarded(message)) return true;
         if (message.TryGetProperty("text", out var text) && text.ValueKind == JsonValueKind.String &&
             (text.GetString()!.TrimStart().StartsWith('/') || ModelCommand.TryParse(text.GetString()!, BotUsername, out _))) return false;

@@ -67,7 +67,7 @@ public sealed class Attachments(RouterPolicy policy, Ledger ledger, IBot bot) : 
     public async Task<IReadOnlyList<StagedAttachment>> Stage(JsonElement message, Binding binding, long updateId, CancellationToken stop)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Live attachment cache requires Windows ACLs");
-        if (!policy.ConversationMessage(message) || !policy.TryAddress(message, out var address) || binding.Address != address)
+        if (!TopicConversationAccess.Allows(policy, ledger, message) || !policy.TryAddress(message, out var address) || binding.Address != address)
             throw new AttachmentFailure("Attachment source is not an admitted participant in the bound chat/topic");
         policy.Workspace(binding);
         var references = References(message);

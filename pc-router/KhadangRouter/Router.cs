@@ -403,7 +403,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         var preparedStart = false;
         try
         {
-            if (!update.TryGetProperty("message", out var message) || !policy.ConversationMessage(message)) { ledger.Finish(updateId, "denied"); return; }
+            if (!update.TryGetProperty("message", out var message) || !TopicConversationAccess.Allows(policy, ledger, message)) { ledger.Finish(updateId, "denied"); return; }
             if (!policy.TryAddress(message, out var address)) { ledger.Finish(updateId, "denied"); return; }
             if (!sessions.TryGetValue(address, out var session))
             {

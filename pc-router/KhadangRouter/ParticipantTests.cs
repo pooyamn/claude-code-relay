@@ -70,6 +70,36 @@ public static class ParticipantTests
             try { (policy with { StateDirectory = template.StateDirectory, AdditionalChats = [new(otherChat, ParticipantIds: ids)] }).Validate(); throw new Exception("Unsafe scoped participant policy accepted"); }
             catch (InvalidDataException) { checks++; }
         }
+        const long topicParticipant = 514280801;
+        using var access = new Ledger(Path.Combine(root, "topic-access-policy.db"));
+        var grantedBinding = new Binding(otherChat, 53, "Topic access", template.WorkspaceRoot + "\\fixture", "topic-access-native");
+        access.Bind(grantedBinding);
+        var grant = new TopicConversationAccess(TopicConversationAccess.Version, policy.OwnerId, otherChat, 53, grantedBinding.Workspace, [topicParticipant]);
+        var grantKey = TopicConversationAccess.Key(grantedBinding.Address); access.Put(grantKey, grant);
+        bool Allowed(JsonElement message) => TopicConversationAccess.Allows(policy, access, message);
+        Check(Allowed(Message(sender: topicParticipant, chat: otherChat)) &&
+            !policy.OwnerMessage(Message(sender: topicParticipant, chat: otherChat)), "Exact topic-only participant can converse without owner authority");
+        foreach (var chat in new[] { policy.ChatId, otherChat, unrelatedChat })
+            foreach (var topic in new[] { 1, 18, 53, 54 })
+                Check(Allowed(Message(sender: topicParticipant, chat: chat, topic: topic, attachment: true)) == (chat == otherChat && topic == 53),
+                    "Topic grant cannot leak to another topic or forum");
+        foreach (var text in new[] { "/approve exact", "/deny exact", "/answer exact yes", "/goal pause", "/clear", "/cancel", "/model opus", "cc model opus" })
+            Check(!Allowed(Message(sender: topicParticipant, chat: otherChat, text: text)), "Topic participant cannot invoke owner controls");
+        Check(Allowed(Message(sender: topicParticipant, chat: otherChat, attachment: true, forbidden: "forward_origin")), "Topic participant can forward ordinary files");
+        Check(!Allowed(Message(sender: topicParticipant, chat: otherChat, forbidden: "sender_chat")) &&
+            !Allowed(Message(sender: topicParticipant, chat: otherChat, bot: true)), "Topic grant cannot authenticate a bot or proxy sender");
+        access.Exec("DELETE FROM meta WHERE key=?", grantKey);
+        Check(!Allowed(Message(sender: topicParticipant, chat: otherChat)), "Removing topic grant immediately denies new input");
+        foreach (var invalid in new[] { grant with { Topic = 0 }, grant with { Chat = -100999999 }, grant with { OwnerId = policy.OwnerId + 1 },
+            grant with { ParticipantIds = [policy.OwnerId] }, grant with { ParticipantIds = [topicParticipant, topicParticipant] }, grant with { ParticipantIds = null! },
+            grant with { Workspace = grantedBinding.Workspace + "-other-project" }, grant with { Schema = "wrong" } })
+        {
+            access.Put(grantKey, invalid);
+            Check(!Allowed(Message(sender: topicParticipant, chat: otherChat)), "Invalid/stale topic grant fails closed before dispatch");
+        }
+        access.Put(TopicConversationAccess.Key(new(unrelatedChat, 53)), grant with { Chat = unrelatedChat });
+        Check(!Allowed(Message(sender: topicParticipant, chat: unrelatedChat)), "Unbound topic grant cannot authorize a native input");
+        access.Put(grantKey, grant);
         // Exercise the actual dispatch gate before BOTH native backend handlers.
         var flags = BindingFlags.NonPublic | BindingFlags.Instance;
         var type = typeof(Router).GetNestedType("Session", BindingFlags.NonPublic)!;
@@ -79,7 +109,8 @@ public static class ParticipantTests
             var binding = new Binding(otherChat, 53, "Participant fixture", template.WorkspaceRoot + "\\fixture",
                 backend == "claude" ? "7dc840b0-402f-451e-bc79-dadfb706d363" : "participant-codex", Backend: backend);
             ledger.Bind(binding);
-            var native = new Native(); var claude = new Claude(binding.ThreadId); var bot = new Bot(); var media = new Media(policy);
+            ledger.Put(TopicConversationAccess.Key(binding.Address), grant with { Workspace = binding.Workspace });
+            var native = new Native(); var claude = new Claude(binding.ThreadId); var bot = new Bot(); var media = new Media(policy, ledger);
             var router = new Router(policy, ledger, bot, native, attachments: media);
             var session = type.GetConstructors(flags | BindingFlags.Public).Single().Invoke(new object[] { binding, native });
             if (backend == "claude") type.GetField("Claude")!.SetValue(session, claude);
@@ -116,6 +147,13 @@ public static class ParticipantTests
             await Dispatch(Message(sender: scopedParticipant, chat: unrelatedChat, attachment: true));
             Check(ledger.Query("SELECT COUNT(*) FROM updates WHERE id IN (10,11) AND status='denied'")[0][0] == "2" && media.Calls == 3 &&
                 (backend == "claude" ? claude.Sends == 4 : native.Calls.Count == 4), "Scoped controls and foreign-forum files fail before dispatch/download: " + backend);
+            await Dispatch(Message(sender: topicParticipant, chat: otherChat, attachment: true));
+            Check(ledger.Query("SELECT status FROM updates WHERE id=12")[0][0] == "accepted" &&
+                media.Calls == 4 && (backend == "claude" ? claude.Sends == 5 : native.Calls.Count == 5), "Topic-only participant file steers the exact existing native turn");
+            await Dispatch(Message(sender: topicParticipant, chat: otherChat, text: "/approve forbidden"));
+            await Dispatch(Message(sender: topicParticipant, chat: otherChat, topic: 54, attachment: true));
+            Check(ledger.Query("SELECT COUNT(*) FROM updates WHERE id IN (13,14) AND status='denied'")[0][0] == "2" && media.Calls == 4 &&
+                (backend == "claude" ? claude.Sends == 5 : native.Calls.Count == 5), "Topic grant cannot trigger controls or another topic's attachment download");
             Check(ledger.Unknown == 0 && ledger.Bindings().Single() == binding, "Participant never changes native binding or owner identity");
         }
         return checks;
@@ -147,11 +185,11 @@ public static class ParticipantTests
         public Task Answer(string id, object result, CancellationToken stop) => throw new Exception("Participant cannot approve Claude");
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
-    private sealed class Media(RouterPolicy policy) : IAttachments
+    private sealed class Media(RouterPolicy policy, Ledger ledger) : IAttachments
     {
         public int Calls;
         public Task<IReadOnlyList<StagedAttachment>> Stage(JsonElement message, Binding binding, long updateId, CancellationToken stop)
-        { if (!policy.ConversationMessage(message) || !policy.TryAddress(message, out var address) || address != binding.Address) throw new Exception("Wrong participant attachment authority"); Calls++; return Task.FromResult<IReadOnlyList<StagedAttachment>>([]); }
+        { if (!TopicConversationAccess.Allows(policy, ledger, message) || !policy.TryAddress(message, out var address) || address != binding.Address) throw new Exception("Wrong participant attachment authority"); Calls++; return Task.FromResult<IReadOnlyList<StagedAttachment>>([]); }
     }
     private sealed class Bot : IBot
     {
