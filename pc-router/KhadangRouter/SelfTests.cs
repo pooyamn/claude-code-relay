@@ -100,6 +100,8 @@ public static class SelfTests
         checks += NativeChannelTests.Run(root).GetAwaiter().GetResult();
         checks += TransportHealthTests.Run(root, policy).GetAwaiter().GetResult();
         checks += CapacityAdmissionTests.Run(root, policy).GetAwaiter().GetResult();
+        checks += ControllerHandoffTests.Run(root, policy).GetAwaiter().GetResult();
+        checks += ResumeReceiptTests.Run(root);
         checks += LinuxCodexRuntimeTests.Run(policy).GetAwaiter().GetResult();
         checks += LinuxClaudeRuntimeTests.Run(policy, root).GetAwaiter().GetResult();
         checks += ClaudeNativeStreamTests.Run(root).GetAwaiter().GetResult();

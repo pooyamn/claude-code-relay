@@ -70,6 +70,11 @@ public sealed class Ledger : IDisposable
             var count = int.Parse(Rows("SELECT COUNT(*) FROM updates WHERE status='unknown'")[0][0]!);
             foreach (var row in Rows("SELECT kind,payload,id FROM operations WHERE status='unknown' AND kind<>'telegram/editMessageText'"))
             {
+                // A later ACK for the identical attachment/settings supersedes
+                // an old resume timeout. It does not confirm that old request,
+                // replay it, or waive uncertainty for any model input.
+                if (row[0] == "native/thread/resume" && ResumeSuperseded(row[2]!, row[1]!)) continue;
+                if (row[0] == "telegram/setMyCommands" && MenuSuperseded(row[2]!, row[1]!)) continue;
                 if (row[0] is "telegram/sendMessage" or "telegram/sendRichMessage" or "telegram/sendPhoto" or "telegram/sendDocument")
                 {
                     try
@@ -93,6 +98,50 @@ public sealed class Ledger : IDisposable
             }
             return count;
         }
+    }
+    private bool ResumeSuperseded(string operation, string payload)
+    {
+        try
+        {
+            using var old = JsonDocument.Parse(payload);
+            var parameters = old.RootElement.GetProperty("parameters");
+            var allowed = new[] { "threadId", "cwd", "excludeTurns", "approvalPolicy", "approvalsReviewer", "permissions" };
+            if (parameters.ValueKind != JsonValueKind.Object || parameters.EnumerateObject().Count() != allowed.Length ||
+                parameters.EnumerateObject().Any(p => !allowed.Contains(p.Name)) ||
+                !Guid.TryParseExact(parameters.GetProperty("threadId").GetString(), "D", out _) ||
+                string.IsNullOrWhiteSpace(parameters.GetProperty("cwd").GetString()) ||
+                parameters.GetProperty("excludeTurns").ValueKind != JsonValueKind.True ||
+                allowed.Where(k => k != "excludeTurns").Any(k => parameters.GetProperty(k).ValueKind != JsonValueKind.String)) return false;
+            foreach (var row in Rows("SELECT payload,result FROM operations WHERE rowid>(SELECT rowid FROM operations WHERE id=?) AND kind='native/thread/resume' AND status='confirmed'", operation))
+            {
+                using var later = JsonDocument.Parse(row[0]!);
+                // Exact serialized settings deliberately fail closed on even
+                // harmless shape/order changes; no inferred equivalence.
+                if (later.RootElement.GetProperty("parameters").GetRawText() != parameters.GetRawText()) continue;
+                using var ack = JsonDocument.Parse(row[1]!);
+                var thread = ack.RootElement.GetProperty("thread");
+                if (thread.GetProperty("id").GetString() == parameters.GetProperty("threadId").GetString() &&
+                    thread.GetProperty("cwd").GetString() == parameters.GetProperty("cwd").GetString() &&
+                    ack.RootElement.GetProperty("approvalPolicy").GetRawText() == parameters.GetProperty("approvalPolicy").GetRawText()) return true;
+            }
+        }
+        catch (Exception error) when (error is JsonException or InvalidOperationException or KeyNotFoundException or ArgumentException) { }
+        return false;
+    }
+    private bool MenuSuperseded(string operation, string payload)
+    {
+        try
+        {
+            using var original = JsonDocument.Parse(payload);
+            var value = original.RootElement;
+            if (value.EnumerateObject().Count() != 2 || !value.TryGetProperty("scope", out var scope) ||
+                !value.TryGetProperty("commands", out var commands) || commands.ValueKind != JsonValueKind.Array ||
+                scope.EnumerateObject().Count() != 3 || scope.GetProperty("type").GetString() != "chat_member" ||
+                !scope.GetProperty("chat_id").TryGetInt64(out var chat) || chat >= 0 ||
+                !scope.GetProperty("user_id").TryGetInt64(out var user) || user <= 0) return false;
+            return Rows("SELECT id FROM operations WHERE rowid>(SELECT rowid FROM operations WHERE id=?) AND kind='telegram/setMyCommands' AND status='confirmed' AND payload=? AND result='true'", operation, payload).Count != 0;
+        }
+        catch (Exception error) when (error is JsonException or InvalidOperationException or KeyNotFoundException or ArgumentException) { return false; }
     }
     internal bool OutputQuarantined(string operation, Binding binding, string payload)
     {

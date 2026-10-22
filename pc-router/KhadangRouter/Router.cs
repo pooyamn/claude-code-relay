@@ -330,6 +330,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             var restart = CheckNativeConnections();
             StatusFile();
             if (restart) { connectionLost(); return; }
+            await ReadControllerHandoffs(stop);
             await Task.Delay(HeartbeatInterval, stop);
         }
     }

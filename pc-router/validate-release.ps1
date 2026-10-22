@@ -16,7 +16,7 @@ if (-not ($runtime.runtimeOptions.includedFrameworks | Where-Object name -eq 'Mi
 }
 $assembly=Join-Path $candidate 'KhadangRouter.dll'
 $before=(Get-FileHash -LiteralPath $assembly -Algorithm SHA256).Hash
-foreach($suite in @('--self-test-input-isolation','--self-test-startup-isolation','--self-test-transport-health','--self-test-capacity','--self-test')) {
+foreach($suite in @('--self-test-input-isolation','--self-test-startup-isolation','--self-test-transport-health','--self-test-capacity','--self-test-controller-handoff','--self-test')) {
     $output=(& $executable $suite) -join "`n"
     if($LASTEXITCODE -ne 0) { throw "Release validation failed: $suite" }
     # A missing CLI/suite must not be mistaken for an accepted release.
@@ -25,11 +25,17 @@ foreach($suite in @('--self-test-input-isolation','--self-test-startup-isolation
         '--self-test-startup-isolation' {'Passed \d+ startup-isolation checks'}
         '--self-test-transport-health' {'Passed \d+ transport-health checks'}
         '--self-test-capacity' {'Passed \d+ capacity-admission checks'}
+        '--self-test-controller-handoff' {'Passed \d+ controller-handoff checks'}
         default {'Passed \d+ upload-timeout/input-isolation checks'}
     }
     if($output -notmatch $expected) { throw "Missing regression-suite receipt: $suite" }
     Write-Output $output
 }
 & (Join-Path $PSScriptRoot 'router-watchdog.ps1') -SelfTest
+if($windows){
+ $acl=(& (Join-Path $PSScriptRoot 'dispatch-controller-handoff.ps1') -SelfTest)-join "`n"
+ if($acl -notmatch 'Passed 4 controller-handoff ACL publication checks'){throw 'Handoff ACL publication fixture failed'}
+ Write-Output $acl
+}
 if((Get-FileHash -LiteralPath $assembly -Algorithm SHA256).Hash -ne $before) { throw 'Candidate changed during validation' }
 Write-Output "Release validation passed; router SHA256: $before"
