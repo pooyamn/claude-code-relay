@@ -5,7 +5,7 @@ namespace KhadangRouter;
 public sealed partial class Router
 {
     private static bool? Connection(INative? native) => native is INativeConnection health ? health.Connected : null;
-    private Task ProbeNativeConnections(CancellationToken stop) => Task.WhenAll(sessions.Values.Where(s => s.Claude == null)
+    private Task ProbeNativeConnections(CancellationToken stop) => Task.WhenAll(sessions.Values.Where(s => !s.Initializing && s.Claude == null)
         .Select(s => s.Native).OfType<NativeRpc>().Distinct().Select(native => native.CheckLiveness(stop)));
 
     private bool NativeObserverRestartSafe()

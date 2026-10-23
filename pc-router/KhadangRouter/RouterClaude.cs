@@ -51,6 +51,7 @@ public sealed partial class Router
             }
             ledger.Finish(updateId, "control"); return;
         }
+        using var inputScope = ledger.TrackInput(updateId, session.Binding);
         long arrivalRevision;
         lock (session.Gate)
         {
@@ -87,7 +88,7 @@ public sealed partial class Router
             {
                 if (!active)
                 {
-                    if (sessions.Values.Count(s => s.Busy) >= policy.MaximumSessions)
+                    if (sessions.Values.Count(s => s.Busy || s.Initializing) >= policy.MaximumSessions)
                         throw new CapacityDenied(policy.MaximumSessions);
                     var wait = lastStart.AddSeconds(policy.StartSpacingSeconds) - DateTimeOffset.UtcNow;
                     if (wait > TimeSpan.Zero) await Task.Delay(wait, stop);

@@ -68,8 +68,10 @@ public static class FinalAnswerTests
         Event("turn/completed", new { threadId = binding.ThreadId, turn = new { id = "uncertain", status = "completed" } });
         bot.FailAnswer = true; await Flush(); await Flush();
         var unknown = ledger.Get("bubble/" + binding.ThreadId)!.Value;
-        Check(bot.AnswerAttempts == 2 && unknown.GetProperty("held").GetBoolean() && unknown.GetProperty("finalAnswer").GetProperty("Parts")[0].GetProperty("SendUnknown").GetBoolean(),
-            "Lost final-send acknowledgement holds durable intent without duplicate replay");
+        Check(bot.AnswerAttempts == 2 && !unknown.GetProperty("held").GetBoolean() &&
+            unknown.GetProperty("finalAnswer").GetProperty("Parts")[0].GetProperty("SendUnknown").GetBoolean() &&
+            unknown.GetProperty("finalAnswer").GetProperty("Parts")[0].GetProperty("Retained").GetBoolean(),
+            "Lost final-send acknowledgement preserves the uncertain intent without native-input hold or duplicate replay");
         Check(unknown.GetProperty("finalAnswer").GetProperty("Parts")[0].GetProperty("Part").GetProperty("RichHtml").GetString()!.Contains("<table"),
             "Unknown Codex native-table final remains durable, without a classic-message fallback send");
         var claudeBinding = binding with { Topic = 43, ThreadId = "b03fbbe4-56e8-4e65-8f6a-69f95e7ddece", Backend = "claude" };

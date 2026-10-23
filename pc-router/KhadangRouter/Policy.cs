@@ -259,13 +259,13 @@ public sealed class RollingBubble
         if (entries.Count == 1 && entries[0].Text.Length > 7000)
             entries[0] = entries[0] with { Text = LineTail(entries[0].Text, 7000) };
     }
-    public string Render(TimeSpan elapsed, string? goal = null, string state = "Working")
+    public string Render(TimeSpan elapsed, string? goal = null, string state = "Working", string? delivery = null)
     {
         lock (gate)
         {
             var duration = elapsed.TotalHours >= 1 ? (int)elapsed.TotalHours + "h " + elapsed.Minutes + "m " + elapsed.Seconds + "s" :
                 elapsed.TotalMinutes >= 1 ? elapsed.Minutes + "m " + elapsed.Seconds + "s" : elapsed.Seconds + "s";
-            var footer = "\n\n" + state + " (" + duration + ")";
+            var footer = "\n\n" + (delivery == null ? "" : SafeTail(delivery, 160) + "\n") + state + " (" + duration + ")";
             if (!string.IsNullOrWhiteSpace(goal)) footer += "\nGoal: " + SafeTail(goal, 160);
             var available = 3900 - footer.Length;
             var body = NativeEventView.CompactLegacyBubble(Display(entries).Trim());

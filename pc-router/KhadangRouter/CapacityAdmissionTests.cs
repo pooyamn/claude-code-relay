@@ -54,7 +54,7 @@ public static class CapacityAdmissionTests
                 Check(reopened.Pending().Count == 0 && !reopened.Claim(101), "Restart never queues or replays capacity-retained input");
             if (failure == 0)
             {
-                Check(ledger.InputUnknown(target) == 1 && ledger.InputUnknown(neighbor) == 0 && ledger.Unknown == 1, "Unknown notice remains uncertain and scoped, never confirmed or retried");
+                Check(ledger.InputUnknown(target) == 0 && ledger.InputUnknown(neighbor) == 0 && ledger.Unknown == 1, "Unknown capacity notice is audited without disabling either topic");
                 continue;
             }
             bot.Failure = -1;

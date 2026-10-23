@@ -18,7 +18,7 @@ public static class ModelSwitchTests
         var binding = new Binding(policy.ChatId, 42, "Model fixture", LinuxCodexRuntime.WorkspaceRoot + "/duts", "saved-codex", Runtime: "linux");
         var flags = BindingFlags.NonPublic | BindingFlags.Instance;
         var type = typeof(Router).GetNestedType("Session", BindingFlags.NonPublic)!;
-        foreach (var scenario in new[] { "roundtrip", "fresh-codex", "busy", "held", "active-goal", "invalid-model", "handoff-unknown", "wrong-slot", "prelaunch-reconciled", "prelaunch-wrong-model", "prelaunch-ambiguous" })
+        foreach (var scenario in new[] { "roundtrip", "fresh-codex", "busy", "held", "pending-output", "active-goal", "invalid-model", "handoff-unknown", "wrong-slot", "prelaunch-reconciled", "prelaunch-wrong-model", "prelaunch-ambiguous" })
         {
             using var ledger = new Ledger(Path.Combine(root, "model-switch-" + scenario + ".db"));
             var source = scenario == "fresh-codex" ? binding with { Backend = "claude", ThreadId = "ae788b3a-c096-4b34-aa27-7cb02009305f" } : binding;
@@ -35,6 +35,11 @@ public static class ModelSwitchTests
             type.GetField("LastAnswer")!.SetValue(session, "Verified 51/52 routes; PB15 awaiting confirmation.");
             if (scenario == "busy") type.GetField("Busy")!.SetValue(session, true);
             if (scenario == "held") type.GetField("Held")!.SetValue(session, true);
+            if (scenario == "pending-output")
+            {
+                var response = (ResponseMessage)type.GetField("Response")!.GetValue(session)!;
+                response.Answer = new() { Completed = true, Parts = [new() { Part = new("In-flight output", []), SendUnknown = true, Sending = true }] };
+            }
             var sessions = typeof(Router).GetField("sessions", flags)!.GetValue(router)!;
             var indexer = sessions.GetType().GetProperty("Item")!;
             indexer.SetValue(sessions, session, new object[] { source.Address });
@@ -62,9 +67,10 @@ public static class ModelSwitchTests
             catch (InvalidDataException) when (scenario == "wrong-slot") { checks++; }
             catch (InvalidDataException) when (scenario is "prelaunch-wrong-model" or "prelaunch-ambiguous") { checks++; }
             catch (IOException) when (scenario == "handoff-unknown") { checks++; }
-            if (scenario is "busy" or "held" or "active-goal" or "invalid-model" or "wrong-slot" or "prelaunch-wrong-model" or "prelaunch-ambiguous")
+            if (scenario is "busy" or "held" or "pending-output" or "active-goal" or "invalid-model" or "wrong-slot" or "prelaunch-wrong-model" or "prelaunch-ambiguous")
             {
                 Check(ledger.Bindings().Single() == source && factory.Opened.Count == 0 && linux.Injects.Count == 0, "Rejected control cannot change topic or send a prompt: " + scenario);
+                if (scenario == "pending-output") Check(!(bool)type.GetField("Held")!.GetValue(session)!, "Unsettled output defers a provider switch without poisoning native chat admission");
                 continue;
             }
             if (scenario == "handoff-unknown")

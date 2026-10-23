@@ -154,7 +154,7 @@ internal sealed class ClaudeWorkerHost : IAsyncDisposable
         // Preserve every uncertain effect. Only a confirmed other-topic
         // Telegram destination is irrelevant to this worker's admission.
         // Native/unscoped uncertainty remains a conservative global fence.
-        if (source.InputUnknown(target) != 0 || normalAttachment &&
+        if (source.LifecycleUnknown(target) != 0 || normalAttachment &&
             source.Query("SELECT id FROM updates WHERE status='dispatching'").Count != 0)
             throw new InvalidOperationException("Uncertain router input holds this exact native launch");
     }

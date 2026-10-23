@@ -42,11 +42,17 @@ public static class OutboundFileTests
         sessions.GetType().GetProperty("Item")!.SetValue(sessions, session, new object[] { binding.Address });
         var flush = typeof(Router).GetMethod("FlushBubble", flags)!;
         var response = (ResponseMessage)type.GetField("Response", flags | BindingFlags.Public)!.GetValue(session)!;
-        Task Flush() => (Task)flush.Invoke(router, new[] { session, CancellationToken.None })!;
+        var flushFiles = typeof(Router).GetMethod("FlushAttachments", flags)!;
+        async Task Flush()
+        {
+            await (Task)flush.Invoke(router, new[] { session, CancellationToken.None })!;
+            await (Task)flushFiles.Invoke(router, new[] { session, CancellationToken.None })!;
+            await (Task)flush.Invoke(router, new[] { session, CancellationToken.None })!;
+        }
         response.Answer.Consider("Done.\n📎 " + png + "\n📎 " + zip); response.Answer.Complete();
-        await Flush(); await Flush();
+        var initialFiles = response.Answer.Files.ToArray(); await Flush(); await Flush();
         Check(bot.Answers == 1 && bot.Uploads.SequenceEqual([true, false]), "Separate clean final, inline photo and ZIP document each delivered once");
-        Check(response.Answer.Delivered && response.Answer.Files.All(f => f.Message != null && f.Sha256?.Length == 64 && f.Size > 0), "Per-file receipts pin content and Telegram IDs");
+        Check(initialFiles.All(f => f.Message != null && f.Sha256?.Length == 64 && f.Size > 0), "Per-file receipts pin content and Telegram IDs in the independent file outbox");
         var restored = JsonSerializer.Deserialize<FinalAnswerState>(JsonSerializer.Serialize(response.Answer))!; restored.Validate();
         response.Answer = restored; await Flush();
         Check(bot.Uploads.Count == 2, "Confirmed file IDs prevent restart duplicate");
@@ -57,17 +63,18 @@ public static class OutboundFileTests
         await Flush();
         Check(response.Answer.Delivered && bot.Uploads.TakeLast(2).SequenceEqual([true, false]), "Explicit photo rejection falls back to document");
         response.Answer = new(); response.Answer.Consider("📎 " + png); response.Answer.Complete(); bot.Errors.Enqueue(0);
-        await Flush(); var uploads = bot.Uploads.Count; await Flush();
-        Check(response.Answer.Unknown && !response.Answer.Delivered && bot.Uploads.Count == uploads, "Ambiguous timeout never retries or falls back");
+        var uncertainFile = response.Answer.Files.Single(); await Flush(); var uploads = bot.Uploads.Count; await Flush();
+        Check(uncertainFile.SendUnknown && uncertainFile.Retained && uncertainFile.Message == null && bot.Uploads.Count == uploads,
+            "Ambiguous timeout is explicitly retained, never delivered/retried/fallen back");
         response.Answer = new(); response.Answer.Consider("📎 " + zip); response.Answer.Complete(); files.Failure = true;
-        await Flush(); await Flush();
-        Check(response.Answer.Delivered && response.Answer.Files[0].Failure != null && bot.LastAnswer.StartsWith("Attachment not sent:"), "Read failure visibly reported, never advertised as delivered file");
+        var readFailure = response.Answer.Files.Single(); await Flush(); await Flush();
+        Check(readFailure.Failure != null && bot.LastAnswer.StartsWith("Attachment not sent:"), "Read failure visibly reported, never advertised as delivered file");
         response.Answer = new(); response.Answer.Consider("📎 " + zip); response.Answer.Complete(); files.Failure = false; bot.Errors.Enqueue(429);
-        await Flush(); Check(!response.Answer.Unknown && !response.Answer.Delivered, "Explicit rate limit remains retryable"); await Flush();
-        Check(response.Answer.Delivered, "Rate-limit retry uploads original hash-bound bytes");
+        var rateLimited = response.Answer.Files.Single(); await Flush(); Check(!rateLimited.SendUnknown && rateLimited.Message == null, "Explicit rate limit remains retryable"); await Flush();
+        Check(rateLimited.Message != null, "Rate-limit retry uploads original hash-bound bytes");
         response.Answer = new(); response.Answer.Consider("📎 " + zip); response.Answer.Complete(); bot.Errors.Enqueue(403);
-        await Flush(); await Flush();
-        Check(!response.Answer.Unknown && response.Answer.Files[0].Failure != null && bot.LastAnswer.Contains("403"), "Known upload rejection is visible and not replayed");
+        var rejectedFile = response.Answer.Files.Single(); await Flush(); await Flush();
+        Check(!rejectedFile.SendUnknown && rejectedFile.Failure != null && bot.LastAnswer.Contains("403"), "Known upload rejection is visible and not replayed");
         // Goal finals use the same durable file outbox even while native work continues.
         var goalAnswer = new FinalAnswerState(); goalAnswer.Consider("📎 " + zip); goalAnswer.Complete();
         var pending = (Queue<FinalAnswerState>)type.GetField("PendingAnswers", flags | BindingFlags.Public)!.GetValue(session)!;
@@ -92,7 +99,8 @@ public static class OutboundFileTests
         public Task<JsonElement> Upload(long chat, int topic, string filename, byte[] bytes, bool photo, CancellationToken stop)
         {
             var bubble = ledger.Get("bubble/" + thread)!.Value;
-            var states = bubble.GetProperty("pendingAnswers").EnumerateArray().Select(a => a.Deserialize<FinalAnswerState>()!)
+            var states = bubble.GetProperty("pendingFiles").EnumerateArray().Select(a => a.Deserialize<FinalAnswerState>()!)
+                .Concat(bubble.GetProperty("pendingAnswers").EnumerateArray().Select(a => a.Deserialize<FinalAnswerState>()!))
                 .Append(bubble.GetProperty("finalAnswer").Deserialize<FinalAnswerState>()!);
             if (!states.Any(state => state.Files.Any(f => f.SendUnknown && f.Sha256?.Length == 64 && f.Size == bytes.Length)))
                 throw new Exception("Missing durable file intent before upload");

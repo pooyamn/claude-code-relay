@@ -62,7 +62,7 @@ public sealed class NativeRpc : INative, INativeConnection, IAsyncDisposable
                 throw new NativeRejected(method);
             }
             var result = response.GetProperty("result").Clone();
-            if (operation != null) ledger.Confirm(operation, result);
+            if (operation != null) { ledger.Confirm(operation, result); ledger.ReconcileInputReceipt(operation); }
             return result;
         }
         catch

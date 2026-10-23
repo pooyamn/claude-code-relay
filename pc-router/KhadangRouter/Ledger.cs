@@ -5,11 +5,12 @@ namespace KhadangRouter;
 
 // The OS supplies SQLite: winsqlite3 on Windows, system sqlite3 for tests.
 // No copied Python runtime, user site-packages or third-party native DLL search.
-public sealed class Ledger : IDisposable
+public sealed partial class Ledger : IDisposable
 {
     private readonly object gate = new();
     private IntPtr db;
     private readonly bool readOnly;
+    private int transactionDepth;
     static Ledger()
     {
         NativeLibrary.SetDllImportResolver(typeof(Ledger).Assembly, (name, _, _) => name != "router_sqlite" ? IntPtr.Zero :
@@ -22,6 +23,9 @@ public sealed class Ledger : IDisposable
     {
         this.readOnly = readOnly;
         if (sqlite3_open_v2(path, out db, (readOnly ? 1 : 2 | 4) | 0x10000, IntPtr.Zero) != 0) throw new IOException("Cannot open router ledger");
+        // Multiple protected observers can briefly contend. Waiting here is
+        // bounded and precedes writes; never retry an external/native action.
+        if (sqlite3_busy_timeout(db, 5000) != 0) throw new IOException("Cannot configure bounded ledger contention");
         if (readOnly) return; // Never run constructor recovery against a live router.
         Exec("PRAGMA journal_mode=WAL"); Exec("PRAGMA synchronous=FULL");
         Exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY,value TEXT NOT NULL)");
@@ -31,6 +35,7 @@ public sealed class Ledger : IDisposable
         // A restarted process must not replay a possibly accepted operation.
         Exec("UPDATE operations SET status='unknown' WHERE status='attempting'");
         Exec("UPDATE updates SET status='unknown' WHERE status='dispatching'");
+        RecoverInputIntents();
     }
     public long Offset => long.Parse(Rows("SELECT COALESCE(MAX(id)+1,0) FROM updates")[0][0]!);
     public bool Receive(long id, string payload)
@@ -59,46 +64,7 @@ public sealed class Ledger : IDisposable
         .Select(row => (long.Parse(row[0]!), JsonDocument.Parse(row[1]!).RootElement.Clone())).ToList();
     public int Unknown => int.Parse(Rows("SELECT COUNT(*) FROM updates WHERE status='unknown'")[0][0]!) +
         int.Parse(Rows("SELECT COUNT(*) FROM operations WHERE status='unknown' AND kind<>'telegram/editMessageText'")[0][0]!);
-    // A timed-out output remains uncertain and MUST NOT be retried. Its exact
-    // destination fences that conversation, not every other company/topic.
-    // Native mutations, unknown intake, and malformed/unscoped effects retain
-    // the conservative global fence. Never infer delivery or erase a receipt.
-    public int InputUnknown(Binding binding)
-    {
-        lock (gate)
-        {
-            var count = int.Parse(Rows("SELECT COUNT(*) FROM updates WHERE status='unknown'")[0][0]!);
-            foreach (var row in Rows("SELECT kind,payload,id FROM operations WHERE status='unknown' AND kind<>'telegram/editMessageText'"))
-            {
-                // A later ACK for the identical attachment/settings supersedes
-                // an old resume timeout. It does not confirm that old request,
-                // replay it, or waive uncertainty for any model input.
-                if (row[0] == "native/thread/resume" && ResumeSuperseded(row[2]!, row[1]!)) continue;
-                if (row[0] == "telegram/setMyCommands" && MenuSuperseded(row[2]!, row[1]!)) continue;
-                if (row[0] is "telegram/sendMessage" or "telegram/sendRichMessage" or "telegram/sendPhoto" or "telegram/sendDocument")
-                {
-                    try
-                    {
-                        using var document = JsonDocument.Parse(row[1]!);
-                        var payload = document.RootElement;
-                        if (payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("chat_id", out var c) &&
-                            c.ValueKind == JsonValueKind.Number && c.TryGetInt64(out var chat) && chat < 0)
-                        {
-                            var topic = 0;
-                            if (payload.TryGetProperty("message_thread_id", out var t) &&
-                                (t.ValueKind != JsonValueKind.Number || !t.TryGetInt32(out topic) || topic <= 0))
-                            { count++; continue; }
-                            if (chat != binding.Chat || topic != binding.Topic) continue;
-                            if (OutputQuarantined(row[2]!, binding, row[1]!)) continue;
-                        }
-                    }
-                    catch (JsonException) { }
-                }
-                count++;
-            }
-            return count;
-        }
-    }
+    public int InputUnknown(Binding binding) => Admission(binding).Blocking;
     private bool ResumeSuperseded(string operation, string payload)
     {
         try
@@ -169,7 +135,11 @@ public sealed class Ledger : IDisposable
     public string Attempt(string kind, object payload)
     {
         var id = Guid.NewGuid().ToString("N");
-        Exec("INSERT INTO operations VALUES (?,?,?,'attempting',NULL)", id, kind, JsonSerializer.Serialize(payload)); return id;
+        Transaction(() => {
+            Exec("INSERT INTO operations VALUES (?,?,?,'attempting',NULL)", id, kind, JsonSerializer.Serialize(payload));
+            RecordInputIntent(id, kind);
+        });
+        return id;
     }
     public void Confirm(string id, JsonElement result) => Exec("UPDATE operations SET status='confirmed',result=? WHERE id=? AND status='attempting'", result.GetRawText(), id);
     public void Outcome(string id, string status) => Exec("UPDATE operations SET status=? WHERE id=? AND status='attempting'", status, id);
@@ -212,9 +182,12 @@ public sealed class Ledger : IDisposable
     {
         lock (gate)
         {
+            if (transactionDepth != 0) { operation(); return; }
             Exec("BEGIN IMMEDIATE");
+            transactionDepth++;
             try { operation(); Exec("COMMIT"); }
             catch { Exec("ROLLBACK"); throw; }
+            finally { transactionDepth--; }
         }
     }
     private List<string?[]> Rows(string sql, params object?[] args)
@@ -245,6 +218,7 @@ public sealed class Ledger : IDisposable
     }
     public void Dispose() { if (db != IntPtr.Zero) { sqlite3_close_v2(db); db = IntPtr.Zero; } }
     [DllImport("router_sqlite")] private static extern int sqlite3_open_v2([MarshalAs(UnmanagedType.LPUTF8Str)] string name, out IntPtr db, int flags, IntPtr vfs);
+    [DllImport("router_sqlite")] private static extern int sqlite3_busy_timeout(IntPtr db, int milliseconds);
     [DllImport("router_sqlite")] private static extern int sqlite3_prepare_v2(IntPtr db, [MarshalAs(UnmanagedType.LPUTF8Str)] string sql, int length, out IntPtr statement, IntPtr tail);
     [DllImport("router_sqlite")] private static extern int sqlite3_step(IntPtr statement);
     [DllImport("router_sqlite")] private static extern int sqlite3_stmt_readonly(IntPtr statement);

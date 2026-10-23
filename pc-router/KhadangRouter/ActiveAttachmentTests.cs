@@ -18,6 +18,7 @@ public static class ActiveAttachmentTests
         {
             using var ledger = new Ledger(Path.Combine(root, "active-attach-" + scenario + ".db"));
             var binding = new Binding(policy.ChatId, 42, "Already running", policy.WorkspaceRoot + "\\lg-magic", "active-native");
+            ledger.Bind(binding);
             var native = new Native(policy, binding, scenario); var router = new Router(policy, ledger, new Bot(), native);
             var session = type.GetConstructors(flags | BindingFlags.Public).Single().Invoke(new object[] { binding, native });
             var sessions = typeof(Router).GetField("sessions", flags)!.GetValue(router)!;

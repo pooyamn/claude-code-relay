@@ -73,7 +73,7 @@ public sealed partial class LinuxClaudeTopics
         // Match input and host admission: an uncertain send in an explicitly
         // different topic cannot stop this owner-requested tool switch. Keep
         // its receipt untouched; same-topic/native/unscoped effects still fence.
-        if (ledger.InputUnknown(target) != 0)
+        if (ledger.LifecycleUnknown(target) != 0)
             throw new InvalidDataException("Uncertain input holds this exact Claude switch; no replacement or replay");
     }
     private LinuxClaudeRuntime For(Binding target, string digest, string? model = null)

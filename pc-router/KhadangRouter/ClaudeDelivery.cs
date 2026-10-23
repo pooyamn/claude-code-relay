@@ -42,6 +42,7 @@ internal static class ClaudeDelivery
             var receipt = JsonSerializer.SerializeToElement(new { SessionId = session, uuid = uuid.GetString(), receipt = "native-user-replay", late = rows[0][2] == "unknown", at = DateTimeOffset.UtcNow });
             ledger.Exec("UPDATE operations SET status='confirmed',result=? WHERE id=? AND kind='claude/user/send-now' AND status IN ('attempting','unknown')", receipt.GetRawText(), operation);
             ledger.Put(Key(operation), receipt);
+            ledger.ReconcileInputReceipt(operation);
         });
         return operation;
     }

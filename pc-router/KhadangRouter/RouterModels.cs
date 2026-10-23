@@ -48,8 +48,13 @@ public sealed partial class Router
         }
         if (source.Binding.Runtime != "linux" || linuxRpc == null || claudeTopics == null)
         { await Reply("This topic has no reviewed paired native launcher. No tool switch or prompt sent."); return; }
+        bool outputPending;
+        lock (source.Gate) outputPending = source.PendingFiles.Count > 0 || source.SendUnknown ||
+            source.PendingAnswers.Any(a => a.Unknown) || source.Response.Answer.Unknown ||
+            ledger.LifecycleUnknown(source.Binding) > ledger.InputUnknown(source.Binding);
+        if (outputPending) { await Reply("Outgoing delivery is still settling or needs reconciliation. Chat remains available; retry the tool switch after delivery is resolved. No session was changed."); return; }
         lock (source.Gate)
-            if (source.Held || source.SendUnknown || ledger.InputUnknown(source.Binding) != 0 || source.PendingAnswers.Any(a => a.Unknown) || source.Response.Answer.Unknown)
+            if (source.Held || ledger.InputUnknown(source.Binding) != 0)
                 throw new InvalidOperationException("Reconcile uncertain delivery/approvals before switching tools; no handoff replay");
         if (source.Busy) { await Reply("Finish or /cancel the current work before switching tools. Pause an active /goal first. Both conversations are preserved."); return; }
         if (source.Claude != null && source.ClaudeState != "idle") { await Reply("Claude is not confirmed idle. No switch sent."); return; }

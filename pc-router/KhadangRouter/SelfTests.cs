@@ -72,7 +72,7 @@ public static class SelfTests
             {
                 var unknown = scoped.Attempt("telegram/" + kind, new { chat_id = inputBinding.Chat, message_thread_id = inputBinding.Topic });
                 scoped.Outcome(unknown, "unknown");
-                Check(scoped.Unknown == 1 && scoped.InputUnknown(inputBinding) == 1, "Unknown output still fences its own topic: " + kind);
+                Check(scoped.Unknown == 1 && scoped.InputUnknown(inputBinding) == 0, "Unknown output is retained without fencing native input: " + kind);
                 Check(scoped.InputUnknown(inputBinding with { Topic = 43 }) == 0 && scoped.InputUnknown(inputBinding with { Chat = -100456 }) == 0,
                     "Unknown output cannot stop another topic or matching topic in another forum: " + kind);
             }
@@ -95,6 +95,8 @@ public static class SelfTests
         }
         using (var scoped = new Ledger(Path.Combine(root, "native-scope.db")))
             Check(scoped.InputUnknown(inputBinding) == 2, "Uncertain intake/native effects retain conservative global fencing");
+        checks += ReliabilityTests.Run(root);
+        checks += ReliabilityTests.Transports(root).GetAwaiter().GetResult();
         checks += NativeViewTests.Run();
         checks += ClaudeTerminalTests.Run(root, policy);
         checks += NativeChannelTests.Run(root).GetAwaiter().GetResult();
@@ -128,6 +130,7 @@ public static class SelfTests
         checks += TopicCreationTests.Run(root, policy).GetAwaiter().GetResult();
         checks += ReceiptTypingTests.Run(root, policy).GetAwaiter().GetResult();
         checks += MixedRoutingTests.Run(root, policy).GetAwaiter().GetResult();
+        checks += MixedRoutingTests.RunSlowStartup(root, policy).GetAwaiter().GetResult();
         checks += MixedRoutingTests.RunInputIsolation(root, policy).GetAwaiter().GetResult();
         // A unique test-owned directory, never a workspace/service path.
         Directory.Delete(root, recursive: true);

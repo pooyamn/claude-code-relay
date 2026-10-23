@@ -38,10 +38,11 @@ public static class GoalAnswerTests
             {
                 Check(bot.Attempts == 1 && bot.Answers.Count == 0, "Unknown goal answer send is never automatically retried");
                 var unknown = ledger.Get("bubble/" + binding.ThreadId)!.Value;
-                Check(unknown.GetProperty("held").GetBoolean() && unknown.GetProperty("pendingAnswers")[0].GetProperty("Parts")[0].GetProperty("SendUnknown").GetBoolean(), "Unknown goal answer has a durable hold");
+                Check(!unknown.GetProperty("held").GetBoolean() && unknown.GetProperty("retainedOutput").GetInt32() == 1,
+                    "Unknown goal answer is durably retained without holding native input");
                 var replacement = type.GetConstructors(flags | BindingFlags.Public).Single().Invoke(new object[] { binding, native });
                 typeof(Router).GetMethod("RestorePendingBubbles", BindingFlags.NonPublic | BindingFlags.Static)!.Invoke(null, new[] { replacement, (object)unknown });
-                Check((bool)type.GetField("Held")!.GetValue(replacement)!, "Restart retains unknown-answer hold");
+                Check(!(bool)type.GetField("Held")!.GetValue(replacement)!, "Restart does not turn retained answer delivery into a native hold");
                 continue;
             }
             Check(bot.Answers.Count == 1 && bot.Answers[0].RichHtml!.Contains("<b>First result</b>") && bot.Answers[0].RichHtml!.Contains("<table"), "Native table final is delivered before the goal or turn ends");
@@ -97,7 +98,9 @@ public static class GoalAnswerTests
             bot.Failure = failure; await Task.WhenAll(Flush(), Flush());
             if (failure == -1)
             {
-                Check(bot.Attempts == 1 && bot.Answers.Count == 0 && ledger.Get("bubble/" + binding.ThreadId)!.Value.GetProperty("held").GetBoolean(), "Uncertain commentary reply is durably held without retry");
+                Check(bot.Attempts == 1 && bot.Answers.Count == 0 && !ledger.Get("bubble/" + binding.ThreadId)!.Value.GetProperty("held").GetBoolean() &&
+                    ledger.Get("bubble/" + binding.ThreadId)!.Value.GetProperty("retainedOutput").GetInt32() == 1,
+                    "Uncertain commentary reply is retained without retry or native-input hold");
                 continue;
             }
             Check(bot.Answers.Count == 1 && bot.Answers[0].Text.StartsWith("About 60/100") && bot.Answers[0].Entities.Any(e => e.type == "bold"), "Real commentary steering answer reaches clean Telegram prose before goal completion");

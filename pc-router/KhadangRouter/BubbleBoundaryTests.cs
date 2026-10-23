@@ -68,13 +68,17 @@ public static class BubbleBoundaryTests
         typeof(Router).GetMethod("RestorePendingBubbles", BindingFlags.NonPublic | BindingFlags.Static)!.Invoke(null, new[] { knownEditRestored, (object)knownEditReceipt });
         Check(!(bool)sessionType.GetField("Held")!.GetValue(knownEditRestored)!, "Restoration distinguishes an uncertain edit of a known message from an unknown initial send");
         Start("unknown"); bot.UnknownSend = true; await Flush();
+        bot.UnknownSend = false;
         Finish("unknown", "UNKNOWN-FINAL"); Start("after-unknown"); Finish("after-unknown", "NOT-REPLAYED"); await Flush();
-        Check(bot.Sends == 9 && !bot.Messages.Values.Any(t => t.Contains("NOT-REPLAYED")), "Uncertain send is not replayed or bypassed by a later response");
+        await Flush();
+        Check(bot.Sends == 12 && bot.Messages.Values.Any(t => t == "UNKNOWN-FINAL") && bot.Messages.Values.Any(t => t == "NOT-REPLAYED"),
+            "Uncertain initial bubble is not retried, but later clean answers and new progress still deliver");
         var saved = ledger.Get("bubble/" + binding.ThreadId)!.Value;
-        Check(saved.GetProperty("pendingResponses").EnumerateArray().Any(p => p.GetProperty("sendUnknown").GetBoolean()), "Earlier uncertain response is durably retained across rollover");
+        Check(ledger.Query("SELECT key FROM meta WHERE key LIKE ?", "output-retained/" + binding.ThreadId + "/%").Count == 1,
+            "Original uncertain progress is durably archived rather than blocking the active outbox");
         var restored = constructor.Invoke(constructor.GetParameters().Length == 1 ? new object[] { binding } : new object[] { binding, native });
         typeof(Router).GetMethod("RestorePendingBubbles", BindingFlags.NonPublic | BindingFlags.Static)!.Invoke(null, new[] { restored, (object)saved });
-        Check((bool)sessionType.GetField("Held")!.GetValue(restored)!, "Restoration holds an uncertain earlier response instead of duplicating it");
+        Check(!(bool)sessionType.GetField("Held")!.GetValue(restored)!, "Restoration does not convert an uncertain display into a native-input hold");
         return checks;
     }
     private static JsonElement Json(object value) => JsonSerializer.SerializeToElement(value);

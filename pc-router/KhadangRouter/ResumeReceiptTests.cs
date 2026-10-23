@@ -64,7 +64,7 @@ internal static class ResumeReceiptTests
             {
                 Check(ledger.Unknown == 1 && ledger.Query("SELECT status FROM operations WHERE id=?", id)[0][0] == "unknown", "Superseded menu remains unknown in audit without replay or false confirmation");
                 var effect = ledger.Attempt("telegram/sendMessage", new { chat_id = binding.Chat, message_thread_id = binding.Topic }); ledger.Outcome(effect, "unknown");
-                Check(ledger.InputUnknown(binding) == 1, "Menu proof cannot waive an uncertain user message");
+                Check(ledger.InputUnknown(binding) == 0 && ledger.Unknown == 2, "Menu and message uncertainties remain audited without blocking native input");
             }
         }
         return checks;

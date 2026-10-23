@@ -15,6 +15,8 @@ internal sealed class FinalDelivery
     public AnswerPart Part { get; set; } = new("", []);
     public int? Message { get; set; }
     public bool SendUnknown { get; set; }
+    public bool Retained { get; set; }
+    [JsonIgnore] public bool Sending { get; set; }
 }
 
 internal sealed class FinalAnswerState
@@ -24,7 +26,9 @@ internal sealed class FinalAnswerState
     public bool Completed { get; set; }
     public List<FinalDelivery> Parts { get; set; } = [];
     public List<FileDelivery> Files { get; set; } = [];
-    [JsonIgnore] public bool Unknown => Parts.Any(p => p.SendUnknown) || Files.Any(f => f.SendUnknown);
+    [JsonIgnore] public bool Unknown => Parts.Any(p => p.SendUnknown && !p.Retained) || Files.Any(f => f.SendUnknown && !f.Retained);
+    [JsonIgnore] public bool TextSettled => Parts.All(p => p.Retained || p.Message != null && !p.SendUnknown);
+    [JsonIgnore] public bool Settled => !Completed || TextSettled && Files.All(f => f.Retained || !f.SendUnknown && (f.Message != null || f.Failure != null));
     [JsonIgnore] public bool Delivered => !Completed || Parts.All(p => p.Message != null && !p.SendUnknown) &&
         Files.All(f => !f.SendUnknown && (f.Message != null || f.Failure != null));
     public void Consider(string text, bool authoritative = false)
@@ -50,8 +54,8 @@ internal sealed class FinalAnswerState
             Files.Any(f => f.Path.Length > 4096 || f.Path.Any(char.IsControl) || f.Message is <= 0 ||
                 f.Size is <= 0 or > OutboundFiles.MaximumBytes || f.Sha256 != null &&
                 (f.Sha256.Length != 64 || !f.Sha256.All(Uri.IsHexDigit)) || f.Failure?.Length > 256 ||
-                f.Message != null && (f.Sha256 == null || f.Size == null || f.Failure != null)) ||
-            Parts.Any(p => p.Part.Text.Length is < 1 or > 3900 || p.Message is <= 0 ||
+                f.Message != null && (f.Sha256 == null || f.Size == null || f.Failure != null) || f.Retained && (!f.SendUnknown || f.Message != null)) ||
+            Parts.Any(p => p.Part.Text.Length is < 1 or > 3900 || p.Message is <= 0 || p.Retained && (!p.SendUnknown || p.Message != null) ||
                 p.Part.Entities.Any(e => e.offset < 0 || e.length <= 0 || e.offset + (long)e.length > p.Part.Text.Length ||
                     e.type is not ("pre" or "code" or "bold" or "italic" or "strikethrough" or "text_link")) ||
                 p.Part.RichHtml != null && (p.Part.Entities.Length != 0 ||

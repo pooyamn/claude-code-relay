@@ -87,11 +87,14 @@ public static class JoinedTests
         {
             mismatch.Bind(new Binding(policy.ChatId, 42, "LG", workspaces + "\\lg-magic", "exact-native-id"));
             var wrong = new FakeNative { MisreportProfile = true }; var wrongBot = new FakeBot(policy, wrong);
-            try { await new Router(policy with { StateDirectory = mismatchRoot }, mismatch, wrongBot, wrong).Run(CancellationToken.None); throw new Exception("Security mismatch accepted"); }
-            catch (InvalidOperationException)
+            using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var run = new Router(policy with { StateDirectory = mismatchRoot }, mismatch, wrongBot, wrong).Run(cancel.Token);
+            try
             {
-                Check(wrong.Started == 0 && wrongBot.Sends == 0 && wrongBot.CreatedTopics == 0, "Observed permission mismatch stops before model or Telegram effects");
+                while (mismatch.Get("startup-held/exact-native-id") == null) await Task.Delay(10, cancel.Token);
+                Check(wrong.Started == 0 && wrongBot.Answers == 0 && wrongBot.CreatedTopics == 0, "Observed permission mismatch permits only a refusal notice, never inference, model answers or topic creation");
             }
+            finally { cancel.Cancel(); try { await run; } catch (OperationCanceledException) { } }
         }
 
         // A known crash boundary must never create another thread/topic.

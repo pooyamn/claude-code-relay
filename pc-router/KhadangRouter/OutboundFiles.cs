@@ -13,6 +13,8 @@ internal sealed class FileDelivery
     public bool Document { get; set; }
     public int? Message { get; set; }
     public bool SendUnknown { get; set; }
+    public bool Retained { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore] public bool Sending { get; set; }
     public string? Failure { get; set; }
 }
 

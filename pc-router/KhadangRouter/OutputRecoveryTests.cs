@@ -66,11 +66,36 @@ public static class OutputRecoveryTests
                 workspace=binding.Workspace,action="retain-no-resend",payloadSha256=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))).ToLowerInvariant()});
             Check(ledger.InputUnknown(binding)==0 && ledger.Unknown==1 && ledger.Query("SELECT status FROM operations WHERE id=?",id)[0][0]=="unknown",
                 "Owner-quarantined output no longer blocks new input, but remains unknown and never becomes confirmed");
-            Check(ledger.InputUnknown(binding with {Workspace="C:\\Other"})==1,"Quarantine cannot authorize a different project");
+            Check(!ledger.OutputQuarantined(id,binding with {Workspace="C:\\Other"},payload),"Historical quarantine cannot authorize a different project");
             ledger.Exec("UPDATE operations SET payload='{}' WHERE id=?",id);
             Check(ledger.InputUnknown(binding)==1,"Changed/unscoped receipts fail closed despite a saved quarantine");
             var native=ledger.Attempt("native/turn/steer",new {threadId=binding.ThreadId});ledger.Outcome(native,"unknown");
             Check(ledger.InputUnknown(binding)==2,"Native uncertainty is never covered by output quarantine");
+        }
+        using (var ledger = new Ledger(Path.Combine(root, "output-actor-generation.db")))
+        {
+            var native = new Native(); var bot = new Bot(); var router = new Router(policy, ledger, bot, native);
+            var sessions = typeof(Router).GetField("sessions", flags)!.GetValue(router)!;
+            void Install(object session) => sessions.GetType().GetProperty("Item")!.SetValue(sessions, session, new object[] { queueBinding.Address });
+            object Generation(string text)
+            {
+                var value = Session(native);
+                var response = (ResponseMessage)type.GetField("Response")!.GetValue(value)!;
+                response.Answer.Consider(text); response.Answer.Complete(); return value;
+            }
+            Install(Generation("Old session final"));
+            using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+            var run = (Task)typeof(Router).GetMethod("EditLoop", flags)!.Invoke(router, new object[] { stop.Token })!;
+            try
+            {
+                while (bot.Answers < 1) await Task.Delay(10, stop.Token);
+                Install(Generation("New session final"));
+                while (bot.Answers < 2) await Task.Delay(10, stop.Token);
+                Check(bot.Texts.SequenceEqual(new[] { "Old session final", "New session final" }), "Replacing a native session renews its text actor in the SAME Telegram topic");
+                await Task.Delay(80, stop.Token);
+                Check(bot.Answers == 2, "Retired actor never duplicates the old final during provider handoff");
+            }
+            finally { stop.Cancel(); try { await run; } catch (OperationCanceledException) { } }
         }
         return checks;
     }
@@ -83,9 +108,9 @@ public static class OutputRecoveryTests
     }
     private sealed class Bot : IBot
     {
-        public int Answers,Edits,Controls,Pulses;public int Failure=-1;
+        public int Answers,Edits,Controls,Pulses;public int Failure=-1;public List<string> Texts=[];
         public Task<JsonElement> SendAnswer(long chat,int topic,AnswerPart part,CancellationToken stop)
-        {Answers++;if(Failure>=0)throw new TelegramFailure(Failure);return Task.FromResult(Json(new {message_id=Answers}));}
+        {Answers++;if(Failure>=0)throw new TelegramFailure(Failure);Texts.Add(part.Text);return Task.FromResult(Json(new {message_id=Answers}));}
         public Task<JsonElement> Send(long chat,int topic,string text,CancellationToken stop){Controls++;return Task.FromResult(Json(new {message_id=1000+Controls}));}
         public Task Edit(long chat,int message,string text,CancellationToken stop){Edits++;return Task.CompletedTask;}
         public Task<bool> Typing(long chat,int topic,CancellationToken stop){Pulses++;return Task.FromResult(true);}

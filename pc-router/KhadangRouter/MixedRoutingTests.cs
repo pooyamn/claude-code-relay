@@ -361,24 +361,24 @@ public static class MixedRoutingTests
                             text = "Done.\n📎 " + workspace + "\\fixture\\out.zip" } });
                     native.Event("turn/completed", new { threadId = bindings[0].ThreadId,
                         turn = new { id = "native-turn", status = "completed" } });
-                    await Wait(() => bot.FailedUpload != null && ledger.Get("bubble/" + bindings[0].ThreadId)!.Value.GetProperty("held").GetBoolean(), stop.Token);
+                    await Wait(() => bot.FailedUpload != null && ledger.Get("bubble/" + bindings[0].ThreadId)!.Value.GetProperty("retainedOutput").GetInt32() > 0, stop.Token);
                     upload = bot.FailedUpload;
-                    Check(bot.UploadAttempts == 1 && files.Reads == 1 && ledger.Unknown == 1 && ledger.InputUnknown(bindings[0]) == 1,
-                        "Actual outbox upload timeout durably holds only its exact topic");
+                    Check(bot.UploadAttempts == 1 && files.Reads == 1 && ledger.Unknown == 1 && ledger.InputUnknown(bindings[0]) == 0,
+                        "Actual upload timeout is retained and cannot block even its own native input");
                 }
                 else
                 {
                     Check(ledger.Unknown == 1 && ledger.Query("SELECT status FROM operations WHERE id=?", upload!)[0][0] == "unknown",
                         "Upload uncertainty survives reopening SQLite without being confirmed or replayed");
-                    Check(ledger.Get("bubble/" + bindings[0].ThreadId)!.Value.GetProperty("held").GetBoolean() &&
+                    Check(!ledger.Get("bubble/" + bindings[0].ThreadId)!.Value.GetProperty("held").GetBoolean() &&
                         ledger.Get("bubble/" + bindings[1].ThreadId)!.Value.GetProperty("busy").GetBoolean() &&
                         native.Calls.Any(c => c.Kind == "thread/turns/list" && c.Args.GetProperty("threadId").GetString() == bindings[1].ThreadId),
-                        "Restart keeps upload hold and attaches exact active unrelated Codex turn");
+                        "Restart keeps output retention separate and attaches exact active unrelated Codex turn");
                 }
                 var first = 10 + generation * 10;
                 bot.Post(bot.Update(first, bindings[1], "CODEX-INPUT-" + generation),
                     bot.Update(first + 1, bindings[2], "CLAUDE-INPUT-" + generation),
-                    bot.Update(first + 2, bindings[0], "DO-NOT-DISPATCH-AFFECTED-TOPIC"));
+                    bot.Update(first + 2, bindings[0], "CONTINUE-DESPITE-UNCERTAIN-UPLOAD"));
                 await Wait(() => Done(ledger, first, first + 1, first + 2), stop.Token);
                 Check(ledger.Query("SELECT status FROM updates WHERE id=?", first)[0][0] == "accepted" &&
                     ledger.Query("SELECT status FROM updates WHERE id=?", first + 1)[0][0] == "accepted" && claude.Inputs.Count == 1,
@@ -387,10 +387,9 @@ public static class MixedRoutingTests
                     !ledger.Get("bubble/" + bindings[1].ThreadId)!.Value.GetProperty("held").GetBoolean() &&
                     !ledger.Get("bubble/" + Pin)!.Value.GetProperty("held").GetBoolean(),
                     "Same-forum different topic and different-forum same topic number remain unfenced");
-                Check(ledger.Query("SELECT status FROM updates WHERE id=?", first + 2)[0][0] != "accepted" &&
-                    native.Starts.Count(a => a.GetProperty("threadId").GetString() == bindings[0].ThreadId) == 1 &&
-                    !native.Steers.Any(a => a.GetProperty("threadId").GetString() == bindings[0].ThreadId),
-                    "Affected topic input remains retained with no unsafe native dispatch");
+                Check(ledger.Query("SELECT status FROM updates WHERE id=?", first + 2)[0][0] == "accepted" &&
+                    native.Starts.Any(a => a.GetProperty("threadId").GetString() == bindings[0].ThreadId),
+                    "The uploading topic itself remains usable without resending the uncertain upload");
                 bot.Post(bot.Update(first + 3, bindings[1], "STEER-EXACT-ACTIVE-TURN"),
                     bot.Update(first + 4, bindings[2], "CLAUDE-FOLLOWUP"));
                 await Wait(() => Done(ledger, first + 3, first + 4), stop.Token);
@@ -407,8 +406,9 @@ public static class MixedRoutingTests
             }
             finally { stop.Cancel(); try { await run; } catch (OperationCanceledException) { } }
         }
-        Check(totalUploads == 1 && files.Reads == 1 && native.Starts.Count == 2,
-            "Router restart neither rereads/resends uncertain ZIP nor starts a duplicate native turn");
+        Check(totalUploads == 1 && files.Reads == 1 && native.Starts.Count == 3 &&
+            native.Starts.Count(a => a.GetProperty("threadId").GetString() == bindings[0].ThreadId) == 2,
+            "Restart never rereads/resends uncertain ZIP; only explicit new owner input starts another turn");
         return checks;
     }
     private sealed class IsolationFiles : IOutboundFiles
@@ -423,15 +423,50 @@ public static class MixedRoutingTests
     private static object Ask() => new { subtype = "can_use_tool", tool_name = "AskUserQuestion", input = new { preserve = "original", questions = new[] {
         new { question = "First full question?", header = "First", multiSelect = false, options = new[] { new { label = "A", description = "first" }, new { label = "B", description = "second" } } },
         new { question = "Second full question?", header = "Second", multiSelect = true, options = new[] { new { label = "A", description = "first" }, new { label = "B", description = "second" } } } } } };
+    internal static async Task<int> RunSlowStartup(string root, RouterPolicy template)
+    {
+        var checks = 0;
+        void Check(bool ok, string label) { if (!ok) throw new Exception(label); checks++; }
+        var directory = Path.Combine(root, "independent-startup"); Directory.CreateDirectory(directory);
+        var workspace = OperatingSystem.IsWindows() ? Path.Combine(directory, "workspaces") : "C:\\StartupWorkspaces";
+        if (OperatingSystem.IsWindows()) Directory.CreateDirectory(Path.Combine(workspace, "fixture"));
+        var policy = template with { WorkspaceRoot = workspace, LinuxWorkspaceRoot = "/Users/pouya/projects", StateDirectory = directory, StartSpacingSeconds = 1 };
+        var bindings = new[] { new Binding(policy.ChatId, 42, "Ready Codex", workspace + "\\fixture", "ready-thread"),
+            new Binding(policy.ChatId, 43, "Slow Claude", "/Users/pouya/projects/fixture", Pin, "claude", "linux") };
+        using var ledger = new Ledger(Path.Combine(directory, "router.db")); foreach (var b in bindings) ledger.Bind(b);
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var topics = new Topics { OpenGate = gate }; var native = new Codex(policy, activityReadback: true); var bot = new Bot(policy, bindings);
+        using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        var run = new Router(policy, ledger, bot, native, claudeTopics: topics).Run(stop.Token);
+        try
+        {
+            await bot.Ready.Task.WaitAsync(stop.Token);
+            bot.Post(bot.Update(1, bindings[0], "HEALTHY-WHILE-CLAUDE-CONNECTS"), bot.Update(2, bindings[1], "RETAIN-BEFORE-NATIVE-READY"));
+            await Wait(() => Done(ledger, 1, 2), stop.Token);
+            Check(ledger.Query("SELECT status FROM updates WHERE id=1")[0][0] == "accepted", "Slow Claude attachment does not block ready Codex intake/polling");
+            Check(ledger.Query("SELECT status FROM updates WHERE id=2")[0][0] == "retained-connecting" && topics.Opened.Count == 0,
+                "Connecting-topic input is explicitly retained before native dispatch, not queued");
+            gate.TrySetResult();
+            await Wait(() => topics.Opened.Count == 1 && ledger.Get("bubble/" + Pin) != null, stop.Token);
+            bot.Post(bot.Update(3, bindings[1], "NEW-MESSAGE-AFTER-READY"));
+            await Wait(() => Done(ledger, 3), stop.Token);
+            Check(ledger.Query("SELECT status FROM updates WHERE id=3")[0][0] == "accepted" && topics.Opened.Single().Inputs.Count == 1,
+                "Same Claude session becomes ready independently, without replaying its retained message");
+        }
+        finally { gate.TrySetResult(); stop.Cancel(); try { await run; } catch (OperationCanceledException) { } }
+        return checks;
+    }
     private sealed class Topics(string? failure = null, Ledger? ledger = null) : IClaudeTopics
     {
         public List<Claude> Opened = [];
-        public Task<IClaudeNative> Open(Binding binding, CancellationToken stop)
+        public TaskCompletionSource? OpenGate;
+        public async Task<IClaudeNative> Open(Binding binding, CancellationToken stop)
         {
+            if (OpenGate != null) await OpenGate.Task.WaitAsync(stop);
             if (failure == "open-refused" && binding.ThreadId == Pin2) throw new IOException("Claude host refused this exact session; no replacement or replay");
             var claude = new Claude(failure == "foreign-pin" && Opened.Count == 1 ? Guid.NewGuid().ToString("D") : binding.ThreadId,
                 failInitialize: failure == "initialization-failure" && Opened.Count == 1, scenario: failure, ledger: ledger);
-            Opened.Add(claude); return Task.FromResult<IClaudeNative>(claude);
+            Opened.Add(claude); return claude;
         }
     }
     private sealed class MediaRace(Topics topics) : IAttachments
@@ -531,7 +566,7 @@ public static class MixedRoutingTests
             if (uploadTimeoutLedger == null) throw new NotSupportedException();
             var binding = bindings.Single(b => b.Chat == chat && b.Topic == topic);
             var saved = uploadTimeoutLedger.Get("bubble/" + binding.ThreadId)!.Value;
-            if (!saved.GetProperty("finalAnswer").GetProperty("Files")[0].GetProperty("SendUnknown").GetBoolean())
+            if (!saved.GetProperty("pendingFiles").EnumerateArray().Any(batch => batch.GetProperty("Files").EnumerateArray().Any(f => f.GetProperty("SendUnknown").GetBoolean())))
                 throw new Exception("Upload attempted without durable uncertain-file intent");
             Interlocked.Increment(ref UploadAttempts);
             var operation = uploadTimeoutLedger.Attempt(photo ? "telegram/sendPhoto" : "telegram/sendDocument",

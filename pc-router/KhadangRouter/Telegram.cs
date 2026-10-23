@@ -13,20 +13,29 @@ public sealed class TelegramFailure(int code, int retryAfter = 0, bool notModifi
 
 public sealed class Telegram : IBot, IDisposable
 {
-    private readonly HttpClient http = new(new HttpClientHandler { AllowAutoRedirect = false });
+    private readonly HttpClient http;
+    private readonly HttpClient uploads;
     private readonly string endpoint;
     private readonly string filesEndpoint;
     private readonly Ledger ledger;
-    private readonly SemaphoreSlim outbound = new(1, 1);
-    public Telegram(string token, Ledger ledger)
+    private readonly SemaphoreSlim outbound = new(4, 4);
+    private readonly SemaphoreSlim fileOutbound = new(2, 2);
+    internal TimeSpan UploadDeadline { get; init; } = TimeSpan.FromMinutes(3);
+    public Telegram(string token, Ledger ledger) : this(token, ledger, null, null) { }
+    internal Telegram(string token, Ledger ledger, HttpMessageHandler? textHandler, HttpMessageHandler? fileHandler)
     {
         if (string.IsNullOrWhiteSpace(token) || token.Any(char.IsWhiteSpace)) throw new InvalidDataException("Bot credential missing");
         endpoint = "https://api.telegram.org/bot" + token + "/"; this.ledger = ledger;
         filesEndpoint = "https://api.telegram.org/file/bot" + token + "/";
+        http = new(textHandler ?? new HttpClientHandler { AllowAutoRedirect = false });
+        uploads = new(fileHandler ?? new HttpClientHandler { AllowAutoRedirect = false });
         http.Timeout = TimeSpan.FromSeconds(45);
+        uploads.Timeout = Timeout.InfiniteTimeSpan; // One deadline covers headers AND body below.
     }
     public async Task<JsonElement> Call(string method, object parameters, CancellationToken stop, bool effect = false)
     {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stop);
+        deadline.CancelAfter(TimeSpan.FromSeconds(45)); stop = deadline.Token;
         if (!new[] { "getMe", "getWebhookInfo", "getChat", "getChatMember", "getUpdates", "getFile", "sendMessage", "sendRichMessage", "editMessageText", "createForumTopic", "setMyCommands", "getMyCommands", "answerCallbackQuery", "sendChatAction" }.Contains(method))
             throw new InvalidOperationException("Unknown Telegram method");
         if (method == "sendChatAction" && effect)
@@ -62,7 +71,7 @@ public sealed class Telegram : IBot, IDisposable
             if (attempt != null) ledger.Confirm(attempt, result);
             return result;
         }
-        catch (Exception error) when (error is HttpRequestException or TaskCanceledException)
+        catch (Exception error) when (error is HttpRequestException or OperationCanceledException)
         {
             if (attempt != null) ledger.Outcome(attempt, "unknown");
             // Never print HttpClient's URL-bearing exception or replay an effect.
@@ -197,7 +206,10 @@ public sealed class Telegram : IBot, IDisposable
         if (topic < 0 || filename.Length is < 1 or > 255 || filename.Any(char.IsControl) || filename.IndexOfAny(['/', '\\', '"']) >= 0 ||
             bytes.Length is <= 0 or > OutboundFiles.MaximumBytes || photo && !OutboundFiles.Photo(bytes))
             throw new InvalidDataException("Invalid bounded attachment upload");
-        await outbound.WaitAsync(stop);
+        await fileOutbound.WaitAsync(stop);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stop);
+        deadline.CancelAfter(UploadDeadline);
+        stop = deadline.Token;
         string? attempt = null;
         try
         {
@@ -213,7 +225,7 @@ public sealed class Telegram : IBot, IDisposable
             attempt = ledger.Attempt("telegram/" + method, new { chat_id = chat, message_thread_id = topic, filename,
                 size = bytes.Length, sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant() });
             using var request = new HttpRequestMessage(HttpMethod.Post, endpoint + method) { Content = content };
-            using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, stop);
+            using var response = await uploads.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, stop);
             if (response.Content.Headers.ContentLength > 2_097_152) throw new InvalidDataException("Bot response too large");
             await using var stream = await response.Content.ReadAsStreamAsync(stop);
             using var buffer = new MemoryStream(); var chunk = new byte[8192]; int count;
@@ -237,7 +249,7 @@ public sealed class Telegram : IBot, IDisposable
                 throw new InvalidDataException("Upload receipt target or media mismatch");
             ledger.Confirm(attempt, result); return result;
         }
-        catch (Exception error) when (error is HttpRequestException or TaskCanceledException)
+        catch (Exception error) when (error is HttpRequestException or OperationCanceledException)
         {
             if (attempt != null) ledger.Outcome(attempt, "unknown");
             throw new TelegramFailure(0); // Never expose token-bearing HTTP URL.
@@ -247,7 +259,7 @@ public sealed class Telegram : IBot, IDisposable
             if (attempt != null) ledger.Outcome(attempt, "unknown");
             throw;
         }
-        finally { outbound.Release(); }
+        finally { fileOutbound.Release(); }
     }
     public static string DownloadPath(JsonElement result, AttachmentReference file)
     {
@@ -297,5 +309,5 @@ public sealed class Telegram : IBot, IDisposable
             throw new TelegramFailure(0);
         }
     }
-    public void Dispose() { http.Dispose(); outbound.Dispose(); }
+    public void Dispose() { http.Dispose(); uploads.Dispose(); outbound.Dispose(); fileOutbound.Dispose(); }
 }

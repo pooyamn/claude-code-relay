@@ -9,7 +9,8 @@ public sealed partial class Router
         : session.Status;
 
     private string RenderBubble(Session session) => session.Bubble.Render(
-        session.Carried + session.Elapsed.Elapsed, session.Claude == null ? session.Goal.Footer : null, DisplayStatus(session));
+        session.Carried + session.Elapsed.Elapsed, session.Claude == null ? session.Goal.Footer : null, DisplayStatus(session),
+        session.RetainedOutput > 0 ? "Delivery: " + session.RetainedOutput + " item(s) retained, unconfirmed; not resent" : null);
 
     // Called under Gate, only at a new native-work boundary, never on steering.
     private void BeginBubble(Session session)
@@ -53,7 +54,14 @@ public sealed partial class Router
                 var answer = JsonSerializer.Deserialize<FinalAnswerState>(value.GetRawText())!; answer.Validate();
                 if (!answer.Completed) throw new InvalidDataException("Pending answer lacks a final boundary");
                 session.PendingAnswers.Enqueue(answer);
-                if (answer.Unknown) { session.Held = true; session.Status = "Held — final answer delivery unconfirmed"; }
+            }
+        if (saved.TryGetProperty("pendingFiles", out var files))
+            foreach (var value in files.EnumerateArray())
+            {
+                var batch = value.Deserialize<FinalAnswerState>() ?? throw new InvalidDataException("Invalid attachment batch");
+                batch.Validate();
+                if (!batch.Completed || batch.Parts.Count != 0) throw new InvalidDataException("Attachments must use the independent file outbox");
+                session.PendingFiles.Enqueue(batch);
             }
         if (!saved.TryGetProperty("pendingResponses", out var pending)) return;
         foreach (var receipt in pending.EnumerateArray())
@@ -71,9 +79,13 @@ public sealed partial class Router
                 if (response.Message != null || response.SendUnknown) throw new InvalidDataException("Cannot supersede sent/uncertain progress");
                 response.ProgressSuperseded = true;
             }
-            if (response.Message != null) response.SendUnknown = false;
+            if (receipt.TryGetProperty("progressRetained", out var retained))
+            {
+                response.ProgressRetained = retained.GetBoolean();
+                if (response.ProgressRetained && !response.SendUnknown) throw new InvalidDataException("Invalid retained progress intent");
+            }
+            if (response.Message != null && !response.ProgressRetained) response.SendUnknown = false;
             session.PendingBubbles.Enqueue(response);
-            if (response.SendUnknown || response.Answer.Unknown) { session.Held = true; session.Status = "Held — reconcile uncertain response delivery"; }
         }
     }
 
@@ -120,6 +132,7 @@ public sealed partial class Router
     }
     private async Task FlushBubbleCore(Session session, CancellationToken stop)
     {
+        lock (session.Gate) { IsolateOutput(session); Persist(session); }
         await FlushClaudeQuestions(session, stop);
         // Keep live progress responsive while a saved goal-answer backlog drains.
         if (session.PendingAnswers.Count > 0) await RefreshBacklogBubble(session, stop);
@@ -134,15 +147,17 @@ public sealed partial class Router
                 // Finish an earlier response before sending the next. Even a turn
                 // completed between editor ticks gets its own terminal message.
                 while (session.PendingBubbles.TryPeek(out var completed) &&
-                    !completed.SendUnknown && (completed.ProgressSuperseded || completed.Text == completed.LastRendered) && completed.Answer.Delivered)
+                    (completed.ProgressRetained || completed.Message != null && completed.SendUnknown ||
+                        !completed.SendUnknown && (completed.ProgressSuperseded || completed.Text == completed.LastRendered)) && completed.Answer.Settled)
                     session.PendingBubbles.Dequeue();
                 response = session.PendingBubbles.TryPeek(out var pending) ? pending : session.Response;
-                if (response.SendUnknown && response.Message == null || response.Answer.Unknown) return;
+                if (!response.ProgressRetained && response.SendUnknown && response.Message == null || response.Answer.Unknown) return;
                 text = ReferenceEquals(response, session.Response) ? RenderBubble(session) : response.Text;
                 message = response.Message; revision = session.Revision;
             }
-            if (!response.ProgressSuperseded && text != response.LastRendered) try
+            if (!response.ProgressRetained && !response.ProgressSuperseded && text != response.LastRendered) try
             {
+                lock (session.Gate) response.ProgressSending = true;
                 if (message == null)
                 {
                     lock (session.Gate) { response.SendUnknown = true; Persist(session); }
@@ -161,12 +176,14 @@ public sealed partial class Router
                     return;
                 }
                 else if (failure.NotModified) lock (session.Gate) { Delivered(); }
-                else lock (session.Gate) { response.SendUnknown = true; Persist(session); }
+                else lock (session.Gate) { response.ProgressSending = false; response.SendUnknown = true; IsolateOutput(session); Persist(session); }
             }
+            finally { lock (session.Gate) response.ProgressSending = false; }
             // Finish/acknowledge progress before the separate final answer. No
             // late edit can overtake it; each part has its own durable intent.
             lock (session.Gate)
-                if (response.SendUnknown || !response.ProgressSuperseded && response.LastRendered != text ||
+                if (!response.ProgressRetained && (response.SendUnknown && response.Message == null ||
+                    !response.SendUnknown && !response.ProgressSuperseded && response.LastRendered != text) ||
                     ReferenceEquals(response, session.Response) && revision != session.Revision) return;
             lock (session.Gate)
                 if ((ReferenceEquals(response, session.Response) ? RenderBubble(session) : response.Text) != text) continue;
@@ -174,9 +191,9 @@ public sealed partial class Router
             {
                 lock (session.Gate)
                 {
-                    if (part.Message != null) continue;
+                    if (part.Message != null || part.Retained) continue;
                     if (part.SendUnknown) return;
-                    part.SendUnknown = true; Persist(session);
+                    part.SendUnknown = true; part.Sending = true; Persist(session);
                 }
                 try
                 {
@@ -192,14 +209,14 @@ public sealed partial class Router
                     }
                     else lock (session.Gate)
                     {
-                        session.Held = true; session.Status = "Held — final answer delivery unconfirmed";
-                        if (!ReferenceEquals(response, session.Response)) response.Text = RollingBubble.LineTail(text + "\nFinal answer delivery unconfirmed; no automatic resend.", 3900);
+                        part.Sending = false; IsolateOutput(session);
                         Persist(session);
                     }
                     return;
                 }
+                finally { lock (session.Gate) part.Sending = false; }
             }
-            if (!await FlushFiles(session, response.Answer, stop)) return;
+            lock (session.Gate) { QueueFiles(session, response.Answer); Persist(session); }
             lock (session.Gate) if (ReferenceEquals(response, session.Response)) return;
         }
         void Delivered()
@@ -218,16 +235,16 @@ public sealed partial class Router
             FinalAnswerState answer;
             lock (session.Gate)
             {
-                while (session.PendingAnswers.TryPeek(out var delivered) && delivered.Delivered) session.PendingAnswers.Dequeue();
+                while (session.PendingAnswers.TryPeek(out var delivered) && delivered.Settled) session.PendingAnswers.Dequeue();
                 if (!session.PendingAnswers.TryPeek(out answer!)) { Persist(session); return true; }
-                if (session.SendUnknown && session.Message == null || answer.Unknown) return false;
+                if (answer.Unknown) return false;
             }
             foreach (var part in answer.Parts)
             {
                 lock (session.Gate)
                 {
-                    if (part.Message != null) continue;
-                    part.SendUnknown = true; Persist(session);
+                    if (part.Message != null || part.Retained) continue;
+                    part.SendUnknown = true; part.Sending = true; Persist(session);
                 }
                 try
                 {
@@ -242,14 +259,15 @@ public sealed partial class Router
                     lock (session.Gate)
                     {
                         if (failure.Code == 429) part.SendUnknown = false;
-                        else { session.Held = true; session.Status = "Held — final answer delivery unconfirmed"; }
+                        else { part.Sending = false; IsolateOutput(session); }
                         Persist(session);
                     }
                     if (failure.Code == 429) await Task.Delay(TimeSpan.FromSeconds(Math.Clamp(failure.RetryAfter, 1, 60)), stop);
                     return false;
                 }
+                finally { lock (session.Gate) part.Sending = false; }
             }
-            if (!await FlushFiles(session, answer, stop)) return false;
+            lock (session.Gate) { QueueFiles(session, answer); Persist(session); }
         }
     }
 
@@ -259,7 +277,7 @@ public sealed partial class Router
         {
             lock (session.Gate)
             {
-                if (file.Message != null || file.Failure != null) continue;
+                if (file.Message != null || file.Failure != null || file.Retained) continue;
                 if (file.SendUnknown) return false;
             }
             byte[] bytes;
@@ -269,7 +287,7 @@ public sealed partial class Router
                 lock (session.Gate)
                 {
                     file.Failure = "Project file unavailable, changed, outside the topic, or exceeds 20 MiB";
-                    answer.Parts.Add(new() { Part = new("Attachment not sent: " + OutboundFiles.Filename(file.Path) + " — " + file.Failure + ".", []) });
+                    FileNotice(session, "Attachment not sent: " + OutboundFiles.Filename(file.Path) + " — " + file.Failure + ".");
                     Persist(session);
                 }
                 return false; // Flush the visible failure notice on the next tick.
@@ -278,7 +296,7 @@ public sealed partial class Router
             {
                 file.Size = bytes.Length; file.Sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant();
                 file.Document |= !OutboundFiles.Photo(bytes);
-                file.SendUnknown = true; Persist(session); // Intent BEFORE HTTP.
+                file.SendUnknown = true; file.Sending = true; Persist(session); // Intent BEFORE HTTP.
             }
             try
             {
@@ -291,6 +309,7 @@ public sealed partial class Router
                     sent = await telegram.Upload(session.Binding.Chat, session.Binding.Topic, OutboundFiles.Filename(file.Path), bytes, false, stop);
                 }
                 lock (session.Gate) { file.Message = sent.GetProperty("message_id").GetInt32(); file.SendUnknown = false; Persist(session); }
+                return false; // One file per scheduling quantum; other topics get a turn.
             }
             catch (TelegramFailure failure)
             {
@@ -300,9 +319,9 @@ public sealed partial class Router
                     else if (failure.Code is 400 or 403 or 413)
                     {
                         file.SendUnknown = false; file.Failure = "Telegram rejected upload (" + failure.Code + ")";
-                        answer.Parts.Add(new() { Part = new("Attachment not sent: " + OutboundFiles.Filename(file.Path) + " — " + file.Failure + ".", []) });
+                        FileNotice(session, "Attachment not sent: " + OutboundFiles.Filename(file.Path) + " — " + file.Failure + ".");
                     }
-                    else { session.Held = true; session.Status = "Held — attachment delivery unconfirmed; no automatic resend"; }
+                    else { file.Sending = false; IsolateOutput(session); }
                     Persist(session);
                 }
                 if (failure.Code == 429) await Task.Delay(TimeSpan.FromSeconds(Math.Clamp(failure.RetryAfter, 1, 60)), stop);
@@ -312,11 +331,12 @@ public sealed partial class Router
             {
                 lock (session.Gate)
                 {
-                    session.Held = true; session.Status = "Held — attachment delivery unconfirmed; no automatic resend";
+                    file.Sending = false; IsolateOutput(session);
                     Persist(session);
                 }
                 return false;
             }
+            finally { lock (session.Gate) file.Sending = false; }
         }
         return true;
     }

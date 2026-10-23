@@ -8,6 +8,27 @@ try
         WindowsService.Run(ClaudeWorkerHost.Run, ClaudeWorkerHost.ServiceName); return;
     }
     if (args.SequenceEqual(new[] { "--self-test" })) { SelfTests.Run(); return; }
+    if (args.SequenceEqual(new[] { "--self-test-reliability" }))
+    {
+        var root = Path.Combine(Path.GetTempPath(), "khadang-reliability-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+        try { Console.WriteLine("Passed " + (ReliabilityTests.Run(root) + await ReliabilityTests.Transports(root)) + " reliability checks (no credentials/network/models)."); }
+        finally { Directory.Delete(root, recursive: true); }
+        return;
+    }
+    if (args.SequenceEqual(new[] { "--self-test-delivery" }))
+    {
+        var root = Path.Combine(Path.GetTempPath(), "khadang-delivery-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+        try
+        {
+            var fixture = new RouterPolicy("TheKhadangBot", 123, 456, -100123, "S-1-5-21-1-2-3-1001",
+                "C:\\Native\\codex.exe", new string('a', 64), "C:\\Protected\\token.dpapi", root, "C:\\Workspaces");
+            var checks = await FinalAnswerTests.Run(root, fixture) + await OutboundFileTests.Run(root, fixture) +
+                await GoalAnswerTests.Run(root, fixture) + await BubbleBoundaryTests.Run(root, fixture) + await OutputRecoveryTests.Run(root, fixture);
+            Console.WriteLine("Passed " + checks + " delivery checks (no credentials/network/models).");
+        }
+        finally { Directory.Delete(root, recursive: true); }
+        return;
+    }
     if (args.SequenceEqual(new[] { "--self-test-participants" }))
     {
         var root = Path.Combine(Path.GetTempPath(), "khadang-participant-tests-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
@@ -109,7 +130,7 @@ try
         {
             var fixture = new RouterPolicy("TheKhadangBot", 123, 456, -100123, "S-1-5-21-1-2-3-1001",
                 "C:\\Native\\codex.exe", new string('a', 64), "C:\\Protected\\token.dpapi", testRoot, "C:\\Workspaces");
-            var checks = await MixedRoutingTests.Run(testRoot, fixture) + await ClaudeWorkerTests.Run(testRoot);
+            var checks = await MixedRoutingTests.Run(testRoot, fixture) + await ClaudeWorkerTests.Run(testRoot) + await MixedRoutingTests.RunSlowStartup(testRoot, fixture);
             Console.WriteLine("Passed " + checks + " startup-isolation checks (no credentials/network/models).");
         }
         finally { Directory.Delete(testRoot, recursive: true); }

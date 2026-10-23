@@ -116,7 +116,7 @@ public sealed partial class Router
                 return Result("accepted", "steer", active);
             }
             await starts.WaitAsync(stop); startsHeld = true;
-            if (sessions.Values.Count(s => s.Busy) >= policy.MaximumSessions) return Result("retained-capacity");
+            if (sessions.Values.Count(s => s.Busy || s.Initializing) >= policy.MaximumSessions) return Result("retained-capacity");
             var wait = lastStart.AddSeconds(policy.StartSpacingSeconds) - DateTimeOffset.UtcNow;
             if (wait > TimeSpan.Zero) await Task.Delay(wait, stop);
             lock (session.Gate)

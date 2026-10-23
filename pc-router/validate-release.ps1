@@ -16,7 +16,7 @@ if (-not ($runtime.runtimeOptions.includedFrameworks | Where-Object name -eq 'Mi
 }
 $assembly=Join-Path $candidate 'KhadangRouter.dll'
 $before=(Get-FileHash -LiteralPath $assembly -Algorithm SHA256).Hash
-foreach($suite in @('--self-test-input-isolation','--self-test-startup-isolation','--self-test-transport-health','--self-test-capacity','--self-test-controller-handoff','--self-test-participants','--self-test')) {
+foreach($suite in @('--self-test-reliability','--self-test-delivery','--self-test-input-isolation','--self-test-startup-isolation','--self-test-transport-health','--self-test-capacity','--self-test-controller-handoff','--self-test-participants','--self-test')) {
     $output=(& $executable $suite) -join "`n"
     if($LASTEXITCODE -ne 0) { throw "Release validation failed: $suite" }
     # A missing CLI/suite must not be mistaken for an accepted release.
@@ -27,6 +27,8 @@ foreach($suite in @('--self-test-input-isolation','--self-test-startup-isolation
         '--self-test-capacity' {'Passed \d+ capacity-admission checks'}
         '--self-test-controller-handoff' {'Passed \d+ controller-handoff checks'}
         '--self-test-participants' {'Passed \d+ participant-access checks'}
+        '--self-test-reliability' {'Passed \d+ reliability checks'}
+        '--self-test-delivery' {'Passed \d+ delivery checks'}
         default {'Passed \d+ upload-timeout/input-isolation checks'}
     }
     if($output -notmatch $expected) { throw "Missing regression-suite receipt: $suite" }
