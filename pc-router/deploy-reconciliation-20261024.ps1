@@ -101,8 +101,16 @@ if($Phase -eq 'activate'){
  @{phase='activated';nativeDaemonRestarted=$false}|ConvertTo-Json -Compress;return
 }
 Artifacts $code;$activation=[IO.File]::ReadAllText("$release\activated.json")|ConvertFrom-Json
-$s=Status;$targets=@($s.nativeSessions|Where-Object {$_.binding.ThreadId -in @('01a104cc-9a63-7901-8897-abf8aff3dfb3','01a0facd-1bc0-7d23-95d6-c32fde0c62db')})
-if([DateTimeOffset]$s.at -lt [DateTimeOffset]::UtcNow.AddSeconds(-40) -or [DateTimeOffset]$s.lastPollAttempt -lt [DateTimeOffset]::UtcNow.AddSeconds(-60) -or -not $s.backgroundHealthy -or -not $s.nativeTransportHealthy -or $targets.Count -ne 2 -or @($targets|Where-Object {$_.held -or -not $_.ready -or -not $_.nativeConnected -or $_.admission.Blocking -ne 0}).Count -or (Bindings) -cne $before.bindings -or (HostIdentity) -cne $before.host){throw 'Fresh exact Base/controller readiness not proven'}
+$end=[DateTimeOffset]::UtcNow.AddSeconds(50)
+do{
+ try{
+  $s=Status;$targets=@($s.nativeSessions|Where-Object {$_.binding.ThreadId -in @('01a104cc-9a63-7901-8897-abf8aff3dfb3','01a0facd-1bc0-7d23-95d6-c32fde0c62db')})
+  $guards=@{statusFresh=([DateTimeOffset]$s.at -ge [DateTimeOffset]::UtcNow.AddSeconds(-40));pollFresh=([DateTimeOffset]$s.lastPollAttempt -ge [DateTimeOffset]::UtcNow.AddSeconds(-60));background=([bool]$s.backgroundHealthy);transport=([bool]$s.nativeTransportHealthy);targets=($targets.Count -eq 2 -and @($targets|Where-Object {$_.held -or -not $_.ready -or -not $_.nativeConnected -or $_.admission.Blocking -ne 0}).Count -eq 0);bindings=((Bindings) -ceq $before.bindings);host=((HostIdentity) -ceq $before.host)}
+  if(@($guards.Values|Where-Object {-not $_}).Count -eq 0){break}
+ }catch{$guards=@{snapshotRead=$false}}
+ Start-Sleep -Milliseconds 500
+}while([DateTimeOffset]::UtcNow -lt $end)
+if(@($guards.Values|Where-Object {-not $_}).Count){throw ('Fresh exact readiness not proven: '+(($guards.Keys|Where-Object {-not $guards[$_]}) -join ','))}
 $unknown=[IO.File]::ReadAllText("$release\original-unknown.json")|ConvertFrom-Json
 if((Unknown) -cne $unknown.receipts){throw 'Unknown receipts changed: inspect, never overwrite'}
 RestoreSupervisors $before
