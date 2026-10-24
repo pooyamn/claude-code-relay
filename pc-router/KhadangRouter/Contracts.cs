@@ -27,6 +27,13 @@ public interface IBot
 }
 public sealed class NativeRejected(string method) : Exception("Native explicitly rejected " + method);
 
+// Read-only observation from an already authenticated persistent Claude worker.
+// This is not initialization, enrollment, a provider control or a model prompt.
+public interface IClaudeStateObservation
+{
+    Task<JsonElement> ReadState(CancellationToken stop);
+}
+
 // Claude keeps its own protocol. No invented Codex thread/turn RPCs or IDs.
 public interface IClaudeNative : IAsyncDisposable
 {

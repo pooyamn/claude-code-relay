@@ -58,10 +58,10 @@ if((Get-Service KhadangRouter).Status -ne 'Running' -or -not $proof.verified -or
 Require-HandoffStateAcl $p.StateDirectory
 $bindings=@([RouterReceipts]::Read('SELECT payload FROM bindings')|ForEach-Object {$_[0]|ConvertFrom-Json})
 $source=@($bindings|Where-Object ThreadId -eq $SourceThread);$target=@($bindings|Where-Object ThreadId -eq $TargetThread)
-if($source.Count -ne 1 -or $target.Count -ne 1 -or $SourceThread -eq $TargetThread -or $target[0].Backend -ne 'codex' -or $target[0].Runtime -ne 'linux' -or
- @($bindings|Where-Object {$_.ThreadId -eq '01a0facd-1bc0-7d23-95d6-c32fde0c62db' -and $_.Workspace -ceq '/Users/pouya/.openclaw/workspace/claude-code-relay'}).Count -ne 1){throw 'Exact controller/source and supported existing Linux Codex target required'}
+if($source.Count -ne 1 -or $target.Count -ne 1 -or $SourceThread -eq $TargetThread -or $target[0].Backend -notin @('codex','claude') -or $target[0].Runtime -ne 'linux' -or
+ @($bindings|Where-Object {$_.ThreadId -eq '01a0facd-1bc0-7d23-95d6-c32fde0c62db' -and $_.Workspace -ceq '/Users/pouya/.openclaw/workspace/claude-code-relay'}).Count -ne 1){throw 'Exact controller/source and supported existing Linux Claude/Codex target required'}
 $live=@($s.nativeSessions|Where-Object {$_.binding.ThreadId -eq $TargetThread})
-if($live.Count -ne 1 -or $live[0].held -or -not $live[0].nativeConnected){throw 'Recover the exact held/unavailable target first; no bypass or new session'}
+if($live.Count -ne 1 -or -not $live[0].ready -or $live[0].held -or -not $live[0].nativeConnected){throw 'Recover the exact held/unavailable target first; no bypass or new session'}
 if($TextFile -notmatch '^[A-Za-z]:\\' -or $TextFile.Contains('/') -or $TextFile.Substring(2).Contains(':') -or $TextFile.Split('\') -contains '..'){throw 'Explicit local Windows text path required'}
 $file=Get-Item -LiteralPath $TextFile
 if($file.PSIsContainer -or $file.Attributes -band [IO.FileAttributes]::ReparsePoint -or $file.Length -gt 48000){throw 'Bounded literal task file required'}

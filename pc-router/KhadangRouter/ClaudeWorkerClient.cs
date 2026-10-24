@@ -8,7 +8,7 @@ internal sealed record ClaudeWorkerOpen(string Id, Binding Binding, Binding? Sou
 
 // Client disposal NEVER stops the host or native worker. The protected broker
 // journals complete events while this UI is offline; cursors survive restarts.
-internal sealed class ClaudeWorkerClient : IClaudeNative
+internal sealed class ClaudeWorkerClient : IClaudeNative, IClaudeStateObservation
 {
     private readonly NativeBrokerWireClient client;
     private readonly Ledger ledger;
@@ -71,6 +71,12 @@ internal sealed class ClaudeWorkerClient : IClaudeNative
         foreach (var request in live.GetProperty("worker_pending_requests").EnumerateArray()) Notification?.Invoke(request.Clone());
     }
     internal Task<JsonElement> Remote(CancellationToken token) => Call("claude/remote/read", new { }, token);
+    public async Task<JsonElement> ReadState(CancellationToken token)
+    {
+        var state = await Call("claude/status/read", new { }, token);
+        return JsonSerializer.SerializeToElement(new { session_id = SessionId,
+            session_state = state.GetProperty("session_state"), pending_requests = state.GetProperty("worker_pending_requests") });
+    }
     public Task<JsonElement> Control(string subtype, object parameters, CancellationToken token, bool effect = true) =>
         subtype == "get_usage" && !effect ? Call("claude/usage/read", parameters, token) :
             Call("claude/control", new { subtype, parameters, effect }, token);

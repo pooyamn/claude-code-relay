@@ -18,13 +18,21 @@ Windows UTF-8 path), `-TextSha256` (SHA256 of UTF-8 text without BOM), and
 requests, retain the original stable request ID. Never overwrite an existing
 request with different contents or invent another ID to retry an unknown send.
 
-The running router validates the complete existing bindings and task hash. Only
-Linux Codex receivers are enrolled. Active work is steered with its exact turn
-ID; idle work starts only inside the normal concurrency/pacing limits. A held,
+The running router validates the complete existing bindings and task hash.
+Existing Linux Codex and persistent Claude receivers are supported. Codex active
+work is steered with its exact turn ID; Claude uses native priority-now input
+after an authenticated read of the exact worker state and pending requests.
+Idle work starts only inside the normal concurrency/pacing limits. A held,
 uncertain, expired, changed or capacity-blocked request stays unsent. There is no
 new-session fallback, automatic old-work replay or approval answering.
 
-Only `state: accepted` plus the native `mode` and `turnId` confirms submission.
+For Codex, `state: accepted` plus native `mode` and `turnId` confirms submission.
+For Claude, require `state: accepted`, `mode: now`, and the exact native input
+`uuid`; `turnId` stays null because Claude does not supply Codex turn IDs. The
+router validates the primary-user echo's session, UUID, parent and complete
+content. Readiness, a pipe write, or an administrative ownership record alone
+does not prove task delivery. Recovery responsibility is not a transferable
+native safety fence: repair and verify the affected worker before releasing it.
 The protected `.result` receipt is written after the native ACK. `attempting`,
 `unknown` and publisher timeout mean unconfirmed: inspect, never resend. Retained
 requests are not a background work queue and do not auto-run when capacity returns.
