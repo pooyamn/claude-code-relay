@@ -52,7 +52,7 @@ public sealed partial class Ledger
             {
                 var kind = row[1]!;
                 if (kind == "native/thread/resume" && ResumeSuperseded(row[0]!, row[2]!)) continue;
-                if (kind == "telegram/setMyCommands" && MenuSuperseded(row[0]!, row[2]!)) continue;
+                if (kind == "telegram/setMyCommands" && (MenuOnly(row[2]!, bindings) || MenuSuperseded(row[0]!, row[2]!))) continue;
                 try
                 {
                     using var doc = JsonDocument.Parse(row[2]!); var value = doc.RootElement;
@@ -82,6 +82,24 @@ public sealed partial class Ledger
     private static TopicAddress? Address(JsonElement chat, JsonElement topic, bool general = false) =>
         chat.TryGetInt64(out var c) && c < 0 && topic.TryGetInt32(out var t) && (t > 0 || general && t == 0) ? new(c, t) : null;
     private static bool ShapeError(Exception e) => e is JsonException or InvalidOperationException or KeyNotFoundException or ArgumentException or FormatException;
+
+    private static bool MenuOnly(string payload, IReadOnlyList<Binding> bindings)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(payload); var value = doc.RootElement;
+            if (value.EnumerateObject().Count() != 2) return false;
+            var scope = value.GetProperty("scope"); var commands = value.GetProperty("commands");
+            if (scope.EnumerateObject().Count() != 3 || scope.GetProperty("type").GetString() != "chat_member" ||
+                !scope.GetProperty("chat_id").TryGetInt64(out var chat) || !bindings.Any(b => b.Chat == chat) ||
+                !scope.GetProperty("user_id").TryGetInt64(out var user) || user <= 0 ||
+                commands.ValueKind != JsonValueKind.Array || commands.GetArrayLength() > 100) return false;
+            return commands.EnumerateArray().All(c => c.ValueKind == JsonValueKind.Object && c.EnumerateObject().Count() == 2 &&
+                c.TryGetProperty("command", out var command) && command.ValueKind == JsonValueKind.String &&
+                c.TryGetProperty("description", out var description) && description.ValueKind == JsonValueKind.String);
+        }
+        catch (Exception error) when (ShapeError(error)) { return false; }
+    }
 
     private sealed record InputIntent(long UpdateId, Binding Binding, string PayloadSha256, string? Operation, string? Kind);
     private sealed record InputScope(Ledger Ledger, long UpdateId);

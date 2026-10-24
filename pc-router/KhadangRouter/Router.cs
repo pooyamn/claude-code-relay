@@ -105,6 +105,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         Task heartbeat = Task.CompletedTask;
         Task attachmentsOut = Task.CompletedTask;
         Task startup = Task.CompletedTask;
+        Task menus = Task.CompletedTask;
         using var attachSlots = new SemaphoreSlim(4, 4);
         var bindings = ledger.Bindings();
         // Validate the WHOLE registry and bubble destinations before the first
@@ -145,6 +146,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         typing = Task.Run(() => TypingLoop(stop), stop);
         heartbeat = Task.Run(() => HeartbeatLoop(stop, () => { Volatile.Write(ref transportLost, 1); lifetime.Cancel(); }), stop);
         attachmentsOut = Task.Run(() => AttachmentLoop(stop), stop);
+        menus = Task.Run(() => MenuLoop(stop), stop);
         // A dead output/health task is not a healthy Telegram bridge. Exit the
         // observer through the existing supervisor instead of polling forever.
         foreach (var critical in new[] { edits, typing, heartbeat, attachmentsOut, startup })
@@ -154,7 +156,6 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             }, CancellationToken.None,
                 TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             StatusFile();
-            await Menus(stop);
             if (canary && ledger.Get("native-canary") == null)
             {
                 ledger.Put("native-canary", new { state = "attempting", at = DateTimeOffset.UtcNow });
@@ -209,7 +210,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 }
             await Task.WhenAll(ownedClaude.Keys.Select(c => c.DisposeAsync().AsTask()));
             await Task.WhenAll(switchedClaude.Values.Distinct<IClaudeNative>(ReferenceEqualityComparer.Instance).Select(c => c.DisposeAsync().AsTask()));
-            try { await Task.WhenAll(handlers.Values.Append(edits).Append(typing).Append(heartbeat).Append(attachmentsOut)); } catch (OperationCanceledException) { }
+            try { await Task.WhenAll(handlers.Values.Append(edits).Append(typing).Append(heartbeat).Append(attachmentsOut).Append(menus)); } catch (OperationCanceledException) { }
             await receiptTyping.Drain();
         }
     }
@@ -230,12 +231,19 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
 
     private async Task HeartbeatLoop(CancellationToken stop, Action connectionLost)
     {
+        var nextReconcile = DateTimeOffset.MinValue;
         while (!stop.IsCancellationRequested)
         {
             await ProbeNativeConnections(stop);
             var restart = CheckNativeConnections();
             StatusFile();
             if (restart) { connectionLost(); return; }
+            if (DateTimeOffset.UtcNow >= nextReconcile)
+            {
+                await Task.WhenAll(sessions.Values.Where(s => s.Binding.Backend == "codex" && !s.Initializing)
+                    .Select(s => ReconcileCodexSafely(s, stop)));
+                nextReconcile = DateTimeOffset.UtcNow.AddSeconds(30);
+            }
             await ReadControllerHandoffs(stop);
             await Task.Delay(HeartbeatInterval, stop);
         }

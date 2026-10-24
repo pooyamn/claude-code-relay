@@ -72,7 +72,7 @@ try
         {
             var fixture = new RouterPolicy("TheKhadangBot", 123, 456, -100123, "S-1-5-21-1-2-3-1001",
                 "C:\\Native\\codex.exe", new string('a',64), "C:\\Protected\\token.dpapi", root, "C:\\Workspaces");
-            Console.WriteLine("Passed " + await TransportHealthTests.Run(root, fixture) + " transport-health checks (no credentials/network/models).");
+            Console.WriteLine("Passed " + (await TransportHealthTests.Run(root, fixture) + await CodexReconciliationTests.Run(root, fixture)) + " transport-health checks (no credentials/network/models).");
         }
         finally { Directory.Delete(root, recursive: true); }
         return;

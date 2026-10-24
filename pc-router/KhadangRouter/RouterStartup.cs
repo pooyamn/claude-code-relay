@@ -53,8 +53,13 @@ public sealed partial class Router
                 // arrives; it must not manufacture a second, sticky UI hold.
                 var continuousClaude = session.Claude is ClaudeWorkerClient { ReattachedGeneration: true };
                 session.Held = saved.GetProperty("held").GetBoolean() || saved.GetProperty("busy").GetBoolean() && session.RestoreTurn == null && !continuousClaude;
-                session.Status = session.Held ? "Held — reconcile interrupted turn" :
-                    saved.TryGetProperty("nativeStatus", out var nativeStatus) ? nativeStatus.GetString()! : saved.GetProperty("status").GetString()!;
+                session.Status = saved.TryGetProperty("nativeStatus", out var nativeStatus) ? nativeStatus.GetString()! : saved.GetProperty("status").GetString()!;
+                // Preserve specific safety holds. Replacing every reason with
+                // "interrupted" would make a malformed-event/approval hold
+                // look eligible for routine observation reconciliation.
+                if (session.Held && !session.Status.StartsWith("Held", StringComparison.Ordinal))
+                    session.Status = saved.GetProperty("held").GetBoolean() && saved.GetProperty("status").GetString() is { } heldStatus && heldStatus.StartsWith("Held", StringComparison.Ordinal)
+                        ? heldStatus : "Held — reconcile interrupted turn";
                 session.Carried = TimeSpan.FromMilliseconds(saved.GetProperty("elapsedMs").GetDouble());
                 try { RestorePendingBubbles(session, saved); RestoreAnswer(session.Response, saved); }
                 catch (Exception error) when (error is InvalidDataException or JsonException)
