@@ -20,7 +20,11 @@ foreach($name in @('Protect','Save','LoadSql','Unknown','Bindings','HostIdentity
 LoadSql "$native\inspect-state.ps1" 'BFF3C4A0D5D7D5A980E41D0FBCF466A5FB3F178F381E87406AA3016C940F15A2' 'RouterReceipts'
 $script:taskScheduler=New-Object -ComObject Schedule.Service;$script:taskScheduler.Connect()
 function Status{[IO.File]::ReadAllText("$root\state\status.json")|ConvertFrom-Json}
-function Artifacts($hash){if((Get-FileHash "$root\bin\KhadangRouter.dll").Hash -ne $hash -or (Get-FileHash "$root\config.json").Hash -ne $policy -or -not (Get-Acl "$root\state").AreAccessRulesProtected){throw 'Pinned code/policy/ACL required'}}
+function Artifacts($hash){
+ if((Get-FileHash "$root\bin\KhadangRouter.dll").Hash -ne $hash -or (Get-FileHash "$root\config.json").Hash -ne $policy -or -not (Get-Acl "$root\state").AreAccessRulesProtected){throw 'Pinned code/policy/ACL required'}
+ $h='C:\ProgramData\KhadangClaudeHost';$i=[IO.File]::ReadAllText("$h\installed.json")|ConvertFrom-Json
+ if($i.dll -ne (Get-FileHash "$h\bin\KhadangRouter.dll").Hash -or $i.exe -ne (Get-FileHash "$h\bin\KhadangRouter.exe").Hash){throw 'Independent host startup attestation differs; release not restartable'}
+}
 function RestoreSupervisors($before){foreach($name in @('Oracova-KhadangStartup','Oracova-KhadangWatchdog')){(ExactTask $name).Enabled=[bool]$(if($name -like '*Startup'){$before.startup}else{$before.watchdog})}}
 function StopObserver{
  $s=Status

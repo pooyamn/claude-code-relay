@@ -114,6 +114,22 @@ Deployment verification must check all bindings, same native daemon/host,
 connection and background health, unchanged unknown operations, and unchanged
 unrelated holds. A successful offline gate is not evidence of a phone round trip.
 
+## Host installation attestation and restartability
+
+The shared release gate also runs `test-host-release-attestation.ps1`. Its inert
+fixtures execute the actual persistent-host guard from `router-startup.ps1`,
+with mocked service, manifest and hash observations. Both DLL and EXE must match
+the installed manifest; stale/missing manifests, wrong service identity/path and
+wrong startup mode are refused. The fixture also checks that the host-repair
+attestation constructor updates both hashes while preserving other metadata.
+
+Host repairs must atomically update `installed.json` from the verified protected
+release before starting the host. A successful direct `Start-Service` is not a
+restartability test: deployment validation must also check the installed host
+manifest, and recovery must succeed through the existing SYSTEM startup task.
+Never remove the manifest check, stop live native workers, or replay uncertain
+actions to make a release appear healthy.
+
 ## Capacity refusals are not native failures
 
 `--self-test-capacity` is required as a named artifact gate and inside the full

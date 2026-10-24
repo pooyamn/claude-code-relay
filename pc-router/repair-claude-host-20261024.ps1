@@ -1,4 +1,11 @@
 param([ValidateSet('repair','verify')][string]$Phase='repair')
+function New-HostInstallationAttestation($Previous,[string]$Dll,[string]$Exe,[string]$Generation){
+ if($Dll -notmatch '^[A-F0-9]{64}$' -or $Exe -notmatch '^[A-F0-9]{64}$' -or [string]::IsNullOrWhiteSpace($Generation)){throw 'Exact reviewed host hashes/generation required'}
+ $next=$Previous|ConvertTo-Json -Depth 10|ConvertFrom-Json
+ if(-not $next -or -not $next.PSObject.Properties['dll'] -or -not $next.PSObject.Properties['exe']){throw 'Existing installation attestation required'}
+ $next.dll=$Dll;$next.exe=$Exe;$next.generation=$Generation;$next.at=[DateTimeOffset]::UtcNow.ToString('o')
+ return $next
+}
 # Owner-approved repair of stale shared Claude custody. Never stop live workers.
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 $root='C:\ProgramData\KhadangRouter';$hostRoot='C:\ProgramData\KhadangClaudeHost';$native='C:\ProgramData\OracovaNativeRemote';$temp='C:\Users\pou\AppData\Local\Temp'
@@ -43,12 +50,21 @@ if($Phase -eq 'repair'){
   Move-Item "$hostRoot\bin" "$release\previous-host-bin";New-Item -ItemType Directory "$hostRoot\bin"|Out-Null;Protect "$hostRoot\bin" $true
   Copy-Item "$root\bin\*" "$hostRoot\bin";Protect "$hostRoot\bin" $true
   if((Get-FileHash "$hostRoot\bin\KhadangRouter.dll").Hash -ne $current -or (Bindings) -cne $b.bindings){throw 'Host copy/registry differs'}
+  # Startup verifies BOTH installed binaries. Updating just bin creates a
+  # latent outage: a direct Start-Service works, the real supervisor refuses.
+  Copy-Item "$hostRoot\installed.json" "$release\previous-installed.json";Protect "$release\previous-installed.json"
+  $installed=New-HostInstallationAttestation ([IO.File]::ReadAllText("$hostRoot\installed.json")|ConvertFrom-Json) $current (Get-FileHash "$hostRoot\bin\KhadangRouter.exe").Hash 'accepted-host-repair-20261024'
+  Save "$release\installed.json" $installed
+  $tmp="$hostRoot\installed.json.host-repair";Copy-Item "$release\installed.json" $tmp;Protect $tmp
+  [IO.File]::Replace($tmp,"$hostRoot\installed.json",[System.Management.Automation.Language.NullString]::Value)
   Save "$release\replaced.json" @{at=[DateTimeOffset]::UtcNow;oldHost=$old;newHost=$current;nativeWorkersStopped=0;bindingsChanged=0;inputsReplayed=0}
   Start-Service KhadangClaudeHost;Start-Service KhadangRouter
  }finally{Restore $b}
  @{phase='host-upgraded';nativeWorkersStopped=0;inputReplay=0;newHost=$current}|ConvertTo-Json -Compress;return
 }
 $b=[IO.File]::ReadAllText("$release\before.json")|ConvertFrom-Json
+$installed=[IO.File]::ReadAllText("$hostRoot\installed.json")|ConvertFrom-Json
+if($installed.dll -ne (Get-FileHash "$hostRoot\bin\KhadangRouter.dll").Hash -or $installed.exe -ne (Get-FileHash "$hostRoot\bin\KhadangRouter.exe").Hash){throw 'Host startup attestation differs from installed binaries'}
 $s=Status;$targets=@($s.nativeSessions|Where-Object {$_.binding.ThreadId -in @('7dc840b0-402f-451e-bc79-dadfb706d363','10ab0d8a-f31c-49ca-ab99-1a6152ae4ee2')})
 if([DateTimeOffset]$s.at -lt [DateTimeOffset]::UtcNow.AddMinutes(-1) -or $targets.Count -ne 2 -or @($targets|Where-Object {$_.held -or -not $_.nativeConnected -or $_.pid -eq 0 -or $_.admission.Blocking -ne 0}).Count -or (Bindings) -cne $b.bindings){throw 'Exact DUT and Mimic native recovery not confirmed'}
 $u=[IO.File]::ReadAllText("$release\original-unknown.json")|ConvertFrom-Json

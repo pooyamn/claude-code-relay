@@ -35,6 +35,7 @@ foreach($suite in @('--self-test-reliability','--self-test-delivery','--self-tes
     Write-Output $output
 }
 & (Join-Path $PSScriptRoot 'router-watchdog.ps1') -SelfTest
+& (Join-Path $PSScriptRoot 'test-host-release-attestation.ps1')
 if($windows){
  $acl=(& (Join-Path $PSScriptRoot 'dispatch-controller-handoff.ps1') -SelfTest)-join "`n"
  if($acl -notmatch 'Passed 4 controller-handoff ACL publication checks'){throw 'Handoff ACL publication fixture failed'}
