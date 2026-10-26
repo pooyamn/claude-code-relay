@@ -162,7 +162,7 @@ public sealed partial class Router
         lock (destination.Gate) { destination.Bubble.Append("Handoff received from " + source.Binding.Backend + "; same workspace, saved sessions retained."); Touch(destination); }
         await Reply("Switched to " + (backend == "claude" ? "Claude · " + model : "Codex" + (gpt == null ? "" : " · " + gpt)) +
             ". Handoff sent; source session preserved. Claude acknowledges the handoff and waits; Codex has it in native context. cc model cx / opus switches back.");
-        StatusFile();
+        RequestStatus();
     }
     private static async Task<bool> IdleCodex(INative native, Binding binding, CancellationToken stop)
     {

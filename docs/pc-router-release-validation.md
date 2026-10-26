@@ -130,6 +130,28 @@ manifest, and recovery must succeed through the existing SYSTEM startup task.
 Never remove the manifest check, stop live native workers, or replay uncertain
 actions to make a release appear healthy.
 
+## Receipt-history scale and polling latency
+
+`--self-test-ledger-performance` is required by the shared release gate and the
+complete self-test. Its fixture retains 220,000 large audit records, thousands
+of confirmed resume receipts, and unresolved operations across 18 topics. It
+checks indexed query plans, a bounded batched status snapshot, identical batched
+and fresh admission results, external-writer visibility, and index migration
+without dropping audit history or changing unknown receipts.
+
+The router creates idempotent `operations(status,kind)` and `updates(status)`
+indexes during owned startup. Read-only diagnostics never migrate the database.
+Status snapshots share one evidence read and supersession calculation across
+topics; they are diagnostic observations, never cached dispatch authority.
+Ordinary input still performs fresh admission under the ledger lock.
+
+Status publishing runs in a separate supervised task with coalesced requests and
+atomic file replacement. Neither Telegram polling nor the heartbeat waits for
+status serialization/file I/O. An integration fixture stalls the actual status
+publisher while proving native input is accepted exactly once and subsequent
+polls continue; cancellation still drains the observer without replay. Status
+includes `statusBuildMs` for live post-deployment verification.
+
 ## Capacity refusals are not native failures
 
 `--self-test-capacity` is required as a named artifact gate and inside the full

@@ -32,6 +32,10 @@ public sealed partial class Ledger : IDisposable
         Exec("CREATE TABLE IF NOT EXISTS updates (id INTEGER PRIMARY KEY,payload TEXT NOT NULL,status TEXT NOT NULL)");
         Exec("CREATE TABLE IF NOT EXISTS bindings (chat INTEGER NOT NULL,topic INTEGER NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(chat,topic))");
         Exec("CREATE TABLE IF NOT EXISTS operations (id TEXT PRIMARY KEY,kind TEXT NOT NULL,payload TEXT NOT NULL,status TEXT NOT NULL,result TEXT)");
+        // Audit history is retained. Hot admission/status reads must seek the
+        // small unresolved set, not scan every historical bubble payload.
+        Exec("CREATE INDEX IF NOT EXISTS operations_status_kind ON operations(status,kind)");
+        Exec("CREATE INDEX IF NOT EXISTS updates_status ON updates(status)");
         // A restarted process must not replay a possibly accepted operation.
         Exec("UPDATE operations SET status='unknown' WHERE status='attempting'");
         Exec("UPDATE updates SET status='unknown' WHERE status='dispatching'");

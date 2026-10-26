@@ -8,6 +8,30 @@ try
         WindowsService.Run(ClaudeWorkerHost.Run, ClaudeWorkerHost.ServiceName); return;
     }
     if (args.SequenceEqual(new[] { "--self-test" })) { SelfTests.Run(); return; }
+    if (args.SequenceEqual(new[] { "--self-test-mixed-routing" }))
+    {
+        var root = Path.Combine(Path.GetTempPath(), "khadang-mixed-tests-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+        try
+        {
+            var fixture = new RouterPolicy("TheKhadangBot", 123, 456, -100123, "S-1-5-21-1-2-3-1001",
+                "C:\\Native\\codex.exe", new string('a',64), "C:\\Protected\\token.dpapi", root, "C:\\Workspaces");
+            Console.WriteLine("Passed " + await MixedRoutingTests.Run(root, fixture) + " mixed-routing checks (no credentials/network/models).");
+        }
+        finally { Directory.Delete(root, recursive: true); }
+        return;
+    }
+    if (args.SequenceEqual(new[] { "--self-test-ledger-performance" }))
+    {
+        var root = Path.Combine(Path.GetTempPath(), "khadang-ledger-performance-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+        try
+        {
+            var fixture = new RouterPolicy("TheKhadangBot", 123, 456, -100123, "S-1-5-21-1-2-3-1001",
+                "C:\\Native\\codex.exe", new string('a',64), "C:\\Protected\\token.dpapi", root, "C:\\Workspaces");
+            Console.WriteLine("Passed " + await LedgerPerformanceTests.Run(root, fixture) + " ledger-performance checks (no credentials/network/models).");
+        }
+        finally { Directory.Delete(root, recursive: true); }
+        return;
+    }
     if (args.SequenceEqual(new[] { "--self-test-reliability" }))
     {
         var root = Path.Combine(Path.GetTempPath(), "khadang-reliability-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);

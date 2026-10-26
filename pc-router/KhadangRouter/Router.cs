@@ -89,9 +89,13 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
     private readonly IOutboundFiles fileStore = outboundFiles ?? new OutboundFiles(policy, linuxRpc);
     private DateTimeOffset lastStart = DateTimeOffset.MinValue;
     private readonly object statusGate = new();
+    private readonly object statusFileGate = new();
+    private readonly SemaphoreSlim statusRequests = new(0, 1);
     private DateTimeOffset lastPollAttempt;
     private string? backgroundFailure;
     internal TimeSpan HeartbeatInterval { get; init; } = TimeSpan.FromSeconds(5);
+    internal TimeSpan StatusInterval { get; init; } = TimeSpan.FromSeconds(5);
+    internal Func<CancellationToken, Task>? BeforeStatusWrite { get; init; }
 
     public async Task Run(CancellationToken stop, bool canary = false)
     {
@@ -106,6 +110,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         Task attachmentsOut = Task.CompletedTask;
         Task startup = Task.CompletedTask;
         Task menus = Task.CompletedTask;
+        Task status = Task.CompletedTask;
         using var attachSlots = new SemaphoreSlim(4, 4);
         var bindings = ledger.Bindings();
         // Validate the WHOLE registry and bubble destinations before the first
@@ -147,15 +152,16 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         heartbeat = Task.Run(() => HeartbeatLoop(stop, () => { Volatile.Write(ref transportLost, 1); lifetime.Cancel(); }), stop);
         attachmentsOut = Task.Run(() => AttachmentLoop(stop), stop);
         menus = Task.Run(() => MenuLoop(stop), stop);
+        status = Task.Run(() => StatusLoop(stop), stop);
         // A dead output/health task is not a healthy Telegram bridge. Exit the
         // observer through the existing supervisor instead of polling forever.
-        foreach (var critical in new[] { edits, typing, heartbeat, attachmentsOut, startup })
+        foreach (var critical in new[] { edits, typing, heartbeat, attachmentsOut, startup, status })
             _ = critical.ContinueWith(failed => {
                 Volatile.Write(ref backgroundFailure, failed.Exception?.GetBaseException().GetType().Name ?? "TaskFault");
                 if (NativeObserverRestartSafe()) lifetime.Cancel();
             }, CancellationToken.None,
                 TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-            StatusFile();
+            RequestStatus();
             if (canary && ledger.Get("native-canary") == null)
             {
                 ledger.Put("native-canary", new { state = "attempting", at = DateTimeOffset.UtcNow });
@@ -191,7 +197,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                     handlers[item.Id] = task;
                 }
                 foreach (var done in handlers.Where(pair => pair.Value.IsCompleted).ToArray()) handlers.TryRemove(done.Key, out _);
-                StatusFile();
+                RequestStatus();
                 if (newlyReceived == 0) await Task.Delay(10, stop); // Bound empty/duplicate-only proxy polls.
             }
         }
@@ -210,7 +216,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 }
             await Task.WhenAll(ownedClaude.Keys.Select(c => c.DisposeAsync().AsTask()));
             await Task.WhenAll(switchedClaude.Values.Distinct<IClaudeNative>(ReferenceEqualityComparer.Instance).Select(c => c.DisposeAsync().AsTask()));
-            try { await Task.WhenAll(handlers.Values.Append(edits).Append(typing).Append(heartbeat).Append(attachmentsOut).Append(menus)); } catch (OperationCanceledException) { }
+            try { await Task.WhenAll(handlers.Values.Append(edits).Append(typing).Append(heartbeat).Append(attachmentsOut).Append(menus).Append(status)); } catch (OperationCanceledException) { }
             await receiptTyping.Drain();
         }
     }
@@ -236,7 +242,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         {
             await ProbeNativeConnections(stop);
             var restart = CheckNativeConnections();
-            StatusFile();
+            RequestStatus();
             if (restart) { connectionLost(); return; }
             if (DateTimeOffset.UtcNow >= nextReconcile)
             {
@@ -308,7 +314,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         await telegram.Send(policy.ChatId, topicId, "LG Magic Remote now has its own PC session. Source and handoff are in " + workspace +
             ". Receiver 0.2.18 is running; TV uses PC 10.0.0.35 / HDMI 3. Messages steer the active native Codex turn. " +
             "Khadang no longer connects to Mac sessions. /help shows available controls.", stop);
-        StatusFile();
+        RequestStatus();
     }
 
     private async Task Handle(long updateId, JsonElement update, CancellationToken stop)
@@ -351,7 +357,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                     ledger.Bind(binding);
                     if (!sessions.TryAdd(binding.Address, new Session(binding, linuxRpc)))
                         throw new InvalidDataException("Live topic registration collision");
-                    StatusFile(); return Task.CompletedTask;
+                    RequestStatus(); return Task.CompletedTask;
                 });
                 TopicCreateResult created;
                 await starts.WaitAsync(stop);
@@ -1027,19 +1033,46 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             result.GetProperty("sandbox").GetProperty("type").GetString() != policy.NativeSandboxType ||
             (id != null && result.GetProperty("thread").GetProperty("id").GetString() != id)) throw new InvalidOperationException("Native identity/workspace/security readback mismatch");
     }
+    private void RequestStatus()
+    {
+        // Coalesced diagnostics, not a queue or an inline receipt-history scan.
+        try { statusRequests.Release(); } catch (SemaphoreFullException) { }
+    }
+    private async Task StatusLoop(CancellationToken stop)
+    {
+        while (!stop.IsCancellationRequested)
+        {
+            await statusRequests.WaitAsync(StatusInterval, stop);
+            if (BeforeStatusWrite is { } fixture) await fixture(stop).WaitAsync(stop);
+            StatusFile();
+        }
+    }
     private void StatusFile()
-    { lock(statusGate) File.WriteAllText(Path.Combine(policy.StateDirectory, "status.json"), JsonSerializer.Serialize(new {
-        host = Environment.MachineName, pcOnly = true, bot = policy.BotUsername, nativePid = rpc.Pid, nativeConnected = Connection(rpc), nativeLastRoundTrip = (rpc as NativeRpc)?.LastRoundTripAt, offset = ledger.Offset,
+    { lock(statusFileGate) {
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var current = sessions.Values.ToArray();
+        var snapshot = ledger.StatusSnapshot(current.Select(s => s.Binding));
+        DateTimeOffset poll; lock (statusGate) poll = lastPollAttempt;
+        var text = JsonSerializer.Serialize(new {
+        host = Environment.MachineName, pcOnly = true, bot = policy.BotUsername, nativePid = rpc.Pid, nativeConnected = Connection(rpc), nativeLastRoundTrip = (rpc as NativeRpc)?.LastRoundTripAt, offset = snapshot.Offset,
         nativeTransportHealthy = !sessions.Values.Any(s => s.Claude == null && Connection(s.Native) == false),
         nativeObserverRestartSafe = NativeObserverRestartSafe(),
         backgroundHealthy = Volatile.Read(ref backgroundFailure) == null,
-        unknown = ledger.Unknown, presentationUnknown = ledger.PresentationUnknown, receiptTyping = receiptTyping.Snapshot,
-        bindings = sessions.Values.Select(s => s.Binding), nativeQuota = quota.Snapshot,
+        unknown = snapshot.Unknown, presentationUnknown = snapshot.PresentationUnknown, receiptTyping = receiptTyping.Snapshot,
+        bindings = current.Select(s => s.Binding), nativeQuota = quota.Snapshot,
         nativeRemote = remote.Snapshot, nativeLinuxPid = linuxRpc?.Pid, nativeLinuxConnected = Connection(linuxRpc), nativeLinuxLastRoundTrip = (linuxRpc as NativeRpc)?.LastRoundTripAt, nativeLinuxQuota = linuxQuota.Snapshot,
         nativeLinuxRemote = linuxRemote.Snapshot,
-        heldSessions = sessions.Values.Count(s => s.Held),
-        nativeSessions = sessions.Values.Select(s => new { binding = s.Binding, pid = s.Claude?.Pid ?? s.Native.Pid,
+        heldSessions = current.Count(s => s.Held),
+        nativeSessions = current.Select(s => new { binding = s.Binding, pid = s.Claude?.Pid ?? s.Native.Pid,
             claudeConnected = s.Claude?.Connected, nativeConnected = s.Claude?.Connected ?? Connection(s.Native), held = s.Held, busy = s.Busy, status = DisplayStatus(s), turn = s.Turn,
-            ready = !s.Initializing, admission = ledger.Admission(s.Binding), retainedOutput = s.RetainedOutput, pendingFileBatches = s.PendingFiles.Count, outputError = s.OutputError }),
-        lastPollAttempt, at = DateTimeOffset.UtcNow })); }
+            ready = !s.Initializing, admission = snapshot.Admissions[s.Binding.Address], retainedOutput = s.RetainedOutput, pendingFileBatches = s.PendingFiles.Count, outputError = s.OutputError }),
+        lastPollAttempt = poll, statusBuildMs = watch.Elapsed.TotalMilliseconds, at = DateTimeOffset.UtcNow });
+        var path = Path.Combine(policy.StateDirectory, "status.json");
+        File.WriteAllText(path + ".new", text);
+        // Windows readers may briefly omit delete-sharing. Retry only the
+        // local atomic publication, never an external/native action.
+        for (int attempt = 0; ; attempt++)
+            try { File.Move(path + ".new", path, overwrite: true); break; }
+            catch (IOException) when (attempt < 3) { Thread.Sleep(10 << attempt); }
+    } }
 }

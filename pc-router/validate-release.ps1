@@ -16,12 +16,13 @@ if (-not ($runtime.runtimeOptions.includedFrameworks | Where-Object name -eq 'Mi
 }
 $assembly=Join-Path $candidate 'KhadangRouter.dll'
 $before=(Get-FileHash -LiteralPath $assembly -Algorithm SHA256).Hash
-foreach($suite in @('--self-test-reliability','--self-test-delivery','--self-test-input-isolation','--self-test-startup-isolation','--self-test-transport-health','--self-test-capacity','--self-test-controller-handoff','--self-test-participants','--self-test')) {
+foreach($suite in @('--self-test-ledger-performance','--self-test-reliability','--self-test-delivery','--self-test-input-isolation','--self-test-startup-isolation','--self-test-transport-health','--self-test-capacity','--self-test-controller-handoff','--self-test-participants','--self-test')) {
     $output=(& $executable $suite) -join "`n"
     if($LASTEXITCODE -ne 0) { throw "Release validation failed: $suite" }
     # A missing CLI/suite must not be mistaken for an accepted release.
     $expected=switch($suite){
         '--self-test' {'All \d+ PC-router checks passed'}
+        '--self-test-ledger-performance' {'Passed \d+ ledger-performance checks'}
         '--self-test-startup-isolation' {'Passed \d+ startup-isolation checks'}
         '--self-test-transport-health' {'Passed \d+ transport-health checks'}
         '--self-test-capacity' {'Passed \d+ capacity-admission checks'}

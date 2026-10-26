@@ -105,6 +105,7 @@ public static class SelfTests
         checks += ControllerHandoffTests.Run(root, policy).GetAwaiter().GetResult();
         checks += ControllerClaudeHandoffTests.Run(root, policy).GetAwaiter().GetResult();
         checks += ResumeReceiptTests.Run(root);
+        checks += LedgerPerformanceTests.Run(root, policy).GetAwaiter().GetResult();
         checks += LinuxCodexRuntimeTests.Run(policy).GetAwaiter().GetResult();
         checks += LinuxClaudeRuntimeTests.Run(policy, root).GetAwaiter().GetResult();
         checks += ClaudeNativeStreamTests.Run(root).GetAwaiter().GetResult();

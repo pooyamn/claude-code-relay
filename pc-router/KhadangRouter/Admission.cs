@@ -5,6 +5,8 @@ using System.Text.Json;
 namespace KhadangRouter;
 
 public sealed record AdmissionState(int Blocking, int InterruptedIntake, int NativeUnknown, int RetainedOutput);
+internal sealed record LedgerStatusSnapshot(long Offset, int Unknown, int PresentationUnknown,
+    IReadOnlyDictionary<TopicAddress, AdmissionState> Admissions);
 
 public sealed partial class Ledger
 {
@@ -29,11 +31,34 @@ public sealed partial class Ledger
     // nor does uncertainty about displaying a reply stop an unrelated input.
     public AdmissionState Admission(Binding binding)
     {
+        lock (gate) return AdmissionCore(binding, ReadAdmissionEvidence());
+    }
+    private sealed record AdmissionEvidence(List<Binding> Bindings, List<string?[]> Updates, List<string?[]> Operations);
+    private AdmissionEvidence ReadAdmissionEvidence()
+    {
+        var bindings = Bindings();
+        var updates = Rows("SELECT id,payload FROM updates WHERE status='unknown'");
+        var operations = Rows("SELECT id,kind,payload FROM operations WHERE status='unknown' AND kind<>'telegram/editMessageText'");
+        // Supersession is verified once per observation, never waived or
+        // cached across writes. Ordinary dispatch still takes a fresh view.
+        operations.RemoveAll(row => row[1] == "native/thread/resume" && ResumeSuperseded(row[0]!, row[2]!) ||
+            row[1] == "telegram/setMyCommands" && (MenuOnly(row[2]!, bindings) || MenuSuperseded(row[0]!, row[2]!)));
+        return new(bindings, updates, operations);
+    }
+    internal LedgerStatusSnapshot StatusSnapshot(IEnumerable<Binding> targets)
+    {
         lock (gate)
         {
+            var evidence = ReadAdmissionEvidence();
+            return new(Offset, Unknown, PresentationUnknown,
+                targets.ToDictionary(b => b.Address, b => AdmissionCore(b, evidence)));
+        }
+    }
+    private AdmissionState AdmissionCore(Binding binding, AdmissionEvidence evidence)
+    {
             int intake = 0, native = 0, output = 0;
-            var bindings = Bindings();
-            foreach (var row in Rows("SELECT id,payload FROM updates WHERE status='unknown'"))
+            var bindings = evidence.Bindings;
+            foreach (var row in evidence.Updates)
             {
                 TopicAddress? scope = null;
                 try
@@ -48,11 +73,9 @@ public sealed partial class Ledger
                 catch (Exception e) when (ShapeError(e)) { }
                 if (scope == null || scope == binding.Address) intake++;
             }
-            foreach (var row in Rows("SELECT id,kind,payload FROM operations WHERE status='unknown' AND kind<>'telegram/editMessageText'"))
+            foreach (var row in evidence.Operations)
             {
                 var kind = row[1]!;
-                if (kind == "native/thread/resume" && ResumeSuperseded(row[0]!, row[2]!)) continue;
-                if (kind == "telegram/setMyCommands" && (MenuOnly(row[2]!, bindings) || MenuSuperseded(row[0]!, row[2]!))) continue;
                 try
                 {
                     using var doc = JsonDocument.Parse(row[2]!); var value = doc.RootElement;
@@ -77,7 +100,6 @@ public sealed partial class Ledger
                 native++; // Malformed, unregistered or own-session mutation stays fenced.
             }
             return new(intake + native, intake, native, output);
-        }
     }
     private static TopicAddress? Address(JsonElement chat, JsonElement topic, bool general = false) =>
         chat.TryGetInt64(out var c) && c < 0 && topic.TryGetInt32(out var t) && (t > 0 || general && t == 0) ? new(c, t) : null;

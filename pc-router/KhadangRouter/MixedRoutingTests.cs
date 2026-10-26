@@ -108,6 +108,10 @@ public static class MixedRoutingTests
             try
             {
                 await bot.Ready.Task.WaitAsync(stop.Token);
+                // Polling deliberately starts independently of attachment and
+                // diagnostic publication. Await the evidence this test asserts,
+                // not the former incidental delay of synchronous StatusFile.
+                await Wait(() => bot.Menus.Count == 3 && ledger.Get("startup-held/" + Pin2) != null, stop.Token);
                 Check(bot.Menus.Count == 3 && ledger.Get("startup-held/" + Pin2) != null,
                     "Refused/mismatched Claude route is held without terminating Telegram intake: " + bad);
                 Check(topics.Opened.First().Connected && (bad == "open-refused" || topics.Opened.Last().Disposed),
@@ -123,6 +127,12 @@ public static class MixedRoutingTests
                 Check(original.SequenceEqual(retained) && ledger.Unknown == 1, "Unknown document receipt remains byte-identical: " + bad);
                 if(originalBubble!=null) Check(ledger.Get("bubble/"+Pin2)!.Value.GetRawText()==originalBubble,
                     "Original topic recovery/outbox evidence stays entirely byte-identical; no false permanent hold, truncation or replay");
+                await Wait(() => {
+                    var file = Path.Combine(path,"status.json"); if (!File.Exists(file)) return false;
+                    using var state = JsonDocument.Parse(File.ReadAllText(file));
+                    return state.RootElement.GetProperty("nativeSessions").EnumerateArray().Any(s =>
+                        s.GetProperty("binding").GetProperty("ThreadId").GetString()==Pin2 && s.GetProperty("ready").GetBoolean());
+                }, stop.Token);
                 var heartbeat = JsonDocument.Parse(File.ReadAllText(Path.Combine(path,"status.json"))).RootElement;
                 Check(heartbeat.TryGetProperty("lastPollAttempt",out _) && heartbeat.GetProperty("nativeSessions").EnumerateArray().Any(s =>
                     s.GetProperty("binding").GetProperty("ThreadId").GetString()==Pin2 && s.GetProperty("pid").GetUInt32()==0),
