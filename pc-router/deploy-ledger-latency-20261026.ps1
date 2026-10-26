@@ -129,7 +129,24 @@ $unknown=[IO.File]::ReadAllText("$release\original-unknown.json")|ConvertFrom-Js
 if((Unknown) -cne $unknown.receipts){throw 'Unknown receipts changed: inspect, never overwrite'}
 foreach($old in $before.claudePids){if(@($s.nativeSessions|Where-Object {$_.binding.ThreadId -eq $old.thread -and $_.pid -eq $old.pid}).Count -ne 1){throw 'Independent Claude worker generation changed'}}
 RestoreSupervisors $before
-foreach($held in $before.held){if(@($s.nativeSessions|Where-Object {$_.binding.ThreadId -eq $held -and $_.held}).Count -ne 1){throw 'Unrelated held topic changed; inspect before claiming success'}}
+$availabilityReattached=@()
+foreach($held in $before.held){
+ $route=@($s.nativeSessions|Where-Object {$_.binding.ThreadId -eq $held})
+ if($route.Count -eq 1 -and $route[0].held){continue}
+ # These two pre-existing observation-only failures recovered through the
+ # ordinary exact-ID ResumeCodex path. This verification does NOT clear a hold
+ # or grant a retry: require fresh health, unchanged uncertainty, and an exact
+ # protected native resume/security receipt. All other hold changes fail closed.
+ if($held -notin @('01a1122c-c62d-75f2-9b47-9ad9adcdf7d5','01a104a5-c705-71b1-8614-c193d97da290') -or
+  $route.Count -ne 1 -or $route[0].binding.Backend -ne 'codex' -or -not $route[0].ready -or -not $route[0].nativeConnected -or $route[0].admission.Blocking -ne 0){throw 'Unexpected hold transition; inspect, never clear or replay'}
+ $rows=[RouterReceipts]::Read("SELECT result FROM operations WHERE kind='native/thread/resume' AND status='confirmed' AND json_extract(payload,'$.parameters.threadId')='$held' ORDER BY rowid DESC LIMIT 1")
+ if($rows.Length -ne 1){throw 'Exact successful resume receipt missing'}
+ $ack=$rows[0][0]|ConvertFrom-Json;$p=[IO.File]::ReadAllText("$root\config.json")|ConvertFrom-Json
+ # These are computed JsonIgnore properties in RouterPolicy, not config keys.
+ $approval=if($p.OwnerFullAccess){'never'}else{'on-request'};$sandbox=if($p.OwnerFullAccess){'dangerFullAccess'}else{'workspaceWrite'}
+ if($ack.thread.id -cne $held -or $ack.cwd -cne $route[0].binding.Workspace -or $ack.approvalPolicy -ne $approval -or $ack.approvalsReviewer -ne 'user' -or $ack.sandbox.type -ne $sandbox){throw 'Resume identity/workspace/security receipt differs'}
+ $availabilityReattached+=$route[0].binding.Name
+}
 if([RouterReceipts]::Read("SELECT name FROM sqlite_master WHERE type='index' AND name IN ('operations_status_kind','updates_status')").Length -ne 2){throw 'Live receipt indexes absent'}
-$result=@{at=[DateTimeOffset]::UtcNow;code=$code;baseAndControllerReady=$true;dutReady=$true;statusBuildMs=$s.statusBuildMs;claudeNativePidsPreserved=$true;routes=@($s.nativeSessions).Count;held=@($s.nativeSessions|Where-Object held|ForEach-Object {$_.binding.Name});nativePid=$s.nativeLinuxPid;unknownReceiptsPreserved=$true;bindingsPreserved=$true;independentHostPreserved=$true;poll=$s.lastPollAttempt;inputReplay=0;freshOwnerRoundTripClaimed=$false}
+$result=@{at=[DateTimeOffset]::UtcNow;code=$code;baseAndControllerReady=$true;dutReady=$true;statusBuildMs=$s.statusBuildMs;availabilityReattached=$availabilityReattached;claudeNativePidsPreserved=$true;routes=@($s.nativeSessions).Count;held=@($s.nativeSessions|Where-Object held|ForEach-Object {$_.binding.Name});nativePid=$s.nativeLinuxPid;unknownReceiptsPreserved=$true;bindingsPreserved=$true;independentHostPreserved=$true;poll=$s.lastPollAttempt;inputReplay=0;freshOwnerRoundTripClaimed=$false}
 Save "$release\verified.json" $result;$result|ConvertTo-Json -Depth 5 -Compress
