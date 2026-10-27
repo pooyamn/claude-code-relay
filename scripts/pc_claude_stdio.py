@@ -429,6 +429,37 @@ def quiescent_history(source, session, workspace):
         raise Denied('Unfinished native turn, tool or queue; recovery held without replay')
 
 
+def quiescent_since_checkpoint(source, session, workspace, reviewed):
+    """A protected quiesced checkpoint is an attestation of its exact prefix.
+
+    Never reinterpret already-reviewed historical queue/task schemas as new
+    pending work. Authenticate the complete old prefix first, then apply the
+    unchanged conservative gate to every appended record. Truncation,
+    compaction or edits require explicit owner reconciliation, not a bypass.
+    """
+    source.seek(0)
+    if reviewed is None:
+        return quiescent_history(source, session, workspace)
+    exact(reviewed, {'path', 'bytes', 'sha256'})
+    if type(reviewed['bytes']) is not int or reviewed['bytes'] <= 0 or \
+            type(reviewed['sha256']) is not str or not re.fullmatch('[a-f0-9]{64}', reviewed['sha256']):
+        raise Denied('Exact reviewed history prefix required')
+    remaining, digest, last = reviewed['bytes'], hashlib.sha256(), b''
+    while remaining:
+        chunk = source.read(min(remaining, 65536))
+        if not chunk:
+            raise Denied('Reviewed native history was truncated')
+        remaining -= len(chunk)
+        digest.update(chunk)
+        last = chunk[-1:]
+    if digest.hexdigest() != reviewed['sha256'] or last != b'\n':
+        raise Denied('Reviewed native history prefix changed or partial')
+    position = source.tell()
+    if source.read(1):
+        source.seek(position)
+        quiescent_history(source, session, workspace)
+
+
 def no_session_writer(session):
     for process in Path('/proc').glob('[0-9]*'):
         if process.name == str(os.getpid()): continue
@@ -480,7 +511,7 @@ def snapshot(workspace, session, checkpoint, checkpoint_sha256):
                 if _file_identity(before) != _file_identity(metadata): raise Denied('Native history identity changed before checkpoint')
                 for body in iter(lambda: source.read(65536), b''): hasher.update(body)
                 source.seek(0)
-                quiescent_history(source, session, workspace)
+                quiescent_since_checkpoint(source, session, workspace, value.get('history'))
                 if _file_identity(before) != _file_identity(os.fstat(source.fileno())) or _file_identity(before) != _file_identity(history.lstat()):
                     raise Denied('Native history changed during checkpoint')
             observation = {'path': str(history), 'bytes': before.st_size, 'sha256': hasher.hexdigest()}

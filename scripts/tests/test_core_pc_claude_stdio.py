@@ -94,6 +94,45 @@ class PcClaudeStdioTests(unittest.TestCase):
                     mock.patch.object(bridge.Path, 'exists', return_value=exists), mock.patch.object(bridge.Path, 'is_symlink', return_value=link), self.assertRaises(Denied):
                 bridge.checked_handoff(path, 'a' * 64, WORKSPACE, SESSION)
 
+    def test_reviewed_prefix_is_authenticated_not_reinterpreted(self):
+        # An owner-reviewed old native format must not turn into pending work
+        # merely because today's parser doesn't understand that historical row.
+        prefix = self.history({'type': 'old-reviewed-native-format'}).getvalue()
+        review = {'path': '/unused', 'bytes': len(prefix), 'sha256': hashlib.sha256(prefix).hexdigest()}
+        bridge.quiescent_since_checkpoint(io.BytesIO(prefix), SESSION, WORKSPACE, review)
+        tail = self.history({'type': 'assistant', 'message': {'role': 'assistant',
+                            'content': [], 'stop_reason': 'end_turn'}}).getvalue()
+        bridge.quiescent_since_checkpoint(io.BytesIO(prefix + tail), SESSION, WORKSPACE, review)
+        for changed in (prefix[:-1], b'x' + prefix[1:]):
+            with self.subTest(changed=changed), self.assertRaises(Denied):
+                bridge.quiescent_since_checkpoint(io.BytesIO(changed + tail), SESSION, WORKSPACE, review)
+
+    def test_reviewed_prefix_never_waives_appended_uncertainty(self):
+        prefix = self.history({'type': 'old-reviewed-native-format'}).getvalue()
+        review = {'path': '/unused', 'bytes': len(prefix), 'sha256': hashlib.sha256(prefix).hexdigest()}
+        final = {'type': 'assistant', 'message': {'role': 'assistant', 'content': [], 'stop_reason': 'end_turn'}}
+        for rows in ([{'type': 'queue-operation', 'operation': 'enqueue'}, final],
+                     [{'type': 'assistant', 'message': {'role': 'assistant', 'content':
+                         [{'type': 'tool_use', 'id': 'still-running'}], 'stop_reason': 'tool_use'}}, final],
+                     [{'type': 'user', 'message': {'role': 'user', 'content': 'not finished'}}],
+                     [{'type': 'new-unknown-record'}, final],
+                     [{'type': 'user', 'message': {'role': 'user', 'content': '<task-notification>pending'}}, final],
+                     [{**final, 'sessionId': 'foreign'}], [{**final, 'cwd': '/unapproved'}]):
+            with self.subTest(rows=rows), self.assertRaises(Denied):
+                bridge.quiescent_since_checkpoint(io.BytesIO(prefix + self.history(*rows).getvalue()), SESSION, WORKSPACE, review)
+        with self.assertRaises(Denied):
+            bridge.quiescent_since_checkpoint(io.BytesIO(prefix), SESSION, WORKSPACE, None)
+
+    def test_reviewed_prefix_requires_full_record_boundary_and_exact_digest(self):
+        for prefix in (b'partial', b'{}'):
+            review = {'path': '/unused', 'bytes': len(prefix), 'sha256': hashlib.sha256(prefix).hexdigest()}
+            with self.assertRaises(Denied):
+                bridge.quiescent_since_checkpoint(io.BytesIO(prefix), SESSION, WORKSPACE, review)
+        for count, digest in ((True, 'a'*64), (0, 'a'*64), (1, 'invalid')):
+            with self.assertRaises(Denied):
+                bridge.quiescent_since_checkpoint(io.BytesIO(b'{}\n'), SESSION, WORKSPACE,
+                                                  {'path': '/unused', 'bytes': count, 'sha256': digest})
+
     def test_model_is_a_literal_not_an_additional_option_or_prompt(self):
         for model in ('opus\n--continue', '--fork-session', 'opus;whoami', 'opus sonnet', 1):
             with self.subTest(model=model), mock.patch.object(bridge, 'require_owner'), mock.patch.object(bridge.subprocess, 'Popen') as launch, self.assertRaises(Denied):
