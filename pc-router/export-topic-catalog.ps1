@@ -10,7 +10,9 @@ $bindings=@($s.bindings|ForEach-Object {
  @{Alias=$alias;Chat=$b.Chat;Topic=$b.Topic;ThreadId=$b.ThreadId;Workspace=$b.Workspace;Backend=$b.Backend;Runtime=$b.Runtime;Name=$b.Name}
 })
 if(@($bindings.Alias|Select-Object -Unique).Count -ne $bindings.Count -or @($bindings|Where-Object Alias -eq 'claude-code-relay').Count -ne 1){throw 'Ambiguous routing aliases'}
-$bytes=[Text.Encoding]::UTF8.GetBytes((@{schema='ccrelay.pc_topics.v1';observedAt=$s.at;bindings=$bindings}|ConvertTo-Json -Depth 8 -Compress))
+# Old long-running forum-only participants safely ignore the extension.
+# Updated participants merge both arrays and validate identities globally.
+$bytes=[Text.Encoding]::UTF8.GetBytes((@{schema='ccrelay.pc_topics.v1';observedAt=$s.at;bindings=@($bindings|Where-Object Topic -gt 0);groupBindings=@($bindings|Where-Object Topic -eq 0)}|ConvertTo-Json -Depth 8 -Compress))
 $f=[IO.File]::Open($OutputPath,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
 try{$f.Write($bytes,0,$bytes.Length);$f.Flush($true)}finally{$f.Dispose()}
 @{exported=$bindings.Count;credentials=$false;modelsStarted=0}|ConvertTo-Json -Compress

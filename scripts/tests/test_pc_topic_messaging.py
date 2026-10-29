@@ -29,6 +29,21 @@ class Rpc:
 
 
 class DeliveryTests(unittest.TestCase):
+    def test_whole_group_catalog_preserves_forum_controller(self):
+        controller = binding('claude-code-relay', '/work/relay')
+        group = {**binding('datehack', '/work/datehack'), 'Chat': -5304042088, 'Topic': 0,
+                 'ThreadId': '22222222-2222-2222-2222-222222222222'}
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'catalog.json'
+            def write():
+                path.write_text(json.dumps({'schema': 'ccrelay.pc_topics.v1', 'bindings': [controller], 'groupBindings': [group]}))
+            write()
+            self.assertEqual(0, m.catalog(path)['datehack']['Topic'])
+            for topic in (-1, True, 1, 2_147_483_648):
+                group['Topic'] = topic
+                write()
+                with self.assertRaises(ValueError): m.catalog(path)
+
     def test_active_codex_steers_exact_turn_not_queue_or_start(self):
         rpc = Rpc()
         r = m.codex_delivery(binding('target'), 'hello', rpc)

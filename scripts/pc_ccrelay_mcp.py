@@ -24,12 +24,16 @@ def catalog(path=CATALOG):
     if value.get('schema') != 'ccrelay.pc_topics.v1':
         raise ValueError('PC topic catalog missing; do not use the legacy registry')
     result, addresses, threads = {}, set(), set()
-    for binding in value['bindings']:
+    # Keep group routes separate on disk so already-running forum-only MCP
+    # clients ignore the new extension instead of rejecting every topic.
+    for binding in value['bindings'] + value.get('groupBindings', []):
         name = binding['Alias']
         if not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,63}', name) or name in result or \
                 binding['Backend'] not in ('claude', 'codex') or binding['Runtime'] not in ('linux', 'windows') or \
                 not re.fullmatch(r'[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}', binding['ThreadId']) or \
-                type(binding['Chat']) is not int or binding['Chat'] >= 0 or type(binding['Topic']) is not int or binding['Topic'] <= 0:
+                type(binding['Chat']) is not int or binding['Chat'] >= 0 or \
+                type(binding['Topic']) is not int or not 0 <= binding['Topic'] <= 2_147_483_647 or \
+                binding['Topic'] > 0 and not str(binding['Chat']).startswith('-100'):
             raise ValueError('Invalid/ambiguous PC topic catalog')
         address = (binding['Chat'], binding['Topic'])
         if address in addresses or binding['ThreadId'] in threads:

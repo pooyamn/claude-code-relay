@@ -54,10 +54,11 @@ def create(args):
     os.chmod(directory, 0o700)
     attest_workspaces([args.workspace])
     new_topic = getattr(args, 'mode', 'existing-topic') == 'new-topic'
-    topic_label = 'pending creation' if new_topic else str(args.topic)
+    whole_group = getattr(args, 'mode', 'existing-topic') == 'existing-group'
+    topic_label = 'whole group' if whole_group else ('pending creation' if new_topic else str(args.topic))
     checkpoint = ('[Enrollment checkpoint; not a request to start work.] '
                   f'Pouya requested a fresh session for the {"new" if new_topic else "existing"} {args.name} topic '
-                  f'in forum {args.chat}, topic {topic_label}. Workspace: {args.workspace}. '
+                  f'in {"group" if whole_group else "forum"} {args.chat}, route {topic_label}. Workspace: {args.workspace}. '
                   'Do not replay historical messages or start project work or a goal. '
                   'Wait for the next human input. Other forum participants have conversation '
                   'access only when the router explicitly authorizes their accounts; they '
@@ -115,7 +116,7 @@ def create(args):
             'type': 'message', 'role': 'user',
             'content': [{'type': 'input_text', 'text': checkpoint}]}]}, effect=True)
         call('thread/name/set', {'threadId': thread_id,
-                                'name': args.name if new_topic else f'{args.name} (topic {args.topic})'}, effect=True)
+                                'name': args.name if new_topic or whole_group else f'{args.name} (topic {args.topic})'}, effect=True)
         stored = call('thread/read', {'threadId': thread_id, 'includeTurns': True})['thread']
         path = Path(stored['path'])
         if (stored['id'] != thread_id or stored['cwd'] != args.workspace or
@@ -146,11 +147,11 @@ if __name__ == '__main__':
     parser.add_argument('--name', required=True)
     parser.add_argument('--chat', type=int, required=True)
     parser.add_argument('--topic', type=int, default=0)
-    parser.add_argument('--mode', choices=('existing-topic', 'new-topic'), default='existing-topic')
+    parser.add_argument('--mode', choices=('existing-topic', 'new-topic', 'existing-group'), default='existing-topic')
     parser.add_argument('--existing-thread', type=lambda value: str(uuid.UUID(value)))
     parser.add_argument('--source-update', type=int, required=True)
     args = parser.parse_args()
-    valid_topic = args.topic == 0 if args.mode == 'new-topic' else args.topic > 0
+    valid_topic = args.topic == 0 if args.mode in ('new-topic', 'existing-group') else args.topic > 0
     if args.chat >= 0 or not valid_topic or args.source_update <= 0 or not 1 <= len(args.name) <= 128 or any(ord(c) < 32 for c in args.name):
         parser.error('Exact existing forum/topic/name receipt required')
     print(json.dumps(create(args), separators=(',', ':')))
