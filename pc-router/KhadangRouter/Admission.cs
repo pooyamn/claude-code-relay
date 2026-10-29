@@ -17,6 +17,8 @@ public sealed partial class Ledger
         lock (gate)
         {
             var count = InputUnknown(binding);
+            foreach (var row in Rows("SELECT id,payload FROM operations WHERE status='unknown' AND kind='native/turn/steer'"))
+                if (OwnerSteerQuarantined(row[0]!, binding, row[1]!)) count++;
             foreach (var row in Rows("SELECT id,payload FROM operations WHERE status='unknown' AND kind IN ('telegram/sendMessage','telegram/sendRichMessage','telegram/sendPhoto','telegram/sendDocument')"))
                 try
                 {
@@ -76,6 +78,7 @@ public sealed partial class Ledger
             foreach (var row in evidence.Operations)
             {
                 var kind = row[1]!;
+                if (kind == "native/turn/steer" && OwnerSteerQuarantined(row[0]!, binding, row[2]!)) continue;
                 try
                 {
                     using var doc = JsonDocument.Parse(row[2]!); var value = doc.RootElement;

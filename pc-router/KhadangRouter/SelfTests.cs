@@ -104,6 +104,7 @@ public static class SelfTests
         checks += CapacityAdmissionTests.Run(root, policy).GetAwaiter().GetResult();
         checks += ControllerHandoffTests.Run(root, policy).GetAwaiter().GetResult();
         checks += ControllerClaudeHandoffTests.Run(root, policy).GetAwaiter().GetResult();
+        checks += OwnerSteerQuarantineTests.Run(root);
         checks += ResumeReceiptTests.Run(root);
         checks += LedgerPerformanceTests.Run(root, policy).GetAwaiter().GetResult();
         checks += LinuxCodexRuntimeTests.Run(policy).GetAwaiter().GetResult();

@@ -114,6 +114,16 @@ Deployment verification must check all bindings, same native daemon/host,
 connection and background health, unchanged unknown operations, and unchanged
 unrelated holds. A successful offline gate is not evidence of a phone round trip.
 
+For explicitly owner-requested recovery of a stale Codex steer, protected
+maintenance may add one payload-hash-bound `owner-steer-quarantine/` record
+after an authenticated native read proves its exact old turn completed and
+the current turn is different. This isolates that one historical unknown
+from ordinary input only. It never confirms delivery, retries the request,
+alters the original receipt, authorizes native replacement/retirement, or
+waives a later unknown input. The complete self-test includes 57 checks for
+scope, hashes, terminal-turn evidence, malformed reviews and unchanged audit.
+No timeout or watchdog automatically grants this owner-reviewed exception.
+
 ## Host installation attestation and restartability
 
 The shared release gate also runs `test-host-release-attestation.ps1`. Its inert
