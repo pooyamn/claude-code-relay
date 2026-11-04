@@ -363,7 +363,7 @@ def forward(selector, child, read_fd, write_fd, ready, verify_workspace, verify_
         verify_workspace()
 
 
-def quiescent_history(source, session, workspace):
+def quiescent_history(source, session, workspace, *, initially_terminal=False):
     """Conservative native-history gate. Unknown or unfinished work stays held.
 
     Reads metadata/tool IDs only; no transcript text leaves this process.
@@ -371,7 +371,21 @@ def quiescent_history(source, session, workspace):
     assistant turn alone is insufficient if a tool, queue or background task
     remains outstanding. Do not infer that a crash cancelled an external action.
     """
-    tools, queued, terminal = set(), [], False
+    tools, queued, terminal = set(), [], initially_terminal
+    absorbed, background, finished = {}, {}, {}
+    def task_notification(text, origin):
+        if type(text) is not str or not text.startswith('<task-notification>') or \
+                origin != {'kind': 'task-notification', 'producer': 'session-task'}:
+            raise Denied('Unverified background-task notification')
+        def tag(name):
+            values = re.findall('<' + name + r'>([^<]+)</' + name + '>', text)
+            if len(values) != 1: raise Denied('Ambiguous background-task metadata')
+            return values[0]
+        task, tool, status = tag('task-id'), tag('tool-use-id'), tag('status')
+        if background.get(task) != tool or status not in ('completed', 'failed', 'killed') or \
+                task in finished and finished[task] != (tool, status):
+            raise Denied('Unmatched or unfinished background task')
+        finished[task] = (tool, status)
     metadata = {'attachment', 'atis-latch', 'last-prompt', 'cost-state', 'mode', 'bridge-session',
                 'system', 'summary', 'file-history-snapshot', 'progress'}
     for body in source:
@@ -383,6 +397,16 @@ def quiescent_history(source, session, workspace):
                 row.get('sessionId', session) != session or row.get('isSidechain'):
             raise Denied('Foreign or sidechain history requires explicit reconciliation')
         kind = row.get('type')
+        attachment = row.get('attachment', {})
+        if kind == 'attachment' and attachment.get('type') == 'queued_command':
+            key = (attachment.get('source_uuid'), attachment.get('delivery_id'))
+            if key in absorbed or any(type(v) is not str or not re.fullmatch(r'[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}', v) for v in key):
+                raise Denied('Invalid absorbed-command receipt')
+            absorbed[key] = attachment.get('prompt')
+            prompt = attachment.get('prompt')
+            if type(prompt) is str and '<task-notification' in prompt:
+                if attachment.get('commandMode') != 'task-notification': raise Denied('Invalid task command mode')
+                task_notification(prompt, attachment.get('origin'))
         if kind == 'queue-operation':
             operation = row.get('operation')
             if operation == 'enqueue': queued.append(row.get('content'))
@@ -393,12 +417,20 @@ def quiescent_history(source, session, workspace):
                 # terminal queue transition, matched to one exact pending
                 # payload. Never let cancellation/unknown removal clear work.
                 content = row.get('content')
-                if row.get('reason') != 'absorbed_mid_turn' or type(content) is not str or not content or \
-                        queued.count(content) != 1 or any(type(row.get(key)) is not str or
+                if row.get('reason') != 'absorbed_mid_turn' or any(type(row.get(key)) is not str or
                             not re.fullmatch(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', row[key])
                             for key in ('commandUuid', 'deliveryId')):
                     raise Denied('Unmatched or unknown native queue removal')
+                key = (row['commandUuid'], row['deliveryId'])
+                if content is None:
+                    prompt = absorbed.get(key)
+                    if queued != [None] or type(prompt) is not list or not prompt:
+                        raise Denied('Structured removal lacks an exact native attachment')
+                elif type(content) is not str or not content or queued.count(content) != 1 or \
+                        key in absorbed and absorbed[key] != content:
+                    raise Denied('Unmatched native queue content')
                 queued.remove(content)
+                absorbed.pop(key, None)
             else: raise Denied('Unknown or unmatched native queue operation')
         elif kind in ('user', 'assistant'):
             message = row.get('message')
@@ -418,14 +450,21 @@ def quiescent_history(source, session, workspace):
                     identity = block.get('tool_use_id')
                     if kind != 'user' or identity not in tools: raise Denied('Unmatched native tool result')
                     tools.remove(identity)
+                    result = block.get('content')
+                    if type(result) is str:
+                        match = re.search(r'(?:running in background with ID: |moved to the background \(ID: )([A-Za-z0-9_-]+)', result)
+                        if match:
+                            if match[1] in background: raise Denied('Duplicate background task ID')
+                            background[match[1]] = identity
                 elif block.get('type') == 'text' and '<task-notification' in block.get('text', ''):
-                    raise Denied('Background task notification requires explicit reconciliation')
+                    if kind != 'user': raise Denied('Assistant text cannot confirm a background task')
+                    task_notification(block['text'], row.get('origin'))
             terminal = kind == 'assistant' and message.get('stop_reason') == 'end_turn'
         elif kind == 'attachment' and any(word in str(row.get('attachment', {}).get('type', '')) for word in ('task_notification', 'async', 'background')):
             raise Denied('Background history requires explicit reconciliation')
         elif kind not in metadata:
             raise Denied('Unrecognized native history record; review before recovery')
-    if tools or queued or not terminal:
+    if tools or queued or absorbed or set(background) != set(finished) or not terminal:
         raise Denied('Unfinished native turn, tool or queue; recovery held without replay')
 
 
@@ -457,7 +496,7 @@ def quiescent_since_checkpoint(source, session, workspace, reviewed):
     position = source.tell()
     if source.read(1):
         source.seek(position)
-        quiescent_history(source, session, workspace)
+        quiescent_history(source, session, workspace, initially_terminal=True)
 
 
 def no_session_writer(session):

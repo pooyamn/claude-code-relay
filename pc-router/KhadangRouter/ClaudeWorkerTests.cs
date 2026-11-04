@@ -24,15 +24,16 @@ public static class ClaudeWorkerTests
                         scenario == "unscoped-upload" ? new { } : (object)new { chat_id=binding.Chat, message_thread_id=scenario=="other-topic-upload" ? 999 : binding.Topic });
                     source.Outcome(effect,"unknown");
                 }
-                if (scenario == "other-topic-upload")
+                if (scenario is "other-topic-upload" or "same-topic-upload")
                 {
                     var before = source.Query("SELECT payload,status FROM operations WHERE id=?", effect!)[0];
-                    LinuxClaudeTopics.RequireSwitchAdmission(source, binding);
+                    if (scenario == "other-topic-upload") LinuxClaudeTopics.RequireSwitchAdmission(source, binding);
+                    else { try { LinuxClaudeTopics.RequireSwitchAdmission(source, binding); throw new Exception("Unsafe provider switch"); } catch (InvalidDataException) { checks++; } }
                     Check(before.SequenceEqual(source.Query("SELECT payload,status FROM operations WHERE id=?", effect!)[0]),
                         "Claude switch ignores only unrelated destination, leaving original upload payload/status byte-identical");
                     ClaudeWorkerHost.RequireSourceAdmission(source,binding,true);
                     Check(source.Unknown==1 && source.Query("SELECT status FROM operations WHERE id=?",effect!)[0][0]=="unknown",
-                        "Restarted host may admit unrelated exact worker without confirming/replaying an uncertain upload");
+                        "Exact worker custody recovery is separate from output, without confirming/replaying an uncertain upload");
                 }
                 else
                 {
@@ -48,7 +49,7 @@ public static class ClaudeWorkerTests
                 }
             }
             using var resumed = Ledger.ReadOnly(sourcePath);
-            if(scenario=="other-topic-upload") {ClaudeWorkerHost.RequireSourceAdmission(resumed,binding,true);LinuxClaudeTopics.RequireSwitchAdmission(resumed,binding);checks+=2;}
+            if(scenario is "other-topic-upload" or "same-topic-upload") {ClaudeWorkerHost.RequireSourceAdmission(resumed,binding,true);checks++;if(scenario=="other-topic-upload"){LinuxClaudeTopics.RequireSwitchAdmission(resumed,binding);checks++;}}
             else {try {ClaudeWorkerHost.RequireSourceAdmission(resumed,binding,true);throw new Exception("Unsafe read-only admission");}catch(InvalidOperationException){checks++;}}
         }
         var path = Path.Combine(root, "claude-worker-private.db");

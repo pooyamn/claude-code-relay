@@ -12,6 +12,7 @@ internal sealed class ClaudeWorkerNative(IClaudeNative native, Binding binding, 
     private string state = "idle";
     public bool Retired { get; private set; }
     public bool Connected => Retired || native.Connected;
+    internal bool OwnerExited => native is ClaudeNativeStream stream && stream.OwnerExited;
     internal bool Idle { get { lock (gate) return state == "idle"; } }
     public uint Pid => native.Pid;
     public event Action<JsonElement>? Notification;

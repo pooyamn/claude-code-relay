@@ -30,6 +30,7 @@ public sealed class ClaudeNativeStream : IClaudeNative
     public uint Pid => channel.Pid;
     public string SessionId { get; }
     public bool Connected => !disconnected;
+    internal bool OwnerExited => channel is LinuxClaudeChannel linux && linux.OwnerExited;
     internal JsonElement[] PendingRequests() { lock (requestGate) return requests.Values.Select(frame => frame.Clone()).ToArray(); }
     internal TimeSpan DeliveryTimeout { get; init; } = TimeSpan.FromSeconds(30);
     public ClaudeNativeStream(INativeChannel channel, Ledger ledger, string sessionId)

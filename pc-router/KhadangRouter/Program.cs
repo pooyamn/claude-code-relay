@@ -8,6 +8,13 @@ try
         WindowsService.Run(ClaudeWorkerHost.Run, ClaudeWorkerHost.ServiceName); return;
     }
     if (args.SequenceEqual(new[] { "--self-test" })) { SelfTests.Run(); return; }
+    if (args.SequenceEqual(new[] { "--self-test-claude-restart" }))
+    {
+        var root = Path.Combine(Path.GetTempPath(), "khadang-claude-restart-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+        try { Console.WriteLine("Passed " + ClaudeRestartTests.Run(root) + " Claude restart checks (no credentials/network/models)."); }
+        finally { Directory.Delete(root, recursive: true); }
+        return;
+    }
     if (args.SequenceEqual(new[] { "--self-test-mixed-routing" }))
     {
         var root = Path.Combine(Path.GetTempPath(), "khadang-mixed-tests-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);

@@ -94,6 +94,9 @@ public sealed class LinuxClaudeChannel : INativeChannel
     private readonly Func<bool> ownedExited;
     public LinuxClaudeObservation Observation { get; }
     public uint Pid => Observation.NativePid;
+    // The original owned Windows process HANDLE, not a reused PID or a
+    // disconnected pipe. Needed to distinguish WSL shutdown from a live worker.
+    internal bool OwnerExited => ownedExited();
     private LinuxClaudeChannel(INativeChannel channel, Func<OwnerProcessObservation> observeOwner, Func<bool> ownedExited,
         LinuxClaudeObservation observation)
     { this.channel = channel; this.observeOwner = observeOwner; this.ownedExited = ownedExited; Observation = observation; }

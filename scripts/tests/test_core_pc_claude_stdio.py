@@ -123,6 +123,52 @@ class PcClaudeStdioTests(unittest.TestCase):
         with self.assertRaises(Denied):
             bridge.quiescent_since_checkpoint(io.BytesIO(prefix), SESSION, WORKSPACE, None)
 
+    def test_reviewed_terminal_prefix_survives_metadata_only_restart(self):
+        prefix = self.history({'type': 'assistant', 'message': {'role': 'assistant', 'content': [], 'stop_reason': 'end_turn'}}).getvalue()
+        review = {'path': '/fixture', 'bytes': len(prefix), 'sha256': hashlib.sha256(prefix).hexdigest()}
+        metadata = self.history({'type': 'bridge-session'}, {'type': 'cost-state'}, {'type': 'mode'}).getvalue()
+        bridge.quiescent_since_checkpoint(io.BytesIO(prefix + metadata), SESSION, WORKSPACE, review)
+        with self.assertRaises(Denied):
+            bridge.quiescent_since_checkpoint(io.BytesIO(metadata), SESSION, WORKSPACE, None)
+        for pending in (
+                {'type': 'queue-operation', 'operation': 'enqueue', 'content': 'not consumed'},
+                {'type': 'user', 'message': {'role': 'user', 'content': 'unfinished'}},
+                {'type': 'assistant', 'message': {'role': 'assistant', 'content': [{'type': 'tool_use', 'id': 'pending'}], 'stop_reason': 'tool_use'}}):
+            with self.subTest(pending=pending), self.assertRaises(Denied):
+                bridge.quiescent_since_checkpoint(io.BytesIO(prefix + metadata + self.history(pending).getvalue()), SESSION, WORKSPACE, review)
+
+    def test_background_recovery_requires_native_terminal_notification(self):
+        use = {'type': 'assistant', 'message': {'role': 'assistant', 'content': [{'type': 'tool_use', 'id': 'tool-bg'}], 'stop_reason': 'tool_use'}}
+        result = {'type': 'user', 'message': {'role': 'user', 'content': [{'type': 'tool_result', 'tool_use_id': 'tool-bg',
+                    'content': 'Command running in background with ID: task1. Output is being written.'}]}}
+        final = {'type': 'assistant', 'message': {'role': 'assistant', 'content': [], 'stop_reason': 'end_turn'}}
+        for status in ('completed', 'failed', 'killed'):
+            text = '<task-notification><task-id>task1</task-id><tool-use-id>tool-bg</tool-use-id><status>' + status + '</status></task-notification>'
+            note = {'type': 'user', 'origin': {'kind': 'task-notification', 'producer': 'session-task'},
+                    'message': {'role': 'user', 'content': text}}
+            bridge.quiescent_history(self.history(use, result, note, final), SESSION, WORKSPACE)
+            for invalid in ({**note, 'origin': {'kind': 'human'}},
+                            {**note, 'message': {'role': 'user', 'content': text.replace('tool-bg', 'wrong-tool')}},
+                            {**note, 'message': {'role': 'user', 'content': text.replace(status, 'running')}}):
+                with self.subTest(status=status, invalid=invalid), self.assertRaises(Denied):
+                    bridge.quiescent_history(self.history(use, result, invalid, final), SESSION, WORKSPACE)
+        with self.assertRaises(Denied):
+            bridge.quiescent_history(self.history(use, result, final), SESSION, WORKSPACE)
+
+    def test_structured_absorbed_prompt_requires_matching_delivery_attachment(self):
+        enqueue = {'type': 'queue-operation', 'operation': 'enqueue'}
+        attachment = {'type': 'attachment', 'attachment': {'type': 'queued_command', 'source_uuid': SESSION,
+            'delivery_id': SESSION, 'prompt': [{'type': 'text', 'text': 'already consumed'}]}}
+        removal = {'type': 'queue-operation', 'operation': 'remove', 'reason': 'absorbed_mid_turn',
+                   'commandUuid': SESSION, 'deliveryId': SESSION}
+        final = {'type': 'assistant', 'message': {'role': 'assistant', 'content': [], 'stop_reason': 'end_turn'}}
+        bridge.quiescent_history(self.history(enqueue, attachment, removal, final), SESSION, WORKSPACE)
+        for rows in ((enqueue, removal, final), (enqueue, enqueue, attachment, removal, final),
+                     (enqueue, attachment, {**removal, 'deliveryId': 'other'}, final),
+                     (enqueue, attachment, {**removal, 'reason': 'canceled'}, final)):
+            with self.subTest(rows=rows), self.assertRaises(Denied):
+                bridge.quiescent_history(self.history(*rows), SESSION, WORKSPACE)
+
     def test_reviewed_prefix_requires_full_record_boundary_and_exact_digest(self):
         for prefix in (b'partial', b'{}'):
             review = {'path': '/unused', 'bytes': len(prefix), 'sha256': hashlib.sha256(prefix).hexdigest()}

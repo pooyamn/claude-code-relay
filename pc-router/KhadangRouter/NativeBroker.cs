@@ -28,6 +28,17 @@ public sealed class NativeBroker : IAsyncDisposable
     public uint Pid => native.Pid;
     public long Position { get { lock (gate) return position; } }
     public int Unknown => int.Parse(ledger.Query("SELECT (SELECT COUNT(*) FROM broker_calls WHERE status='unknown') + (SELECT COUNT(*) FROM broker_replies WHERE status='unknown')")[0][0]!);
+    internal bool RecoverySettled
+    {
+        get
+        {
+            lock (gate) return !closed && !captureFailed && ledger.Unknown == 0 &&
+                running.Values.All(task => task.IsCompleted) && replying.Values.All(task => task.IsCompleted) &&
+                ledger.Query("SELECT 1 FROM broker_calls WHERE status IN ('unknown','attempting','submitted') LIMIT 1").Count == 0 &&
+                ledger.Query("SELECT 1 FROM broker_replies WHERE status IN ('unknown','attempting','submitted') LIMIT 1").Count == 0 &&
+                ledger.Query("SELECT 1 FROM broker_requests WHERE status IN ('pending','replying','reply-submitted') LIMIT 1").Count == 0;
+        }
+    }
 
     public static NativeBroker Own(string stateDirectory, string protectedRoot, Func<Ledger, NativeRpc> launchNative)
     {

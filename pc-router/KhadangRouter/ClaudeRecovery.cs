@@ -55,13 +55,24 @@ public sealed partial class LinuxClaudeTopics
         if (bubble.GetProperty("chat").GetInt64() != binding.Chat || bubble.GetProperty("topic").GetInt32() != binding.Topic ||
             bubble.GetProperty("backend").GetString() != "claude" || bubble.GetProperty("runtime").GetString() != "linux")
             throw new InvalidDataException("Recovery bubble belongs to another binding");
-        if (bubble.GetProperty("busy").GetBoolean() || bubble.GetProperty("sendUnknown").GetBoolean() ||
+        if (bubble.GetProperty("busy").GetBoolean() || RecoveryProgressUnknown(bubble) ||
             bubble.GetProperty("held").GetBoolean() && bubble.GetProperty("status").GetString() != "Held — Claude stream disconnected" ||
             bubble.TryGetProperty("claudeState", out var state) && state.GetString() != "idle" ||
             bubble.TryGetProperty("pendingResponses", out var responses) && responses.GetArrayLength() != 0 ||
             bubble.TryGetProperty("pendingAnswers", out var answers) && answers.GetArrayLength() != 0 ||
-            bubble.TryGetProperty("finalAnswer", out var answer) && answer.GetProperty("Parts").EnumerateArray().Any(p => p.GetProperty("SendUnknown").GetBoolean()))
+            bubble.TryGetProperty("finalAnswer", out var answer) && RecoveryAnswerUnsettled(answer))
             throw new InvalidOperationException("Interrupted work or uncertain response; Claude recovery held without replay");
+    }
+    internal static bool RecoveryProgressUnknown(JsonElement bubble)
+    {
+        if (!bubble.GetProperty("sendUnknown").GetBoolean()) return false;
+        if (bubble.TryGetProperty("progressRetained", out var retained) && retained.ValueKind == JsonValueKind.True) return false;
+        return !bubble.TryGetProperty("message", out var message) || message.ValueKind != JsonValueKind.Number || !message.TryGetInt32(out var id) || id <= 0;
+    }
+    internal static bool RecoveryAnswerUnsettled(JsonElement value)
+    {
+        var answer = value.Deserialize<FinalAnswerState>() ?? throw new InvalidDataException("Missing recovery answer");
+        answer.Validate(); return answer.Unknown || !answer.Settled;
     }
     private async Task<string> RenewCheckpoint(Binding target, string digest, string? model, CancellationToken stop)
     {

@@ -44,7 +44,13 @@ internal sealed class ClaudeWorkerHost : IAsyncDisposable
                 object response;
                 try { response = new { request.Id, Status = "ready", Endpoint = await host.Open(request, stop) }; }
                 catch (Exception error) when (error is IOException or InvalidDataException or InvalidOperationException or UnauthorizedAccessException)
-                { response = new { request.Id, Status = "held" }; }
+                {
+                    if (LinuxClaudeRuntime.Session(request.Binding.ThreadId))
+                        File.WriteAllText(Root + "\\state\\open-failure-" + request.Binding.ThreadId + ".json",
+                            JsonSerializer.Serialize(new { session = request.Binding.ThreadId, errorType = error.GetType().Name,
+                                reason = error.Message.Length <= 300 ? error.Message : error.Message[..300], at = DateTimeOffset.UtcNow }));
+                    response = new { request.Id, Status = "held" };
+                }
                 using var writes = new SemaphoreSlim(1, 1);
                 await BrokerWireFrames.Write(hub.Stream, response, writes, deadline.Token);
                 // Windows Disconnect() can discard unread reply bytes even
@@ -95,11 +101,20 @@ internal sealed class ClaudeWorkerHost : IAsyncDisposable
         if (workers.TryGetValue(target.ThreadId, out var current))
         {
             if (current.Endpoint.Binding != target) throw new InvalidDataException("Native worker scope cannot move");
-            if (!current.Native.Retired)
+            if (!current.Native.Retired && current.Native.Connected)
             {
-                if (!current.Native.Connected || request.Source != null && !current.Native.Idle)
+                if (request.Source != null && !current.Native.Idle)
                     throw new InvalidOperationException("Existing worker cannot be replaced or restarted implicitly");
                 return current.Endpoint;
+            }
+            if (!current.Native.Retired)
+            {
+                RequireDeadOwnerRecovery(policy.LinuxClaude?.GuardedRecovery == true, request.Source == null,
+                    current.Native.Connected, current.Native.OwnerExited, current.Native.Idle, current.Broker.RecoverySettled);
+                RequireSourceAdmission(source, target, normalAttachment: true);
+                // Release only a proven exited owner. The SAME UUID is then
+                // reopened through the unchanged strict snapshot/history gate.
+                // No failed or uncertain native input is replayed here.
             }
             current.Stop.Cancel();
             try { await current.Listener; } catch (OperationCanceledException) { }
@@ -154,9 +169,28 @@ internal sealed class ClaudeWorkerHost : IAsyncDisposable
         // Preserve every uncertain effect. Only a confirmed other-topic
         // Telegram destination is irrelevant to this worker's admission.
         // Native/unscoped uncertainty remains a conservative global fence.
-        if (source.LifecycleUnknown(target) != 0 || normalAttachment &&
-            source.Query("SELECT id FROM updates WHERE status='dispatching'").Count != 0)
+        if ((normalAttachment ? source.InputUnknown(target) : source.LifecycleUnknown(target)) != 0 || normalAttachment &&
+            source.Query("SELECT payload FROM updates WHERE status='dispatching'").Any(row => DispatchingApplies(source, target, row[0]!)))
             throw new InvalidOperationException("Uncertain router input holds this exact native launch");
+    }
+    private static bool DispatchingApplies(Ledger source, Binding target, string payload)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(payload); var message = doc.RootElement.GetProperty("message");
+            var chat = message.GetProperty("chat").GetProperty("id").GetInt64();
+            var topic = message.TryGetProperty("message_thread_id", out var thread) ? thread.GetInt32() : 0;
+            // Unknown/unregistered scopes stay fenced; another registered
+            // conversation's active input cannot break this topic's startup.
+            return !source.Bindings().Any(b => b.Chat == chat && b.Topic == topic) || chat == target.Chat && topic == target.Topic;
+        }
+        catch (Exception error) when (error is JsonException or InvalidOperationException or KeyNotFoundException or FormatException)
+        { return true; }
+    }
+    internal static void RequireDeadOwnerRecovery(bool enabled, bool normalAttachment, bool connected, bool ownerExited, bool idle, bool settled)
+    {
+        if (!enabled || !normalAttachment || connected || !ownerExited || !idle || !settled)
+            throw new InvalidOperationException("Disconnected worker requires exited owner, idle state and settled exact journal; no live replacement");
     }
     private static async Task ServeWorker(NativeBroker broker, WindowsProtectedPipe pipe, CancellationToken stop)
     {
