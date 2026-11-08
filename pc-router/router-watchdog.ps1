@@ -19,7 +19,10 @@ function Get-RouterWatchdogAction([hashtable]$Snapshot) {
  if($Snapshot.recentAttempts -ge 3){return 'Cooldown'}
  if($Snapshot.service -eq 'Stopped'){return 'Start'}
  if($Snapshot.processAgeSeconds -lt 180){return 'Wait'}
- if($Snapshot.statusAgeSeconds -le 90 -and $Snapshot.pollAgeSeconds -le 120 -and $Snapshot.nativeHealthy -ne $false){return 'Healthy'}
+ if($Snapshot.statusAgeSeconds -le 90 -and $Snapshot.pollAgeSeconds -le 120){
+  if($Snapshot.nativeHealthy -ne $false){if($Snapshot.topicsHealthy -eq $false){return 'NeedsReconciliation'};return 'Healthy'}
+  if($Snapshot.transportRestartable -eq $false){return 'NeedsReconciliation'}
+ }
  if($Snapshot.restartSafe -eq $false){return 'WaitForOwnedWork'}
  if($Snapshot.consecutiveBad -lt 2){return 'Observe'}
  return 'RestartRouterOnly'
@@ -58,6 +61,10 @@ if($SelfTest){
  $s=$healthy.Clone();$s.nativeHealthy=$false;$s.restartSafe=$false;$s.consecutiveBad=2;Check 'WaitForOwnedWork' $s
  $s=$healthy.Clone();$s.restartSafe=$false;Check 'Healthy' $s
  $s=$healthy.Clone();$s.nativeHealthy=$false;$s.restartSafe=$true;$s.consecutiveBad=2;Check 'RestartRouterOnly' $s
+ $s=$healthy.Clone();$s.nativeHealthy=$false;$s.transportRestartable=$false;$s.consecutiveBad=9;Check 'NeedsReconciliation' $s
+ $s=$healthy.Clone();$s.topicsHealthy=$false;Check 'NeedsReconciliation' $s
+ $s=$healthy.Clone();$s.nativeHealthy=$false;$s.transportRestartable=$true;$s.consecutiveBad=2;Check 'RestartRouterOnly' $s
+ $s=$healthy.Clone();$s.nativeHealthy=$false;$s.transportRestartable=$false;$s.statusAgeSeconds=200;$s.consecutiveBad=2;Check 'RestartRouterOnly' $s
  [Console]::WriteLine("Passed $tests watchdog decisions (no services/network/models)");return
 }
 
@@ -79,7 +86,7 @@ try{
  $now=[DateTimeOffset]::UtcNow;$file="$root\state\watchdog.json"
  $prior=if(Test-Path $file){Get-Content $file -Raw -Encoding UTF8|ConvertFrom-Json}else{$null}
  $attempts=@(Get-RecentWatchdogAttempts $prior $now)
- $statusAge=1e9;$pollAge=1e9;$processAge=0;$nativeHealthy=$null;$restartSafe=$null
+ $statusAge=1e9;$pollAge=1e9;$processAge=0;$nativeHealthy=$null;$restartSafe=$null;$topicsHealthy=$null;$transportRestartable=$null;$degradedTopics=@()
  if($service.State -eq 'Running'){
   $process=Get-Process -Id $service.ProcessId -ErrorAction Stop
   $processAge=($now-[DateTimeOffset]$process.StartTime).TotalSeconds
@@ -93,14 +100,18 @@ try{
    if($s.PSObject.Properties['nativeTransportHealthy']){$nativeHealthy=$s.nativeTransportHealthy -is [bool] -and $s.nativeTransportHealthy}
    if($s.PSObject.Properties['backgroundHealthy'] -and ($s.backgroundHealthy -isnot [bool] -or -not $s.backgroundHealthy)){$nativeHealthy=$false}
    if($s.PSObject.Properties['nativeObserverRestartSafe']){$restartSafe=$s.nativeObserverRestartSafe -is [bool] -and $s.nativeObserverRestartSafe}
+   if($s.PSObject.Properties['topicsHealthy']){$topicsHealthy=$s.topicsHealthy -is [bool] -and $s.topicsHealthy}
+   if($s.PSObject.Properties['nativeTransportRestartable']){$transportRestartable=$s.nativeTransportRestartable -is [bool] -and $s.nativeTransportRestartable}
+   if($s.PSObject.Properties['degradedTopics']){$degradedTopics=@($s.degradedTopics)}
+   if($s.PSObject.Properties['backgroundHealthy'] -and ($s.backgroundHealthy -isnot [bool] -or -not $s.backgroundHealthy)){$transportRestartable=$true}
    if($statusAge -lt -30 -or $pollAge -lt -30){$statusAge=1e9;$pollAge=1e9}
   }catch{$statusAge=1e9;$pollAge=1e9}
  }
  $bad=if($statusAge -gt 90 -or $pollAge -gt 120 -or $nativeHealthy -eq $false){1+[int]$prior.consecutiveBad}else{0}
- $action=Get-RouterWatchdogAction @{service=$service.State;recentAttempts=$attempts.Count;processAgeSeconds=$processAge;statusAgeSeconds=$statusAge;pollAgeSeconds=$pollAge;nativeHealthy=$nativeHealthy;restartSafe=$restartSafe;consecutiveBad=$bad}
+ $action=Get-RouterWatchdogAction @{service=$service.State;recentAttempts=$attempts.Count;processAgeSeconds=$processAge;statusAgeSeconds=$statusAge;pollAgeSeconds=$pollAge;nativeHealthy=$nativeHealthy;restartSafe=$restartSafe;consecutiveBad=$bad;topicsHealthy=$topicsHealthy;transportRestartable=$transportRestartable}
  if($action -in @('Start','RestartRouterOnly')){$attempts+=($now.ToString('o'))}
  # Commit the bounded attempt BEFORE the external lifecycle operation.
- $record=@{at=$now.ToString('o');action=$action;attempts=$attempts;consecutiveBad=$bad;service=$service.State;statusAgeSeconds=$statusAge;pollAgeSeconds=$pollAge;nativeHealthy=$nativeHealthy;restartSafe=$restartSafe}|ConvertTo-Json -Compress
+ $record=@{at=$now.ToString('o');action=$action;attempts=$attempts;consecutiveBad=$bad;service=$service.State;statusAgeSeconds=$statusAge;pollAgeSeconds=$pollAge;nativeHealthy=$nativeHealthy;restartSafe=$restartSafe;topicsHealthy=$topicsHealthy;transportRestartable=$transportRestartable;degradedTopics=$degradedTopics}|ConvertTo-Json -Depth 5 -Compress
  Save-WatchdogRecord $file $record
  if($action -eq 'RestartRouterOnly'){
   # Never stop the independent Claude custody host or the Codex daemon;

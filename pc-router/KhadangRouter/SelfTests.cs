@@ -125,6 +125,7 @@ public static class SelfTests
         checks += ClaudeQuestionTests.Run(root, policy).GetAwaiter().GetResult();
         checks += ModelSwitchTests.Run(root, policy).GetAwaiter().GetResult();
         checks += ClaudeRestartTests.Run(root);
+        checks += ClaudePipeTests.Run().GetAwaiter().GetResult();
         checks += ActiveAttachmentTests.Run(root, policy).GetAwaiter().GetResult();
         checks += CodexReconciliationTests.Run(root, policy).GetAwaiter().GetResult();
         checks += GoalTests.Run(root, policy).GetAwaiter().GetResult();

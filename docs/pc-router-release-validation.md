@@ -124,6 +124,47 @@ waives a later unknown input. The complete self-test includes 57 checks for
 scope, hashes, terminal-turn evidence, malformed reviews and unchanged audit.
 No timeout or watchdog automatically grants this owner-reviewed exception.
 
+## Windows Claude pipe lifecycle regression
+
+`--self-test-claude-restart` and the complete suite now exercise real local OS
+pipes, not only an in-memory custody mock. Twelve connections alternate complete
+reply/EOF, rejected authorization and malformed-frame failures. The same server
+handle must reconnect after each; cancelled accepts and disposal are covered.
+On Windows the fixture explicitly checks that EOF makes `IsConnected` false.
+That is **not** evidence that the server instance has been disconnected/reset.
+
+The old host skipped `Disconnect()` when `IsConnected` was false, then awaited
+the next connection outside its exception boundary. A broken instance could
+therefore throw out of the shared host, disposing every Claude worker. Both the
+host hub and per-worker listener now reset after every client, keeping their
+first-instance handles, ACLs and kernel peer authentication. The accept is inside
+the per-client failure boundary. Programming/resource faults still fail visibly.
+The [.NET Windows implementation](https://github.com/dotnet/runtime/blob/v8.0.0/src/libraries/System.IO.Pipes/src/System/IO/Pipes/NamedPipeServerStream.cs)
+allows disconnecting broken instances but rejects connecting a broken instance.
+
+`--self-test-transport-health` also holds a real status-file read handle without
+delete-sharing. Windows can return either sharing violation or access denied
+during atomic replacement; both receive bounded local-only retries. No native
+input or external delivery is retried by this helper.
+
+Claude availability participates in aggregate transport health. `degradedTopics`
+identifies exact routes; `nativeTransportRestartable` distinguishes a lost live
+observer from an already-refused native recovery. With fresh polling/status, the
+watchdog reports `NeedsReconciliation` for a refused recovery or held topic,
+instead of claiming health or repeatedly restarting healthy peers. Existing
+startup grace, attempt limits and Windows-owned-work protection remain intact.
+
+Fatal service diagnostics retain exception types/codes and stack method names
+under protected `state/service-failure.json`; they exclude messages, arguments,
+Data, raw requests, transcript text and credentials.
+
+After a deliberate custody-host upgrade, live acceptance must restart **only the
+observer** three times and verify the same host identity and every Claude native
+PID, alongside unchanged bindings, unknown receipts and Codex daemon. A one-time
+host update is allowed only when every affected native agent and private journal
+is proven idle/settled. Native history and pending questions are not rewritten;
+uncertain or interrupted work still requires evidence-based reconciliation.
+
 ## Host installation attestation and restartability
 
 The shared release gate also runs `test-host-release-attestation.ps1`. Its inert

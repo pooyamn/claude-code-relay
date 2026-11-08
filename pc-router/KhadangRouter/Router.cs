@@ -1055,7 +1055,14 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         DateTimeOffset poll; lock (statusGate) poll = lastPollAttempt;
         var text = JsonSerializer.Serialize(new {
         host = Environment.MachineName, pcOnly = true, bot = policy.BotUsername, nativePid = rpc.Pid, nativeConnected = Connection(rpc), nativeLastRoundTrip = (rpc as NativeRpc)?.LastRoundTripAt, offset = snapshot.Offset,
-        nativeTransportHealthy = !sessions.Values.Any(s => s.Claude == null && Connection(s.Native) == false),
+        nativeTransportHealthy = !current.Any(RouteDisconnected),
+        // A broken live observer may reattach once. A refused native recovery
+        // is not repaired by repeatedly restarting healthy peers.
+        nativeTransportRestartable = current.Any(s => RouteDisconnected(s) && s.Claude is not UnavailableClaude),
+        topicsHealthy = !current.Any(RouteNeedsReconciliation),
+        degradedTopics = current.Where(s => RouteDisconnected(s) || RouteNeedsReconciliation(s))
+            .Select(s => new { s.Binding.Chat, s.Binding.Topic, s.Binding.ThreadId, s.Binding.Backend,
+                disconnected = RouteDisconnected(s), held = s.Held, needsReconciliation = RouteNeedsReconciliation(s) }),
         nativeObserverRestartSafe = NativeObserverRestartSafe(),
         backgroundHealthy = Volatile.Read(ref backgroundFailure) == null,
         unknown = snapshot.Unknown, presentationUnknown = snapshot.PresentationUnknown, receiptTyping = receiptTyping.Snapshot,
@@ -1068,11 +1075,16 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
             ready = !s.Initializing, admission = snapshot.Admissions[s.Binding.Address], retainedOutput = s.RetainedOutput, pendingFileBatches = s.PendingFiles.Count, outputError = s.OutputError }),
         lastPollAttempt = poll, statusBuildMs = watch.Elapsed.TotalMilliseconds, at = DateTimeOffset.UtcNow });
         var path = Path.Combine(policy.StateDirectory, "status.json");
+        PublishStatus(path, text);
+    } }
+    internal static void PublishStatus(string path, string text)
+    {
         File.WriteAllText(path + ".new", text);
         // Windows readers may briefly omit delete-sharing. Retry only the
         // local atomic publication, never an external/native action.
         for (int attempt = 0; ; attempt++)
             try { File.Move(path + ".new", path, overwrite: true); break; }
-            catch (IOException) when (attempt < 3) { Thread.Sleep(10 << attempt); }
-    } }
+            catch (Exception error) when (attempt < 5 && error is IOException or UnauthorizedAccessException)
+            { Thread.Sleep(10 << attempt); }
+    }
 }

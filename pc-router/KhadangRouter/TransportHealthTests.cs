@@ -127,6 +127,38 @@ public static class TransportHealthTests
             Check(ledger.Get("native/connection-lost/windows")!.Value.GetProperty("state").GetString() == "supervised-reattach-no-replay", "Connection-loss audit is durable before supervised exit");
             Check(ledger.Unknown == 0, "Health recovery does not invent an ambiguous native action");
         }
+        {
+            var path = Path.Combine(root, "health-claude-unavailable"); Directory.CreateDirectory(path);
+            using var ledger = new Ledger(Path.Combine(path, "router.db"));
+            var native = new HealthNative(template);
+            var router = new Router(template with { StateDirectory = path }, ledger, new Bot(), native);
+            var binding = new Binding(template.ChatId, 77, "Claude", "/work/claude", Guid.NewGuid().ToString("D"), "claude", "linux");
+            ledger.Bind(binding); var session = Add(router, binding, native);
+            type.GetField("Claude")!.SetValue(session, new UnavailableClaude(binding.ThreadId));
+            type.GetField("Held")!.SetValue(session, true);
+            typeof(Router).GetMethod("StatusFile", flags)!.Invoke(router, null);
+            var status = JsonDocument.Parse(File.ReadAllText(Path.Combine(path, "status.json"))).RootElement;
+            Check(!status.GetProperty("nativeTransportHealthy").GetBoolean(), "A dead Claude topic cannot hide behind a healthy Codex PID");
+            Check(!status.GetProperty("topicsHealthy").GetBoolean() && !status.GetProperty("nativeTransportRestartable").GetBoolean(),
+                "Refused recovery is visible but cannot trigger endless observer restarts");
+            var degraded = status.GetProperty("degradedTopics");
+            Check(degraded.GetArrayLength() == 1 && degraded[0].GetProperty("ThreadId").GetString() == binding.ThreadId &&
+                degraded[0].GetProperty("needsReconciliation").GetBoolean(), "Watchdog diagnostics identify the exact held Claude route");
+            type.GetField("Initializing")!.SetValue(session, true);
+            typeof(Router).GetMethod("StatusFile", flags)!.Invoke(router, null);
+            status = JsonDocument.Parse(File.ReadAllText(Path.Combine(path, "status.json"))).RootElement;
+            Check(status.GetProperty("nativeTransportHealthy").GetBoolean() && status.GetProperty("degradedTopics").GetArrayLength() == 0,
+                "An in-progress startup is not misclassified as a dead topic");
+        }
+        {
+            var path = Path.Combine(root, "status-publication-sharing.json");
+            Router.PublishStatus(path, "{\"old\":true}");
+            using var reader = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var publishing = Task.Run(() => Router.PublishStatus(path, "{\"new\":true}"));
+            await Task.Delay(40); reader.Dispose(); await publishing.WaitAsync(TimeSpan.FromSeconds(3));
+            Check(File.ReadAllText(path) == "{\"new\":true}" && !File.Exists(path + ".new"),
+                "A brief Windows status reader without delete-sharing cannot terminate the observer (access-denied and sharing-violation both retry)");
+        }
         return checks;
     }
     private static JsonElement Json(object? value) => JsonSerializer.SerializeToElement(value);

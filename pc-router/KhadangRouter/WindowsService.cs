@@ -34,11 +34,38 @@ public static class WindowsService
                 Status(3); Status(1);
             }
             catch (OperationCanceledException) when (stop.IsCancellationRequested) { Status(3); Status(1); }
-            catch { Status(1, 1); } // Never let privileged errors reveal URLs or secrets.
+            catch (Exception error) { RecordFailure(serviceName, error); Status(1, 1); }
         };
         if (!StartServiceCtrlDispatcher([new ServiceEntry { Name = serviceName, Callback = callback }, new()]))
             throw new Win32Exception(Marshal.GetLastWin32Error());
         GC.KeepAlive(callback); GC.KeepAlive(control);
+    }
+    internal static string FailureDiagnostic(string serviceName, Exception error)
+    {
+        // Exception messages/Data can contain credentials, URLs and model
+        // output. Record only CLR types, codes and method identities.
+        var chain = new List<object>();
+        for (Exception? current = error; current != null && chain.Count < 8; current = current.InnerException)
+            chain.Add(new { type = current.GetType().FullName, hresult = current.HResult,
+                nativeCode = (current as Win32Exception)?.NativeErrorCode,
+                methods = new System.Diagnostics.StackTrace(current, false).GetFrames().Take(32)
+                    .Select(frame => frame.GetMethod()).Where(method => method != null)
+                    .Select(method => method!.DeclaringType?.FullName + "." + method.Name).ToArray() });
+        return System.Text.Json.JsonSerializer.Serialize(new { service = serviceName, at = DateTimeOffset.UtcNow, errors = chain });
+    }
+    private static void RecordFailure(string serviceName, Exception error)
+    {
+        try
+        {
+            var root = serviceName switch { Name => ClaudeWorkerHost.RouterRoot,
+                ClaudeWorkerHost.ServiceName => ClaudeWorkerHost.Root, _ => null };
+            if (root == null) return;
+            WindowsPipePeer.ProtectedPath(root + "\\state", root, true);
+            var path = root + "\\state\\service-failure.json";
+            if (File.Exists(path)) WindowsPipePeer.ProtectedPath(path, root, false);
+            File.WriteAllText(path, FailureDiagnostic(serviceName, error));
+        }
+        catch { /* Diagnostic failure must not conceal the original service exit. */ }
     }
     public static string Credential(string path)
     {

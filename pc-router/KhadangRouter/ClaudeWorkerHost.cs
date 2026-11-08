@@ -33,9 +33,9 @@ internal sealed class ClaudeWorkerHost : IAsyncDisposable
         File.WriteAllText(Root + "\\host.json", JsonSerializer.Serialize(new ClaudeHostEndpoint(run, host.server)));
         while (!stop.IsCancellationRequested)
         {
-            await hub.Stream.WaitForConnectionAsync(stop);
             try
             {
+                await hub.Stream.WaitForConnectionAsync(stop);
                 using var peer = AuthenticateRouter(hub.Stream);
                 using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stop); deadline.CancelAfter(TimeSpan.FromSeconds(60));
                 var frame = await BrokerWireFrames.Read(hub.Stream, deadline.Token) ?? throw new IOException("Host request missing");
@@ -59,8 +59,8 @@ internal sealed class ClaudeWorkerHost : IAsyncDisposable
                 if (await BrokerWireFrames.Read(hub.Stream, deadline.Token) != null)
                     throw new InvalidDataException("One exact open per host connection required");
             }
-            catch (Exception error) when (error is IOException or InvalidDataException or OperationCanceledException or JsonException or System.ComponentModel.Win32Exception) { }
-            finally { if (hub.Stream.IsConnected) hub.Stream.Disconnect(); }
+            catch (Exception error) when (ClientFault(error)) { }
+            finally { ResetPipe(hub.Stream); }
         }
     }
     private static WindowsPipePeer AuthenticateRouter(System.IO.Pipes.NamedPipeServerStream pipe)
@@ -208,9 +208,23 @@ internal sealed class ClaudeWorkerHost : IAsyncDisposable
                         throw new InvalidDataException("Claude worker endpoint has no generic native/company API");
                 }, stop);
             }
-            catch (Exception error) when (error is IOException or InvalidDataException or JsonException or System.ComponentModel.Win32Exception or ObjectDisposedException) { }
-            finally { if (pipe.Stream.IsConnected) pipe.Stream.Disconnect(); }
+            catch (Exception error) when (ClientFault(error)) { }
+            finally { ResetPipe(pipe.Stream); }
         }
+    }
+    internal static bool ClientFault(Exception error) => error is IOException or InvalidDataException or
+        OperationCanceledException or JsonException or System.ComponentModel.Win32Exception or
+        UnauthorizedAccessException or InvalidOperationException or TimeoutException;
+
+    internal static void ResetPipe(System.IO.Pipes.NamedPipeServerStream pipe)
+    {
+        // EOF sets IsConnected=false on Windows but leaves the instance in
+        // Broken state. Skipping Disconnect then makes the next accept throw
+        // "Pipe is broken", terminating custody for EVERY Claude topic.
+        // Keep the same first-instance handle/ACL; never weaken authentication.
+        try { pipe.Disconnect(); }
+        catch (ObjectDisposedException) { } // Explicit host/worker shutdown.
+        catch (InvalidOperationException) when (!pipe.IsConnected) { } // Accept cancelled before a client arrived.
     }
     public async ValueTask DisposeAsync()
     {

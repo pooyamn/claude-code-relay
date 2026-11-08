@@ -5,6 +5,10 @@ namespace KhadangRouter;
 public sealed partial class Router
 {
     private static bool? Connection(INative? native) => native is INativeConnection health ? health.Connected : null;
+    private static bool RouteDisconnected(Session session) => !session.Initializing &&
+        (session.Binding.Backend == "claude" ? session.Claude?.Connected != true : Connection(session.Native) == false);
+    private static bool RouteNeedsReconciliation(Session session) => !session.Initializing &&
+        (session.Held || RouteDisconnected(session) && session.Claude is UnavailableClaude);
     private Task ProbeNativeConnections(CancellationToken stop) => Task.WhenAll(sessions.Values.Where(s => !s.Initializing && s.Claude == null)
         .Select(s => s.Native).OfType<NativeRpc>().Distinct().Select(native => native.CheckLiveness(stop)));
 

@@ -47,6 +47,15 @@ internal static class ClaudeRestartTests
         denied = false; try { ClaudeWorkerHost.RequireSourceAdmission(ledger, binding, normalAttachment: true); }
         catch (InvalidOperationException) { denied = true; }
         Check(denied && ledger.Unknown == 2, "Unknown native input always blocks recovery; receipts unchanged");
+        var secret = "https://secret.invalid/token?password=never-record-this";
+        Exception diagnostic;
+        try { throw new IOException(secret, new System.ComponentModel.Win32Exception(109, secret)); }
+        catch (IOException error) { error.Data["secret"] = secret; diagnostic = error; }
+        var safe = WindowsService.FailureDiagnostic(ClaudeWorkerHost.ServiceName, diagnostic);
+        Check(!safe.Contains(secret) && !safe.Contains("never-record-this"), "Service diagnostics never persist messages, data, URLs or secrets");
+        var failures = JsonDocument.Parse(safe).RootElement.GetProperty("errors");
+        Check(failures.GetArrayLength() == 2 && failures[1].GetProperty("nativeCode").GetInt32() == 109 &&
+            failures[0].GetProperty("methods").GetArrayLength() > 0, "Fatal diagnostics retain error chain, OS code and method identity");
         return checks;
     }
 }

@@ -11,7 +11,7 @@ try
     if (args.SequenceEqual(new[] { "--self-test-claude-restart" }))
     {
         var root = Path.Combine(Path.GetTempPath(), "khadang-claude-restart-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
-        try { Console.WriteLine("Passed " + ClaudeRestartTests.Run(root) + " Claude restart checks (no credentials/network/models)."); }
+        try { Console.WriteLine("Passed " + (ClaudeRestartTests.Run(root) + await ClaudePipeTests.Run()) + " Claude restart checks (no credentials/network/models)."); }
         finally { Directory.Delete(root, recursive: true); }
         return;
     }
