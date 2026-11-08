@@ -49,7 +49,7 @@ function WorkerReader($pin){
  }
  return ($class -as [type])
 }
-function IdleSettled{
+function IdleSettled([bool]$RequireHistory=$false){
  $s=Status;$targets=@($s.nativeSessions|Where-Object {$_.binding.Backend -eq 'claude'})
  if([DateTimeOffset]$s.at -lt [DateTimeOffset]::UtcNow.AddSeconds(-30) -or -not $s.backgroundHealthy -or $targets.Count -ne 9 -or
   @($targets|Where-Object {$_.busy -or $_.held -or -not $_.ready -or -not $_.nativeConnected -or $_.pid -eq 0 -or $_.admission.Blocking -ne 0}).Count -or
@@ -70,15 +70,17 @@ function IdleSettled{
    $reader::Read("SELECT 1 FROM meta WHERE key LIKE 'claude/request/$pin/%' AND json_extract(value,'$.status')='pending' LIMIT 1").Length){throw 'Private native question/action is unsettled; no host update'}
   # Native idle is insufficient: a background Codex/Bash job may still run.
   # Require a stable read-only history gate before any custody-host stop.
+  if($RequireHistory){
   $p=Get-Content ($root+'\config.json') -Raw|ConvertFrom-Json;$package=$p.LinuxClaude.PackageRoot
   if((Get-FileHash ($package+'\pc_claude_stdio.py')).Hash -ne $p.LinuxClaude.FileSha256.'pc_claude_stdio.py'){throw 'Maintenance connector changed'}
   $checkpoint=$package+'\handoff-'+$pin+'.json';$digest=(Get-FileHash $checkpoint).Hash.ToLowerInvariant()
   $linuxPackage='/mnt/c/'+$package.Substring(3).Replace('\','/')
   $out=(& C:\Windows\System32\wsl.exe -d Ubuntu-24.04 -u pou --exec /usr/bin/python3 ($linuxPackage+'/pc_claude_stdio.py') --workspace $target.binding.Workspace --session $pin --checkpoint ($linuxPackage+'/handoff-'+$pin+'.json') --checkpoint-sha256 $digest --maintenance-check)-join ''
-  if($LASTEXITCODE){throw 'Native history has background/unfinished work; no host update'}
+  if($LASTEXITCODE){throw ('Native history has background/unfinished work; no host update: '+$pin)}
   $check=$out|ConvertFrom-Json
   if($check.type -ne 'ccrelay_claude_maintenance' -or $check.session_id -ne $pin -or $check.workspace -cne $target.binding.Workspace -or
    -not $check.history_quiescent -or -not $check.read_only -or $check.model_inference){throw 'Exact read-only maintenance evidence required'}
+  }
  }
  return $s
 }
@@ -116,7 +118,7 @@ if($Phase -in @('stage','finish-stage')){
  Original;$null=[IO.File]::ReadAllText($release+'\prepared.json')
  if($Phase -eq 'stage'){
   if(Test-Path ($release+'\before.json')){throw 'Stage already attempted'}
-  $s=IdleSettled
+  $s=IdleSettled $true
   $b=@{at=[DateTimeOffset]::UtcNow;startup=(ExactTask 'Oracova-KhadangStartup').Enabled;watchdog=(ExactTask 'Oracova-KhadangWatchdog').Enabled;bindings=(Bindings);unknown=(Unknown);nativePid=$s.nativeLinuxPid;claudeBindings=@($s.nativeSessions|Where-Object {$_.binding.Backend -eq 'claude'}|ForEach-Object {$_.binding})}
   Save ($release+'\before.json') $b
  }else{
@@ -134,7 +136,7 @@ if($Phase -in @('stage','finish-stage')){
  if($installed.dll -ne $oldHost -or $installed.exe -ne (Get-FileHash ($hostRoot+'\bin\KhadangRouter.exe')).Hash){throw 'Original host attestation mismatch'}
  try{
   foreach($n in @('Oracova-KhadangStartup','Oracova-KhadangWatchdog')){$t=ExactTask $n;$t.Enabled=$false;if($t.State -eq 4){$t.Stop(0)}}
-  if($Phase -eq 'stage'){$null=IdleSettled;$svc=Get-Service KhadangRouter;$svc.Stop();$svc.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(45))};Stopped
+  if($Phase -eq 'stage'){$null=IdleSettled $true;$svc=Get-Service KhadangRouter;$svc.Stop();$svc.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(45))};Stopped
   if((Bindings) -cne $b.bindings -or (Unknown) -cne $b.unknown){throw 'Custody changed during stop'}
   # Recheck after ingress/handlers are stopped, not only a pre-stop heartbeat.
   foreach($binding in $b.claudeBindings){
