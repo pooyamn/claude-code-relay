@@ -68,6 +68,17 @@ function IdleSettled{
    $reader::Read("SELECT 1 FROM broker_replies WHERE status IN ('attempting','unknown','submitted') LIMIT 1").Length -or
    $reader::Read("SELECT 1 FROM broker_requests WHERE status IN ('pending','replying','reply-submitted') LIMIT 1").Length -or
    $reader::Read("SELECT 1 FROM meta WHERE key LIKE 'claude/request/$pin/%' AND json_extract(value,'$.status')='pending' LIMIT 1").Length){throw 'Private native question/action is unsettled; no host update'}
+  # Native idle is insufficient: a background Codex/Bash job may still run.
+  # Require a stable read-only history gate before any custody-host stop.
+  $p=Get-Content ($root+'\config.json') -Raw|ConvertFrom-Json;$package=$p.LinuxClaude.PackageRoot
+  if((Get-FileHash ($package+'\pc_claude_stdio.py')).Hash -ne $p.LinuxClaude.FileSha256.'pc_claude_stdio.py'){throw 'Maintenance connector changed'}
+  $checkpoint=$package+'\handoff-'+$pin+'.json';$digest=(Get-FileHash $checkpoint).Hash.ToLowerInvariant()
+  $linuxPackage='/mnt/c/'+$package.Substring(3).Replace('\','/')
+  $out=(& C:\Windows\System32\wsl.exe -d Ubuntu-24.04 -u pou --exec /usr/bin/python3 ($linuxPackage+'/pc_claude_stdio.py') --workspace $target.binding.Workspace --session $pin --checkpoint ($linuxPackage+'/handoff-'+$pin+'.json') --checkpoint-sha256 $digest --maintenance-check)-join ''
+  if($LASTEXITCODE){throw 'Native history has background/unfinished work; no host update'}
+  $check=$out|ConvertFrom-Json
+  if($check.type -ne 'ccrelay_claude_maintenance' -or $check.session_id -ne $pin -or $check.workspace -cne $target.binding.Workspace -or
+   -not $check.history_quiescent -or -not $check.read_only -or $check.model_inference){throw 'Exact read-only maintenance evidence required'}
  }
  return $s
 }

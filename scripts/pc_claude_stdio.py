@@ -363,7 +363,53 @@ def forward(selector, child, read_fd, write_fd, ready, verify_workspace, verify_
         verify_workspace()
 
 
-def quiescent_history(source, session, workspace, *, initially_terminal=False):
+def reviewed_monitor_ids(source, boundary, session, workspace):
+    """Only metadata from an ALREADY HASH-AUTHENTICATED quiesced prefix.
+
+    Monitor timers are not shell jobs. Native resume can misclassify their old
+    IDs in an orphan-shell summary. This never certifies a new/tail task.
+    """
+    source.seek(0)
+    uses, tasks = {}, set()
+    while source.tell() < boundary:
+        row = decode_frame(next(source))
+        if source.tell() > boundary: raise Denied('Reviewed record boundary changed')
+        cwd = row.get('cwd')
+        if row.get('sessionId') != session or type(cwd) is not str or str(Path(cwd)) != cwd or \
+                '..' in Path(cwd).parts or not Path(cwd).is_relative_to(workspace) or row.get('isSidechain'):
+            continue
+        message = row.get('message', {})
+        if type(message) is not dict or type(message.get('content')) is not list: continue
+        blocks = message['content']
+        if row.get('type') == 'assistant':
+            for block in blocks:
+                if type(block) is dict and block.get('type') == 'tool_use' and block.get('name') == 'Monitor' and \
+                        type(block.get('id')) is str and type(row.get('uuid')) is str:
+                    uses[block['id']] = row['uuid']
+        elif row.get('type') == 'user':
+            result = row.get('toolUseResult')
+            if type(result) is not dict or result.get('persistent') is not False or \
+                    type(result.get('taskId')) is not str or not re.fullmatch('[A-Za-z0-9_-]{1,100}', result['taskId']) or \
+                    type(result.get('timeoutMs')) is not int or not 0 < result['timeoutMs'] <= 86400000:
+                continue
+            matches = [b for b in blocks if type(b) is dict and b.get('type') == 'tool_result' and
+                       b.get('tool_use_id') in uses and uses[b['tool_use_id']] == row.get('sourceToolAssistantUUID')]
+            if len(matches) == 1 and len(blocks) == 1: tasks.add(result['taskId'])
+    return frozenset(tasks)
+
+
+def reviewed_monitor_summary(text, origin, reviewed):
+    if not reviewed or origin != {'kind': 'task-notification'} or type(text) is not str:
+        return False
+    match = re.fullmatch(r'<task-notification>\n((?:<task-id>[A-Za-z0-9_-]{1,100}</task-id>\n){1,128})'
+        r'<task-id>__orphan_summary__:shell</task-id>\n<status>stopped</status>\n'
+        r'<summary>[^<>]*</summary>\n<note>[^<>]*</note>\n</task-notification>', text)
+    if not match: return False
+    ids = re.findall(r'<task-id>([^<]+)</task-id>', match[1])
+    return len(ids) == len(set(ids)) and set(ids) <= reviewed
+
+
+def quiescent_history(source, session, workspace, *, initially_terminal=False, reviewed_monitors=frozenset()):
     """Conservative native-history gate. Unknown or unfinished work stays held.
 
     Reads metadata/tool IDs only; no transcript text leaves this process.
@@ -438,6 +484,13 @@ def quiescent_history(source, session, workspace, *, initially_terminal=False):
                 raise Denied('Exact native history role required')
             content = message.get('content')
             if type(content) not in (str, list): raise Denied('Native history content required')
+            if kind == 'user' and reviewed_monitor_summary(content, row.get('origin'), reviewed_monitors):
+                # Diagnostic about quiesced pre-checkpoint timers only. Never
+                # completes a tail tool, queue, approval or primary user turn.
+                continue
+            result = row.get('toolUseResult')
+            if type(result) is dict and type(result.get('taskId')) is str and result['taskId'] in reviewed_monitors:
+                raise Denied('Reviewed task ID reused after checkpoint')
             blocks = content if type(content) is list else [{'type': 'text', 'text': content}]
             for block in blocks:
                 if type(block) is not dict: raise Denied('Native history block required')
@@ -495,8 +548,9 @@ def quiescent_since_checkpoint(source, session, workspace, reviewed):
         raise Denied('Reviewed native history prefix changed or partial')
     position = source.tell()
     if source.read(1):
+        monitors = reviewed_monitor_ids(source, reviewed['bytes'], session, workspace)
         source.seek(position)
-        quiescent_history(source, session, workspace, initially_terminal=True)
+        quiescent_history(source, session, workspace, initially_terminal=True, reviewed_monitors=monitors)
 
 
 def no_session_writer(session):
@@ -509,7 +563,7 @@ def no_session_writer(session):
             raise Denied('Existing native session writer; recovery held')
 
 
-def snapshot(workspace, session, checkpoint, checkpoint_sha256):
+def snapshot(workspace, session, checkpoint, checkpoint_sha256, *, maintenance=False):
     """Bounded metadata only, under the same exclusive native-writer lease.
 
     A protected old checkpoint authenticates the saved scope, not today's
@@ -528,9 +582,11 @@ def snapshot(workspace, session, checkpoint, checkpoint_sha256):
         validate_handoff(value, workspace, session)
     elif value['schema'] != 'ccrelay.personal_claude_start.v1' or value['source_writer'] != 'owner_switch' or value['history'] is not None:
         raise Denied('Unknown checkpoint mode')
-    lease = acquire_lease(session)
+    # Maintenance is observation only while the current owner may be alive.
+    # Its DIFFERENT frame cannot serve as a checkpoint/launch attestation.
+    lease = None if maintenance else acquire_lease(session)
     try:
-        no_session_writer(session)
+        if not maintenance: no_session_writer(session)
         history = OWNER / '.claude/projects' / re.sub(r'[/\.]', '-', workspace) / (session + '.jsonl')
         observation = None
         if history.exists():
@@ -557,11 +613,17 @@ def snapshot(workspace, session, checkpoint, checkpoint_sha256):
         elif history.is_symlink() or value['schema'] != 'ccrelay.personal_claude_start.v1':
             raise Denied('Saved native history missing; no fresh-session fallback')
         verify()
+        if maintenance:
+            if observation is None: raise Denied('Maintenance requires existing quiescent history')
+            print(json.dumps({'type': 'ccrelay_claude_maintenance', 'session_id': session, 'workspace': workspace,
+                              'history_quiescent': True, 'model_inference': False, 'read_only': True}), flush=True)
+            return
         no_session_writer(session)
         print(json.dumps({'type': 'ccrelay_claude_snapshot', 'uid': 1000, 'session_id': session, 'workspace': workspace,
                           'history': observation, 'source_writer': 'quiesced', 'model_inference': False,
                           'history_quiescent': observation is not None}), flush=True)
-    finally: lease.close()
+    finally:
+        if lease is not None: lease.close()
     # Keep the verified Windows owner process available for post-read token
     # attestation. The history lease is released; no input is executed.
     sys.stdin.buffer.read(1)
@@ -574,12 +636,15 @@ if __name__ == '__main__':
     parser.add_argument('--checkpoint', required=True)
     parser.add_argument('--checkpoint-sha256', required=True)
     parser.add_argument('--owner-full-access', action='store_true')
-    parser.add_argument('--snapshot', action='store_true')
+    observations = parser.add_mutually_exclusive_group()
+    observations.add_argument('--snapshot', action='store_true')
+    observations.add_argument('--maintenance-check', action='store_true')
     parser.add_argument('--model')
     arguments = parser.parse_args()
     try:
-        if arguments.snapshot:
-            snapshot(arguments.workspace, arguments.session, arguments.checkpoint, arguments.checkpoint_sha256)
+        if arguments.snapshot or arguments.maintenance_check:
+            snapshot(arguments.workspace, arguments.session, arguments.checkpoint, arguments.checkpoint_sha256,
+                     maintenance=arguments.maintenance_check)
         else:
             run(arguments.workspace, arguments.session, arguments.checkpoint, arguments.checkpoint_sha256, arguments.owner_full_access, arguments.model)
     except BaseException as error:

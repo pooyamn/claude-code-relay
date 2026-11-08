@@ -23,6 +23,67 @@ class PcClaudeStdioTests(unittest.TestCase):
     def history(self, *rows):
         return io.BytesIO(b''.join(json.dumps({'sessionId': SESSION, 'cwd': WORKSPACE, **row}).encode() + b'\n' for row in rows))
 
+    def test_reviewed_monitor_orphan_summary_is_not_new_unfinished_shell_work(self):
+        use = {'type': 'assistant', 'uuid': 'assistant-monitor', 'message': {'role': 'assistant', 'content':
+            [{'type': 'tool_use', 'name': 'Monitor', 'id': 'monitor-tool'}]}}
+        result = {'type': 'user', 'sourceToolAssistantUUID': 'assistant-monitor', 'toolUseResult':
+            {'taskId': 'old-monitor', 'persistent': False, 'timeoutMs': 1800000},
+            'message': {'role': 'user', 'content': [{'type': 'tool_result', 'tool_use_id': 'monitor-tool'}]}}
+        final = {'type': 'assistant', 'message': {'role': 'assistant', 'content': [], 'stop_reason': 'end_turn'}}
+        text = '<task-notification>\n<task-id>old-monitor</task-id>\n<task-id>__orphan_summary__:shell</task-id>\n<status>stopped</status>\n<summary>Native resume diagnostic</summary>\n<note>Old timers are marked stopped.</note>\n</task-notification>'
+        note = {'type': 'user', 'origin': {'kind': 'task-notification'}, 'message': {'role': 'user', 'content': text}}
+        def checked(prefix, *tail):
+            body = self.history(*prefix).getvalue()
+            review = {'path': '/reviewed', 'bytes': len(body), 'sha256': hashlib.sha256(body).hexdigest()}
+            return bridge.quiescent_since_checkpoint(io.BytesIO(body + self.history(*tail).getvalue()), SESSION, WORKSPACE, review)
+        checked([use, result, final], note)
+        checked([{**use, 'cwd': WORKSPACE+'/build/worktree'}, {**result, 'cwd': WORKSPACE+'/build/worktree'}, final], note)
+        for bad in [text.replace('old-monitor', 'unknown-task'), text.replace('stopped', 'running'),
+                    text.replace('__orphan_summary__:shell', '__orphan_summary__:agent'), text + '\nextra user work']:
+            with self.subTest(bad=bad), self.assertRaises(Denied):
+                checked([use, result, final], {**note, 'message': {'role': 'user', 'content': bad}})
+        for prefix in [[final], [{**use, 'isSidechain': True}, result, final],
+                       [{**use, 'cwd': WORKSPACE+'-other'}, result, final],
+                       [use, {**result, 'sourceToolAssistantUUID': 'other'}, final],
+                       [use, {**result, 'toolUseResult': {**result['toolUseResult'], 'persistent': True}}, final],
+                       [{**use, 'message': {'role': 'assistant', 'content': [{'type': 'tool_use', 'name': 'Bash', 'id': 'monitor-tool'}]}}, result, final]]:
+            with self.subTest(prefix=prefix), self.assertRaises(Denied): checked(prefix, note)
+        for pending in [{'type': 'queue-operation', 'operation': 'enqueue'},
+                        {'type': 'user', 'message': {'role': 'user', 'content': 'new work'}},
+                        {'type': 'assistant', 'message': {'role': 'assistant', 'content': [{'type': 'tool_use', 'id': 'pending'}]}},
+                        result]:
+            with self.subTest(pending=pending), self.assertRaises(Denied): checked([use, result, final], pending, note)
+        with self.assertRaises(Denied): bridge.quiescent_history(self.history(use, result, final, note), SESSION, WORKSPACE)
+
+    def test_live_maintenance_check_is_read_only_not_a_recovery_checkpoint(self):
+        with tempfile.TemporaryDirectory() as folder:
+            owner = Path(folder)/'owner'; history = owner/'.claude/projects'/WORKSPACE.replace('/', '-').replace('.', '-')/(SESSION+'.jsonl')
+            history.parent.mkdir(parents=True)
+            body = self.history({'type': 'assistant', 'message': {'role': 'assistant', 'content': [], 'stop_reason': 'end_turn'}}).getvalue()
+            history.write_bytes(body)
+            checkpoint = '/mnt/c/ProgramData/OracovaNativeRemote/claude-connector-'+'a'*32+'/handoff-'+SESSION+'.json'
+            value = {'schema': 'ccrelay.personal_claude_handoff.v1', 'session_id': SESSION, 'workspace': WORKSPACE,
+                     'source_writer': 'quiesced', 'uncertain_actions': [], 'profile': str(owner/'.claude'),
+                     'history': {'path': str(history), 'bytes': len(body), 'sha256': hashlib.sha256(body).hexdigest()}}
+            original = Path.lstat
+            def metadata(path):
+                result = original(path)
+                if path == owner or owner in path.parents: return result
+                return SimpleNamespace(st_mode=result.st_mode & ~0o022, st_uid=0)
+            with mock.patch.object(bridge, 'OWNER', owner), mock.patch.object(bridge, 'require_owner'), \
+                    mock.patch.object(bridge, 'attest_workspaces', return_value=lambda:None), \
+                    mock.patch.object(bridge, 'read_pinned', return_value=(None,value)), \
+                    mock.patch.object(bridge, 'validate_handoff'), mock.patch.object(Path, 'lstat', metadata), \
+                    mock.patch.object(bridge, 'acquire_lease') as lease, mock.patch.object(bridge, 'no_session_writer') as writer, \
+                    mock.patch.object(bridge.subprocess, 'Popen') as launch, mock.patch('sys.stdout', new_callable=io.StringIO) as out:
+                bridge.snapshot(WORKSPACE,SESSION,checkpoint,'a'*64,maintenance=True)
+                frame=json.loads(out.getvalue())
+                self.assertEqual(frame['type'],'ccrelay_claude_maintenance');self.assertTrue(frame['history_quiescent'])
+                self.assertTrue(frame['read_only']);self.assertNotIn('source_writer',frame);self.assertNotIn('history',frame)
+                history.write_bytes(body+self.history({'type':'user','message':{'role':'user','content':'unfinished'}}).getvalue())
+                with self.assertRaises(Denied):bridge.snapshot(WORKSPACE,SESSION,checkpoint,'a'*64,maintenance=True)
+                lease.assert_not_called();writer.assert_not_called();launch.assert_not_called()
+
     def test_guarded_history_accepts_completed_turn_and_balanced_tools_queue(self):
         bridge.quiescent_history(self.history(
             {'type': 'queue-operation', 'operation': 'enqueue'},

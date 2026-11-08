@@ -165,6 +165,31 @@ host update is allowed only when every affected native agent and private journal
 is proven idle/settled. Native history and pending questions are not rewritten;
 uncertain or interrupted work still requires evidence-based reconciliation.
 
+Native `idle` and an empty permission journal do not establish maintenance
+quiescence: Claude may have launched a background Bash/Codex worker. Before a
+custody-host update, the pinned connector's `--maintenance-check` must also
+validate a stable transcript against the authenticated checkpoint and reject
+unfinished tools, queues and background jobs. It is a read-only observation with
+a distinct `ccrelay_claude_maintenance` frame, no writer-lease acquisition,
+process stop, model inference or checkpoint authority. Ordinary observer-only
+updates preserve custody; they must never stop the host to repair its UI.
+
+Native resume can insert an orphan-shell summary for old `Monitor` timers. The
+connector recognizes that exact stopped-summary schema only when every timer
+ID matches an original Monitor tool/result pair in the hash-authenticated,
+already-quiesced prefix, including canonical project subdirectories. It cannot
+complete a newly appended tool, queue, human request, approval or background job.
+Unknown IDs, other tools, foreign/sidechain scope, persistent monitors, altered
+prefixes and reused post-checkpoint IDs remain refused. An unverified queued
+shutdown notification is still insufficient for automatic task reconciliation.
+
+The November 7 host upgrade exposed the older idle-only preflight's deficiency:
+it interrupted Motorcontrol's background Codex worker `bzqrjuzzq`. Its dirty
+worktree, run log and killed receipt were preserved; the worker was not rerun or
+reported completed. A separate exact-history, no-replay review restored the
+chat and retained the pending test/work evidence. This is an explicit audited
+maintenance correction, not a new automatic recovery waiver.
+
 ## Host installation attestation and restartability
 
 The shared release gate also runs `test-host-release-attestation.ps1`. Its inert
