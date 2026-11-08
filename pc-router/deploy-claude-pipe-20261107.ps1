@@ -1,4 +1,4 @@
-param([ValidateSet('prepare','stage','probe','activate','verify','reattach')][string]$Phase,[Parameter(Mandatory=$true)][string]$ManifestSha256)
+param([ValidateSet('prepare','stage','finish-stage','finish-installed-stage','probe','activate','verify','reattach')][string]$Phase,[Parameter(Mandatory=$true)][string]$ManifestSha256)
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 $root='C:\ProgramData\KhadangRouter';$hostRoot='C:\ProgramData\KhadangClaudeHost';$native='C:\ProgramData\OracovaNativeRemote';$temp='C:\Users\pou\AppData\Local\Temp'
 $release=$root+'\release-claude-pipe-20261107-v3';$incoming=$temp+'\router-claude-pipe-20261107'
@@ -29,6 +29,26 @@ function Stopped{
  if((Get-Service KhadangRouter).Status -ne 'Stopped' -or (ExactTask 'Oracova-KhadangStartup').Enabled -or (ExactTask 'Oracova-KhadangWatchdog').Enabled){throw 'Observer must be fenced'}
 }
 function CheckManifest($path){if((Get-FileHash $path).Hash -ne $ManifestSha256){throw 'Exact reviewed manifest required'};[IO.File]::ReadAllText($path)|ConvertFrom-Json}
+function InstallWatchdog{
+ $path=$native+'\router-watchdog-20261014.ps1';$wrapper=$native+'\router-watchdog-task-20261014.ps1'
+ if((Get-FileHash $path).Hash -ne '057093FD58A701422AE7EDE4BA0022717C3702288A46C97CF57AA0989EDD6382' -or
+  (Get-FileHash $wrapper).Hash -ne '9B984CF1BFD53FC23B2C053DA7977701D1D2AA8A008475882FC9F5047CCB2FED'){throw 'Reviewed existing watchdog/wrapper changed'}
+ [xml]$task=(ExactTask 'Oracova-KhadangWatchdog').Xml
+ if($task.Task.Actions.Exec.Arguments -cne ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "'+$wrapper+'"')){throw 'Watchdog task points elsewhere'}
+ Copy-Item $path ($release+'\previous-watchdog.ps1');Protect ($release+'\previous-watchdog.ps1')
+ Copy-Item ($release+'\router-watchdog.ps1') $path;Protect $path
+ if((Get-FileHash $path).Hash -ne $m.watchdog){throw 'Installed watchdog differs'}
+}
+function WorkerReader($pin){
+ if($pin -notmatch '^[a-f0-9-]{36}$'){throw 'Exact native ID required'}
+ $class='PipeRead'+$pin.Replace('-','');$db=$hostRoot+'\state\'+$pin+'\broker.db'
+ if(-not ($class -as [type])){
+  $a=[Management.Automation.Language.Parser]::ParseFile(($native+'\inspect-state.ps1'),[ref]$null,[ref]$null)
+  $d=$a.Find({param($n)$n -is [Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq 'Add-Type'},$true)
+  . ([scriptblock]::Create($d.Extent.Text.Replace('RouterReceipts',$class).Replace($root+'\state\router.db',$db)))
+ }
+ return ($class -as [type])
+}
 function IdleSettled{
  $s=Status;$targets=@($s.nativeSessions|Where-Object {$_.binding.Backend -eq 'claude'})
  if([DateTimeOffset]$s.at -lt [DateTimeOffset]::UtcNow.AddSeconds(-30) -or -not $s.backgroundHealthy -or $targets.Count -ne 9 -or
@@ -81,22 +101,44 @@ if($Phase -eq 'prepare'){
  $out;return
 }
 $m=CheckManifest ($release+'\manifest.json')
-if($Phase -eq 'stage'){
- Original;$null=[IO.File]::ReadAllText($release+'\prepared.json');if(Test-Path ($release+'\before.json')){throw 'Stage already attempted'}
- $s=IdleSettled;$old=[IO.File]::ReadAllText($root+'\config.json')|ConvertFrom-Json
+if($Phase -in @('stage','finish-stage')){
+ Original;$null=[IO.File]::ReadAllText($release+'\prepared.json')
+ if($Phase -eq 'stage'){
+  if(Test-Path ($release+'\before.json')){throw 'Stage already attempted'}
+  $s=IdleSettled
+  $b=@{at=[DateTimeOffset]::UtcNow;startup=(ExactTask 'Oracova-KhadangStartup').Enabled;watchdog=(ExactTask 'Oracova-KhadangWatchdog').Enabled;bindings=(Bindings);unknown=(Unknown);nativePid=$s.nativeLinuxPid;claudeBindings=@($s.nativeSessions|Where-Object {$_.binding.Backend -eq 'claude'}|ForEach-Object {$_.binding})}
+  Save ($release+'\before.json') $b
+ }else{
+  Stopped;$b=[IO.File]::ReadAllText($release+'\before.json')|ConvertFrom-Json
+  if((Get-Service KhadangClaudeHost).Status -ne 'Stopped' -or (Test-Path ($release+'\staged.json')) -or
+   (Test-Path ($release+'\previous-router-bin')) -or (Test-Path ($release+'\previous-host-bin')) -or
+   @($b.claudeBindings).Count -ne 9 -or (Bindings) -cne $b.bindings -or (Unknown) -cne $b.unknown -or
+   [RouterReceipts]::Read("SELECT id FROM updates WHERE status IN ('received','dispatching','unknown')").Length -or
+   [RouterReceipts]::Read("SELECT id FROM operations WHERE status='attempting' AND kind<>'telegram/editMessageText'").Length){throw 'Only exact pre-copy interrupted stage with stopped custody may continue'}
+  $live=(& C:\Windows\System32\wsl.exe -d Ubuntu-24.04 -u pou --exec /usr/bin/pgrep -x claude)-join ''
+  if($LASTEXITCODE -ne 1 -or $live){throw 'Do not replace a live native owner'}
+  Save ($release+'\stage-continuation.json') @{at=[DateTimeOffset]::UtcNow;originalArtifactsUnchanged=$true;nativeOwnersAbsent=$true;bindingsPreserved=$true;unknownPreserved=$true;inputReplay=0}
+ }
  $installed=[IO.File]::ReadAllText($hostRoot+'\installed.json')|ConvertFrom-Json
  if($installed.dll -ne $oldHost -or $installed.exe -ne (Get-FileHash ($hostRoot+'\bin\KhadangRouter.exe')).Hash){throw 'Original host attestation mismatch'}
- $b=@{at=[DateTimeOffset]::UtcNow;startup=(ExactTask 'Oracova-KhadangStartup').Enabled;watchdog=(ExactTask 'Oracova-KhadangWatchdog').Enabled;bindings=(Bindings);unknown=(Unknown);nativePid=$s.nativeLinuxPid;claudeBindings=@($s.nativeSessions|Where-Object {$_.binding.Backend -eq 'claude'}|ForEach-Object {$_.binding})}
- Save ($release+'\before.json') $b
  try{
   foreach($n in @('Oracova-KhadangStartup','Oracova-KhadangWatchdog')){$t=ExactTask $n;$t.Enabled=$false;if($t.State -eq 4){$t.Stop(0)}}
-  $null=IdleSettled
-  $svc=Get-Service KhadangRouter;$svc.Stop();$svc.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(45));Stopped
+  if($Phase -eq 'stage'){$null=IdleSettled;$svc=Get-Service KhadangRouter;$svc.Stop();$svc.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(45))};Stopped
   if((Bindings) -cne $b.bindings -or (Unknown) -cne $b.unknown){throw 'Custody changed during stop'}
+  # Recheck after ingress/handlers are stopped, not only a pre-stop heartbeat.
+  foreach($binding in $b.claudeBindings){
+   $pin=$binding.ThreadId;$reader=WorkerReader $pin
+   $bubble=[RouterReceipts]::Read("SELECT value FROM meta WHERE key='bubble/$pin'")[0][0]|ConvertFrom-Json
+   $last=$reader::Read("SELECT frame FROM broker_events WHERE epoch=(SELECT json_extract(value,'$.epoch') FROM meta WHERE key='broker/current-epoch') AND json_extract(frame,'$.type')='system' AND json_extract(frame,'$.subtype')='session_state_changed' ORDER BY position DESC LIMIT 1")
+   if($bubble.busy -or $bubble.held -or $bubble.claudeState -ne 'idle' -or
+    ($last.Length -and ($last[0][0]|ConvertFrom-Json).state -ne 'idle') -or
+    $reader::Read("SELECT 1 FROM broker_calls WHERE status IN ('attempting','unknown','submitted') LIMIT 1").Length -or
+    $reader::Read("SELECT 1 FROM meta WHERE key LIKE 'claude/request/$pin/%' AND json_extract(value,'$.status')='pending' LIMIT 1").Length){throw 'Work arrived during maintenance fence; do not stop the native host'}
+  }
   # The OLD buggy host may already have exited on observer EOF. This phase
   # deliberately updates idle custody once; an already-stopped host is safe.
   if((Get-Service KhadangClaudeHost).Status -ne 'Stopped'){
-   try{Stop-Service KhadangClaudeHost}catch{if((Get-Service KhadangClaudeHost).Status -ne 'Stopped'){throw}}
+   try{Stop-Service KhadangClaudeHost}catch{(Get-Service KhadangClaudeHost).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(30))}
   }
   (Get-Service KhadangClaudeHost).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(30))
   Copy-Item ($root+'\config.json') ($release+'\previous-config.json');Protect ($release+'\previous-config.json')
@@ -110,13 +152,25 @@ if($Phase -eq 'stage'){
   $installed.dll=$m.code;$installed.exe=(Get-FileHash ($hostRoot+'\bin\KhadangRouter.exe')).Hash;$installed.generation='claude-pipe-20261107';$installed.at=[DateTimeOffset]::UtcNow.ToString('o')
   Save ($hostRoot+'\installed.json.reviewed') $installed
   [IO.File]::Replace($hostRoot+'\installed.json.reviewed',$hostRoot+'\installed.json',[System.Management.Automation.Language.NullString]::Value)
-  Copy-Item ($native+'\router-watchdog.ps1') ($release+'\previous-watchdog.ps1');Protect ($release+'\previous-watchdog.ps1')
-  Copy-Item ($release+'\router-watchdog.ps1') ($native+'\router-watchdog.ps1');Protect ($native+'\router-watchdog.ps1')
+  InstallWatchdog
   Save ($release+'\staged.json') @{at=[DateTimeOffset]::UtcNow;code=$m.code;policy=(Get-FileHash ($root+'\config.json')).Hash}
  }catch{RestoreSupervisors $b;throw}
  'STAGED; nine proven idle workers stopped once for host update; no history/input changes';return
 }
 $b=[IO.File]::ReadAllText($release+'\before.json')|ConvertFrom-Json
+if($Phase -eq 'finish-installed-stage'){
+ Stopped
+ if((Get-Service KhadangClaudeHost).Status -ne 'Stopped' -or (Test-Path ($release+'\staged.json')) -or
+  (Bindings) -cne $b.bindings -or (Unknown) -cne $b.unknown -or (Get-FileHash ($root+'\config.json')).Hash -ne $oldPolicy -or
+  (Get-FileHash ($release+'\previous-router-bin\KhadangRouter.dll')).Hash -ne $oldCode -or
+  (Get-FileHash ($release+'\previous-host-bin\KhadangRouter.dll')).Hash -ne $oldHost){throw 'Exact interrupted installed stage required'}
+ foreach($entry in @($root,$hostRoot)){foreach($f in $m.files){if((Get-FileHash (Join-Path ($entry+'\bin') $f.name)).Hash -ne $f.sha256){throw 'Installed artifact differs'}}}
+ $installed=[IO.File]::ReadAllText($hostRoot+'\installed.json')|ConvertFrom-Json
+ if($installed.dll -ne $m.code -or $installed.exe -ne (Get-FileHash ($hostRoot+'\bin\KhadangRouter.exe')).Hash){throw 'Host manifest differs'}
+ InstallWatchdog
+ Save ($release+'\staged.json') @{at=[DateTimeOffset]::UtcNow;code=$m.code;policy=$oldPolicy;continuation='verified installed artifacts and preserved task wrapper'}
+ 'STAGED: verified existing installed artifacts; no native launches or receipt changes';return
+}
 $stage=[IO.File]::ReadAllText($release+'\staged.json')|ConvertFrom-Json
 if((Get-FileHash ($root+'\bin\KhadangRouter.dll')).Hash -ne $m.code -or (Get-FileHash ($hostRoot+'\bin\KhadangRouter.dll')).Hash -ne $m.code -or
  (Get-FileHash ($root+'\config.json')).Hash -ne $stage.policy){throw 'Staged artifacts changed'}
@@ -149,11 +203,11 @@ if($Phase -eq 'reattach'){
   for($cycle=1;$cycle -le 3;$cycle++){
    $null=IdleSettled;$svc=Get-Service KhadangRouter;$svc.Stop();$svc.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(45))
    if((Get-Service KhadangClaudeHost).Status -ne 'Running' -or (HostIdentity) -cne $hostBefore){throw 'Observer EOF terminated independent custody'}
-   StartObserver;$deadline=[DateTimeOffset]::UtcNow.AddSeconds(90)
+   $startedAt=[DateTimeOffset]::UtcNow;StartObserver;$deadline=[DateTimeOffset]::UtcNow.AddSeconds(90)
    do{
     Start-Sleep -Milliseconds 500;$after=Status
     $claude=@($after.nativeSessions|Where-Object {$_.binding.Backend -eq 'claude'})
-    $ready=[DateTimeOffset]$after.at -gt [DateTimeOffset]$baseline.at -and $claude.Count -eq 9 -and
+    $ready=[DateTimeOffset]$after.at -ge $startedAt -and $claude.Count -eq 9 -and
      -not @($claude|Where-Object {-not $_.nativeConnected -or $_.held -or -not $_.ready}).Count
    }while(-not $ready -and [DateTimeOffset]::UtcNow -lt $deadline)
    if(-not $ready -or (HostIdentity) -cne $hostBefore -or
@@ -167,7 +221,8 @@ if($Phase -eq 'reattach'){
 }
 $s=Status;$targets=@($s.nativeSessions|Where-Object {$_.binding.Backend -eq 'claude'})
 if([DateTimeOffset]$s.at -lt [DateTimeOffset]::UtcNow.AddSeconds(-30) -or -not $s.backgroundHealthy -or -not $s.nativeTransportHealthy -or
- $targets.Count -ne @($b.claudeBindings).Count -or @($targets|Where-Object {$_.held -or -not $_.nativeConnected -or $_.pid -eq 0 -or $_.admission.Blocking -ne 0}).Count -or
+ [DateTimeOffset]$s.at -lt [DateTimeOffset]([IO.File]::ReadAllText($release+'\activated.json')|ConvertFrom-Json).at -or
+ $targets.Count -ne @($b.claudeBindings).Count -or @($targets|Where-Object {-not $_.ready -or $_.held -or -not $_.nativeConnected -or $_.pid -eq 0 -or $_.admission.Blocking -ne 0}).Count -or
  (Bindings) -cne $b.bindings -or (Unknown) -cne $b.unknown -or $s.nativeLinuxPid -ne $b.nativePid){throw 'Exact full recovery not yet verified; inspect, never clear/replay'}
 $result=@{at=$s.at;code=$m.code;policy=$stage.policy;claude=$targets;bindingsPreserved=$true;unknownPreserved=$true;daemonPreserved=$true;inputReplay=0;wsLRestartTested=$false}
 Save ($release+'\verified.json') $result;$result|ConvertTo-Json -Depth 9 -Compress
