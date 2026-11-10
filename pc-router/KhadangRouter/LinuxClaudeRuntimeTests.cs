@@ -60,6 +60,8 @@ public static class LinuxClaudeRuntimeTests
         var observation = LinuxClaudeChannel.ParseReady(Ready(),owner,binding,checkpoint.Sha256);
         Check(observation.NativePid == 789 && observation.WindowsOwner.Pid == 123 && observation.SessionId == pin,
             "Native Linux PID and owned Windows launcher observation remain distinct");
+        var obsolete = Metadata(); obsolete["binary_sha256"] = "0298068b686e7fdbaf9402a7a587bb7f49c0b0e084de09f69145a0719207640c";
+        Denied(() => LinuxClaudeChannel.ParseReady(Ready(obsolete),owner,binding,checkpoint.Sha256), "Obsolete 2.1.288 binary accepted after reviewed upgrade");
         foreach (var (key,value) in new (string,object)[] { ("type","result"), ("session_id",Guid.NewGuid().ToString("D")), ("workspace",binding.Workspace+"-other"),
             ("uid",0), ("native_uid",0), ("native_pid",0), ("native_pid",-1), ("native_generation","0"), ("native_generation","10x"),
             ("native_generation",new string('1',33)), ("binary_sha256",new string('e',64)), ("credential_denied",false),

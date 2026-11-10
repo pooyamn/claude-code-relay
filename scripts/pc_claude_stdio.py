@@ -26,8 +26,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from pc_native_stdio import OWNER, WORKSPACE_ROOT, _file_identity, attest_workspaces, require_owner
 from relay_core.identity import Denied, proc_stat
 
-BINARY = OWNER / '.local/share/pc-migration-native/claude-2.1.288/claude'
-BINARY_SHA256 = '0298068b686e7fdbaf9402a7a587bb7f49c0b0e084de09f69145a0719207640c'
+BINARY = OWNER / '.local/share/pc-migration-native/claude-2.1.321/claude'
+BINARY_SHA256 = '426c33815ca6645a772f722fbff10dbf2cbdb124a8aeab733c1365dbf8bbf61f'
 MAXIMUM_FRAME_BYTES = 2_097_152
 HELD_SESSION = 'b728b1bc-3d36-4178-aa01-fd9e9b056d9c'
 
@@ -433,7 +433,10 @@ def quiescent_history(source, session, workspace, *, initially_terminal=False, r
             raise Denied('Unmatched or unfinished background task')
         finished[task] = (tool, status)
     metadata = {'attachment', 'atis-latch', 'last-prompt', 'cost-state', 'mode', 'bridge-session',
-                'system', 'summary', 'file-history-snapshot', 'progress'}
+                'system', 'summary', 'file-history-snapshot', 'progress',
+                # 2.1.321 transcript bookkeeping. These are NOT tool/user
+                # receipts and never clear a queue, tool or background job.
+                'session-owner', 'tools-used', 'api-request-shape', 'api-request-blob', 'api-request'}
     for body in source:
         row = decode_frame(body)
         cwd = row.get('cwd', workspace)

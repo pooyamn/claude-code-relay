@@ -20,6 +20,23 @@ WORKSPACE = str(bridge.WORKSPACE_ROOT / 'duts')
 
 
 class PcClaudeStdioTests(unittest.TestCase):
+    def test_2321_bookkeeping_never_closes_work_or_crosses_scope(self):
+        final = {'type': 'assistant', 'message': {'role': 'assistant', 'content': [], 'stop_reason': 'end_turn'}}
+        pending = {'type': 'assistant', 'message': {'role': 'assistant', 'content': [{'type': 'tool_use', 'id': 'pending'}]}}
+        for kind in ('session-owner', 'tools-used', 'api-request-shape', 'api-request-blob', 'api-request'):
+            bridge.quiescent_history(self.history(final, {'type': kind}), SESSION, WORKSPACE)
+            with self.assertRaises(Denied):
+                bridge.quiescent_history(self.history(pending, final, {'type': kind}), SESSION, WORKSPACE)
+            with self.assertRaises(Denied):
+                bridge.quiescent_history(self.history(final, {'type': kind, 'sessionId': 'foreign'}), SESSION, WORKSPACE)
+        with self.assertRaises(Denied):
+            bridge.quiescent_history(self.history(final, {'type': 'future-unknown'}), SESSION, WORKSPACE)
+
+    def test_reviewed_fable_runtime_pin(self):
+        expected = '426c33815ca6645a772f722fbff10dbf2cbdb124a8aeab733c1365dbf8bbf61f'
+        self.assertEqual(bridge.BINARY_SHA256, expected)
+        self.assertEqual(bridge.BINARY, bridge.OWNER / '.local/share/pc-migration-native/claude-2.1.321/claude')
+
     def history(self, *rows):
         return io.BytesIO(b''.join(json.dumps({'sessionId': SESSION, 'cwd': WORKSPACE, **row}).encode() + b'\n' for row in rows))
 

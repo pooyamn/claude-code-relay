@@ -12,7 +12,8 @@ public sealed record ClaudeCheckpoint(long Chat, int Topic, string Workspace, st
 public sealed record LinuxClaudeRuntime(string PackageRoot, string WslSha256, Dictionary<string, string> FileSha256,
     Dictionary<string, ClaudeCheckpoint> Checkpoints, bool GuardedRecovery = false)
 {
-    public const string BinarySha256 = "0298068b686e7fdbaf9402a7a587bb7f49c0b0e084de09f69145a0719207640c";
+    // Official 2.1.321 Linux x64, verified against Anthropic's signed manifest.
+    public const string BinarySha256 = "426c33815ca6645a772f722fbff10dbf2cbdb124a8aeab733c1365dbf8bbf61f";
     public const string HeldSession = "b728b1bc-3d36-4178-aa01-fd9e9b056d9c";
     internal static readonly string[] PackageFiles = [ "pc_claude_stdio.py", .. LinuxCodexRuntime.PackageFiles ];
     internal static bool Digest(string? value) => value is { Length: 64 } && value.All(Uri.IsHexDigit);
