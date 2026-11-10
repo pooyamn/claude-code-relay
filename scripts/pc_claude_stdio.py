@@ -409,7 +409,58 @@ def reviewed_monitor_summary(text, origin, reviewed):
     return len(ids) == len(set(ids)) and set(ids) <= reviewed
 
 
-def quiescent_history(source, session, workspace, *, initially_terminal=False, reviewed_monitors=frozenset()):
+def reviewed_background_ids(source, boundary, session, workspace):
+    """Correlated Bash task identities in an authenticated quiesced prefix.
+
+    The checkpoint, not a later stopped notice, attests prior disposition.
+    Never use these identities to complete tools or tasks appended afterward.
+    """
+    source.seek(0)
+    uses, tasks = {}, {}
+    while source.tell() < boundary:
+        row = decode_frame(next(source))
+        if source.tell() > boundary: raise Denied('Reviewed record boundary changed')
+        cwd = row.get('cwd')
+        if row.get('sessionId') != session or type(cwd) is not str or str(Path(cwd)) != cwd or \
+                '..' in Path(cwd).parts or not Path(cwd).is_relative_to(workspace) or row.get('isSidechain'):
+            continue
+        message = row.get('message', {})
+        if type(message) is not dict or type(message.get('content')) is not list: continue
+        blocks = message['content']
+        if row.get('type') == 'assistant':
+            for block in blocks:
+                if type(block) is dict and block.get('type') == 'tool_use' and block.get('name') == 'Bash' and \
+                        type(block.get('id')) is str and type(row.get('uuid')) is str:
+                    uses[block['id']] = row['uuid']
+        elif row.get('type') == 'user':
+            result = row.get('toolUseResult')
+            if type(result) is not dict: continue
+            task = result.get('backgroundTaskId')
+            if type(task) is not str or not re.fullmatch('[A-Za-z0-9_-]{1,100}', task): continue
+            matches = [b for b in blocks if type(b) is dict and b.get('type') == 'tool_result' and
+                       b.get('tool_use_id') in uses and uses[b['tool_use_id']] == row.get('sourceToolAssistantUUID') and
+                       type(b.get('content')) is str and re.search(
+                           r'(?:running in background with ID: |moved to the background \(ID: )' + re.escape(task) + r'(?=[.\s)])', b['content'])]
+            if len(matches) == 1 and len(blocks) == 1:
+                if task in tasks: raise Denied('Ambiguous reviewed background task')
+                tasks[task] = matches[0]['tool_use_id']
+    return tasks
+
+
+def reviewed_background_stop(text, origin, reviewed):
+    if not reviewed or origin != {'kind': 'task-notification'} or type(text) is not str: return False
+    match = re.fullmatch(
+        r"<task-notification>\n<task-id>([A-Za-z0-9_-]{1,100})</task-id>\n"
+        r"<tool-use-id>([A-Za-z0-9_-]{1,100})</tool-use-id>\n<status>stopped</status>\n"
+        r"<summary>Background shell command didn't finish before the previous session ended</summary>\n"
+        r"<note>No completion record was found for it in the previous session\. It may have been stopped "
+        r"\(via the UI, Monitor timeout, or agent teardown — these leave no transcript marker\), or it may have "
+        r"been running when the previous Claude Code process exited\. Check the output file for partial "
+        r"results before assuming it completed\.</note>\n</task-notification>", text)
+    return match is not None and reviewed.get(match[1]) == match[2]
+
+
+def quiescent_history(source, session, workspace, *, initially_terminal=False, reviewed_monitors=frozenset(), reviewed_background=None):
     """Conservative native-history gate. Unknown or unfinished work stays held.
 
     Reads metadata/tool IDs only; no transcript text leaves this process.
@@ -417,6 +468,7 @@ def quiescent_history(source, session, workspace, *, initially_terminal=False, r
     assistant turn alone is insufficient if a tool, queue or background task
     remains outstanding. Do not infer that a crash cancelled an external action.
     """
+    reviewed_background = reviewed_background or {}
     tools, queued, terminal = set(), [], initially_terminal
     absorbed, background, finished = {}, {}, {}
     def task_notification(text, origin):
@@ -487,19 +539,22 @@ def quiescent_history(source, session, workspace, *, initially_terminal=False, r
                 raise Denied('Exact native history role required')
             content = message.get('content')
             if type(content) not in (str, list): raise Denied('Native history content required')
-            if kind == 'user' and reviewed_monitor_summary(content, row.get('origin'), reviewed_monitors):
+            if kind == 'user' and (reviewed_monitor_summary(content, row.get('origin'), reviewed_monitors) or
+                    reviewed_background_stop(content, row.get('origin'), reviewed_background)):
                 # Diagnostic about quiesced pre-checkpoint timers only. Never
                 # completes a tail tool, queue, approval or primary user turn.
                 continue
             result = row.get('toolUseResult')
             if type(result) is dict and type(result.get('taskId')) is str and result['taskId'] in reviewed_monitors:
                 raise Denied('Reviewed task ID reused after checkpoint')
+            if type(result) is dict and type(result.get('backgroundTaskId')) is str and result['backgroundTaskId'] in reviewed_background:
+                raise Denied('Reviewed background task ID reused after checkpoint')
             blocks = content if type(content) is list else [{'type': 'text', 'text': content}]
             for block in blocks:
                 if type(block) is not dict: raise Denied('Native history block required')
                 if block.get('type') == 'tool_use':
                     identity = block.get('id')
-                    if kind != 'assistant' or type(identity) is not str or not identity or identity in tools:
+                    if kind != 'assistant' or type(identity) is not str or not identity or identity in tools or identity in reviewed_background.values():
                         raise Denied('Unmatched native tool history')
                     tools.add(identity)
                 elif block.get('type') == 'tool_result':
@@ -552,8 +607,9 @@ def quiescent_since_checkpoint(source, session, workspace, reviewed):
     position = source.tell()
     if source.read(1):
         monitors = reviewed_monitor_ids(source, reviewed['bytes'], session, workspace)
+        background = reviewed_background_ids(source, reviewed['bytes'], session, workspace)
         source.seek(position)
-        quiescent_history(source, session, workspace, initially_terminal=True, reviewed_monitors=monitors)
+        quiescent_history(source, session, workspace, initially_terminal=True, reviewed_monitors=monitors, reviewed_background=background)
 
 
 def no_session_writer(session):

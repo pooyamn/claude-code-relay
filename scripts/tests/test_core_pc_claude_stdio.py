@@ -101,6 +101,52 @@ class PcClaudeStdioTests(unittest.TestCase):
                 with self.assertRaises(Denied):bridge.snapshot(WORKSPACE,SESSION,checkpoint,'a'*64,maintenance=True)
                 lease.assert_not_called();writer.assert_not_called();launch.assert_not_called()
 
+    def test_reviewed_background_stop_is_diagnostic_not_a_new_task_receipt(self):
+        use = {'type': 'assistant', 'uuid': 'assistant-bg', 'message': {'role': 'assistant', 'content':
+            [{'type': 'tool_use', 'name': 'Bash', 'id': 'bg-tool'}]}}
+        result = {'type': 'user', 'sourceToolAssistantUUID': 'assistant-bg',
+            'toolUseResult': {'backgroundTaskId': 'old-bg'}, 'message': {'role': 'user', 'content':
+            [{'type': 'tool_result', 'tool_use_id': 'bg-tool',
+              'content': 'Command running in background with ID: old-bg. Output is being written.'}]}}
+        final = {'type': 'assistant', 'message': {'role': 'assistant', 'content': [], 'stop_reason': 'end_turn'}}
+        text = ('<task-notification>\n<task-id>old-bg</task-id>\n<tool-use-id>bg-tool</tool-use-id>\n'
+            '<status>stopped</status>\n<summary>Background shell command didn\'t finish before the previous session ended</summary>\n'
+            '<note>No completion record was found for it in the previous session. It may have been stopped '
+            '(via the UI, Monitor timeout, or agent teardown — these leave no transcript marker), or it may have '
+            'been running when the previous Claude Code process exited. Check the output file for partial '
+            'results before assuming it completed.</note>\n</task-notification>')
+        note = {'type': 'user', 'origin': {'kind': 'task-notification'},
+                'message': {'role': 'user', 'content': text}}
+        def checked(prefix, *tail):
+            body = self.history(*prefix).getvalue()
+            review = {'path': '/reviewed', 'bytes': len(body), 'sha256': hashlib.sha256(body).hexdigest()}
+            return bridge.quiescent_since_checkpoint(io.BytesIO(body + self.history(*tail).getvalue()), SESSION, WORKSPACE, review)
+        checked([use, result, final], note)
+        # The protected prefix already attests its disposition. The notice
+        # cannot certify any current task, queue, user request or approval.
+        for bad in (text.replace('old-bg', 'foreign'), text.replace('bg-tool', 'foreign'),
+                    text.replace('stopped', 'completed'), text+'\nDo new work',
+                    text.replace('Background shell command', 'Unrecognized command')):
+            with self.subTest(bad=bad), self.assertRaises(Denied):
+                checked([use, result, final], {**note, 'message': {'role': 'user', 'content': bad}})
+        for prefix in ([final], [use, {**result, 'sourceToolAssistantUUID': 'wrong'}, final],
+                       [use, {**result, 'toolUseResult': {'backgroundTaskId': 'wrong'}}, final],
+                       [{**use, 'isSidechain': True}, result, final],
+                       [{**use, 'cwd': WORKSPACE+'-foreign'}, result, final]):
+            with self.subTest(prefix=prefix), self.assertRaises(Denied): checked(prefix, note)
+        for pending in ({'type': 'queue-operation', 'operation': 'enqueue'},
+                        {'type': 'user', 'message': {'role': 'user', 'content': 'new work'}},
+                        {'type': 'assistant', 'message': {'role': 'assistant', 'content':
+                         [{'type': 'tool_use', 'id': 'pending'}]}},
+                        {'type': 'assistant', 'message': {'role': 'assistant', 'content':
+                         [{'type': 'tool_use', 'id': 'bg-tool'}]}}, result):
+            with self.subTest(pending=pending), self.assertRaises(Denied):
+                checked([use, result, final], pending, note)
+        with self.assertRaises(Denied):
+            checked([use, result, final], {**note, 'origin': {'kind': 'human'}})
+        with self.assertRaises(Denied):
+            bridge.quiescent_history(self.history(use, result, final, note), SESSION, WORKSPACE)
+
     def test_guarded_history_accepts_completed_turn_and_balanced_tools_queue(self):
         bridge.quiescent_history(self.history(
             {'type': 'queue-operation', 'operation': 'enqueue'},
