@@ -1,4 +1,5 @@
-param([Parameter(Mandatory=$true)][string]$Runner)
+param([Parameter(Mandatory=$true)][string]$Runner,
+ [string]$Launcher=(Join-Path $PSScriptRoot 'remote-host-hidden.vbs'))
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $root = 'C:\ProgramData\OracovaNativeRemote'
@@ -13,7 +14,7 @@ if ((Test-Path $root) -or (Get-ScheduledTask -TaskName 'Oracova-CodexRemote','Or
     throw 'Existing remote installation; inspect and merge, never overwrite'
 }
 if ((Test-Path $state) -or (Test-Path $workspace)) { throw 'Expected new dedicated runtime/workspace; inspect existing paths' }
-foreach ($path in @($Runner,'C:\Users\pou\.claude\settings.json','C:\Users\pou\.claude.json')) {
+foreach ($path in @($Runner,$Launcher,'C:\Users\pou\.claude\settings.json','C:\Users\pou\.claude.json')) {
     if (-not (Test-Path $path) -or ((Get-Item $path).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Missing or redirected source/configuration' }
 }
 $settingsPath = 'C:\Users\pou\.claude\settings.json'
@@ -37,6 +38,7 @@ foreach ($sid in @($owner,$admin,$system)) {
 }
 Set-Acl -LiteralPath $state -AclObject $private
 Copy-Item -LiteralPath $Runner -Destination "$root\remote-host.ps1"
+Copy-Item -LiteralPath $Launcher -Destination "$root\remote-host-hidden.vbs"
 Copy-Item -LiteralPath $settingsPath -Destination "$root\previous-claude-settings.json"
 Copy-Item -LiteralPath $globalPath -Destination "$root\previous-claude-global.json"
 Get-ChildItem $root -Force | ForEach-Object {$acl=Get-Acl $_.FullName;$acl.SetOwner($admin);Set-Acl $_.FullName $acl}
@@ -65,7 +67,7 @@ $utf8 = [Text.UTF8Encoding]::new($false)
 [IO.File]::WriteAllText($settingsPath,($settings | ConvertTo-Json -Depth 100),$utf8)
 [IO.File]::WriteAllText($globalPath,($global | ConvertTo-Json -Depth 100),$utf8)
 if (-not ((Get-Content $settingsPath -Raw | ConvertFrom-Json).remoteControlAtStartup)) { throw 'Claude auto-connect readback failed' }
-$ps = 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+$windowless = 'C:\Windows\System32\wscript.exe'
 $identity = New-ScheduledTaskPrincipal -UserId $owner.Value -LogonType Interactive -RunLevel Limited
 # On this machine S4U/Limited nevertheless produced an elevated Session-0 token.
 # Logon startup is tested; before-login availability is NOT claimed by this installer.
@@ -74,7 +76,9 @@ $repeat = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -Repetitio
 $codexSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval ([TimeSpan]::FromMinutes(1))
 $claudeSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval ([TimeSpan]::FromMinutes(1))
 foreach ($provider in @('Codex','Claude')) {
-    $action = New-ScheduledTaskAction -Execute $ps -Argument ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "'+$root+'\remote-host.ps1" -Provider '+$provider)
+    # Windowless GUI parent hides the console at creation, not after it flashes.
+    # It waits for PowerShell and preserves its exit code for Scheduler recovery.
+    $action = New-ScheduledTaskAction -Execute $windowless -Argument ('//B //NoLogo "'+$root+'\remote-host-hidden.vbs" '+$provider)
     $triggers = @($logon,$repeat)
     $configuration = if ($provider -eq 'Codex') {$codexSettings} else {$claudeSettings}
     Register-ScheduledTask -TaskName ('Oracova-'+$provider+'Remote') -Action $action -Principal $identity -Trigger $triggers -Settings $configuration | Out-Null
