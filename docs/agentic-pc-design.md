@@ -98,6 +98,20 @@ or an isolated employee OS account: these requests still reach the existing
 full-access owner-native sessions. Do not generalize this grant to other users
 or companies. Bot/forward/proxy/unlisted/foreign-chat inputs remain denied.
 
+2026-11-14 owner-approved command access: approved human participants may now
+use ordinary topic controls (`cc model <model>`, `/model`, `/effort`, `/goal`,
+`/cancel`, `/clear`, `/help`, `/status`, `/limits`, `/remote`) within their
+existing global, forum or exact-topic grant. This changes command admission,
+not native feature support or membership: unsupported controls still explain
+their limitation. Exact sender identity is retained; no participant becomes
+the owner. `/approve`, `/deny`, `/answer`, topic provisioning, access changes,
+and other administrative/unknown controls remain owner-only. Forwarded
+controls remain denied, including owner forwards; ordinary forwarded files
+remain supported. Model handoffs retain all idle, approval and delivery guards.
+The participant authorization suite is part of every release gate, including
+cross-forum/topic isolation and real backend dispatch; the full suite also
+exercises a participant's cross-provider switch without owner impersonation.
+
 2026-10-03 native remote milestone: both PC Codex and Claude Remote Control
 report Connected as the non-elevated owner. Sign-in/single-instance supervisor
 tasks are installed. Codex uses a **workaround for characterized Windows CLI

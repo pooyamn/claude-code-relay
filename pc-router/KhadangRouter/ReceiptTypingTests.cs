@@ -86,7 +86,7 @@ public static class ReceiptTypingTests
                 return (Task)typeof(Router).GetMethod("Handle", flags)!.Invoke(router, new object[] { id, update, CancellationToken.None })!;
             }
             await Handle(1, Update(participant + 1, "unlisted"));
-            await Handle(2, Update(participant, "/goal set forbidden"));
+            await Handle(2, Update(participant, "/approve forbidden"));
             Check(receiptBot.Addresses.Count == 0 && native.Calls == 0 && claude.Sends == 0, "Unauthorized input/controls get no typing or native action: " + backend);
             await dispatch.WaitAsync();
             var handling = Handle(3, Update(participant, "Check the attachment", attachment: true));

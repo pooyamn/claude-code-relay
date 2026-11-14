@@ -112,9 +112,9 @@ public sealed record RouterPolicy(string BotUsername, long BotId, long OwnerId, 
         message.TryGetProperty("forward_origin", out _) || message.TryGetProperty("forward_date", out _);
     public bool OwnerMessage(JsonElement message) => HumanMessage(message, out var user) && user == OwnerId;
 
-    // Normal conversation access across admitted chats/topics, never owner
-    // authority. Slash controls and the legacy model-switch alias fail closed
-    // before either native backend or attachment download can be invoked.
+    // Approved humans share ordinary topic controls, never owner authority.
+    // Keep approvals, administration and unknown controls fail-closed before
+    // either native backend or attachment download can be invoked.
     public bool ConversationMessage(JsonElement message) => ConversationMessage(message, null);
     internal bool ConversationMessage(JsonElement message, long[]? topicParticipants)
     {
@@ -127,8 +127,17 @@ public sealed record RouterPolicy(string BotUsername, long BotId, long OwnerId, 
         if (user != OwnerId && !(ParticipantIds ?? []).Contains(user) && !chatParticipants.Contains(user) && !(topicParticipants ?? []).Contains(user)) return false;
         if (user == OwnerId && !IsForwarded(message)) return true;
         if (message.TryGetProperty("text", out var text) && text.ValueKind == JsonValueKind.String &&
-            (text.GetString()!.TrimStart().StartsWith('/') || ModelCommand.TryParse(text.GetString()!, BotUsername, out _))) return false;
+            (text.GetString()!.TrimStart().StartsWith('/') || ModelCommand.TryParse(text.GetString()!, BotUsername, out _)))
+            return !IsForwarded(message) && ParticipantCommand(text.GetString()!);
         return true;
+    }
+
+    private bool ParticipantCommand(string text)
+    {
+        if (ModelCommand.TryParse(text, BotUsername, out _)) return true;
+        var token = text.Trim().Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries)[0].Split('@');
+        if (token.Length > 2 || token.Length == 2 && !token[1].Equals(BotUsername, StringComparison.OrdinalIgnoreCase)) return false;
+        return token[0].ToLowerInvariant() is "/help" or "/status" or "/limits" or "/remote" or "/cancel" or "/goal" or "/clear" or "/effort";
     }
 
     public bool TryChat(long chat, out bool isForum)

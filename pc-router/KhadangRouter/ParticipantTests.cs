@@ -27,8 +27,12 @@ public static class ParticipantTests
             foreach (var topic in new[] { 1, 18, 53, 427, 816, 2697 })
                 Check(policy.ConversationMessage(Message(chat: chat, topic: topic)) && !policy.OwnerMessage(Message(chat: chat, topic: topic)),
                     "Participant can converse in every admitted topic, but is never the owner");
-        foreach (var text in new[] { "/approve exact", "/deny exact", "/answer exact 1 yes", "/goal set task", "/goal pause", "/clear", "/cancel",
-            "/model opus", "cc model opus", "CC MODEL cx", "/cc@TheKhadangBot model opus", "  /status", "/remote", "/limits" })
+        string[] commands = ["/help", "/goal set task", "/goal pause", "/clear", "/cancel", "/effort high",
+            "/model opus", "cc model opus", "CC MODEL cx", "/cc@TheKhadangBot model opus", "  /status", "/remote", "/limits", "/status@TheKhadangBot"];
+        string[] privileged = ["/approve exact", "/deny exact", "/answer exact 1 yes", "/topic create test", "/grant 123", "/unknown", "/status@AnotherBot", "/model@AnotherBot opus"];
+        foreach (var text in commands)
+            Check(policy.ConversationMessage(Message(text: text)) && !policy.OwnerMessage(Message(text: text)), "Approved participant topic command, not owner authority: " + text);
+        foreach (var text in privileged)
         {
             Check(!policy.ConversationMessage(Message(text: text)), "Participant cannot invoke owner controls: " + text);
             Check(policy.ConversationMessage(Message(sender: policy.OwnerId, text: text)), "Owner controls remain authorized: " + text);
@@ -43,7 +47,7 @@ public static class ParticipantTests
                 Check(policy.ConversationMessage(Message(sender: sender, forbidden: provenance, attachment: true)),
                     "Authenticated human may forward normal attachment content");
                 Check(!policy.OwnerMessage(Message(sender: sender, forbidden: provenance)), "Forward provenance cannot establish owner authority");
-                foreach (var control in new[] { "/approve exact", "/goal set task", "cc model opus", "/model opus" })
+                foreach (var control in commands.Concat(privileged))
                     Check(!policy.ConversationMessage(Message(sender: sender, forbidden: provenance, text: control)),
                         "Forwarded controls are denied even when forwarded by owner");
             }
@@ -59,7 +63,13 @@ public static class ParticipantTests
             foreach (var chat in new[] { policy.ChatId, unrelatedChat })
                 Check(!policy.ConversationMessage(Message(sender: scopedParticipant, chat: chat, topic: topic, attachment: true)), "Scoped participant denied in other admitted forums");
         }
-        foreach (var text in new[] { "/approve exact", "/deny exact", "/goal task", "/clear", "/cancel", "/model opus", "cc model opus" })
+        foreach (var text in commands)
+        {
+            Check(policy.ConversationMessage(Message(sender: scopedParticipant, chat: otherChat, text: text)), "Forum participant topic commands allowed inside grant");
+            foreach (var chat in new[] { policy.ChatId, unrelatedChat })
+                Check(!policy.ConversationMessage(Message(sender: scopedParticipant, chat: chat, text: text)), "Forum command permission cannot leak to another forum");
+        }
+        foreach (var text in privileged)
             Check(!policy.ConversationMessage(Message(sender: scopedParticipant, chat: otherChat, text: text)), "Scoped participant never gains owner controls");
         Check(policy.ConversationMessage(Message(sender: scopedParticipant, chat: otherChat, attachment: true, forbidden: "forward_origin")), "Scoped participant may forward ordinary files inside their forum");
         Check(!(policy with { AdditionalChats = [new(otherChat)] }).ConversationMessage(Message(sender: scopedParticipant, chat: otherChat)), "Removing scoped grant fails closed without a global fallback");
@@ -83,7 +93,13 @@ public static class ParticipantTests
             foreach (var topic in new[] { 1, 18, 53, 54 })
                 Check(Allowed(Message(sender: topicParticipant, chat: chat, topic: topic, attachment: true)) == (chat == otherChat && topic == 53),
                     "Topic grant cannot leak to another topic or forum");
-        foreach (var text in new[] { "/approve exact", "/deny exact", "/answer exact yes", "/goal pause", "/clear", "/cancel", "/model opus", "cc model opus" })
+        foreach (var text in commands)
+        {
+            Check(Allowed(Message(sender: topicParticipant, chat: otherChat, text: text)), "Topic participant commands allowed inside exact grant");
+            Check(!Allowed(Message(sender: topicParticipant, chat: otherChat, topic: 54, text: text)), "Topic command permission cannot leak to another topic");
+            Check(!Allowed(Message(sender: topicParticipant, chat: policy.ChatId, text: text)), "Topic command permission cannot leak to another forum");
+        }
+        foreach (var text in privileged)
             Check(!Allowed(Message(sender: topicParticipant, chat: otherChat, text: text)), "Topic participant cannot invoke owner controls");
         Check(Allowed(Message(sender: topicParticipant, chat: otherChat, attachment: true, forbidden: "forward_origin")), "Topic participant can forward ordinary files");
         Check(!Allowed(Message(sender: topicParticipant, chat: otherChat, forbidden: "sender_chat")) &&
@@ -123,7 +139,7 @@ public static class ParticipantTests
                 await (Task)typeof(Router).GetMethod("Handle", flags)!.Invoke(router, new object[] { updateId, update, CancellationToken.None })!;
                 updateId++;
             }
-            foreach (var text in new[] { "cc model opus", "/approve known-nonce", "/goal set forbidden", "/cancel" })
+            foreach (var text in new[] { "/approve known-nonce", "/deny known-nonce", "/answer exact 1 yes", "/topic create forbidden" })
                 await Dispatch(Message(chat: otherChat, text: text));
             Check(native.Calls.Count == 0 && claude.Sends == 0 && bot.Sends == 0 && media.Calls == 0 &&
                 ledger.Query("SELECT COUNT(*) FROM updates WHERE status='denied'")[0][0] == "4", "Non-owner controls fail before native, Telegram or media action: " + backend);
@@ -143,7 +159,7 @@ public static class ParticipantTests
             await Dispatch(Message(sender: scopedParticipant, chat: otherChat, attachment: true, forbidden: "forward_origin"));
             Check(ledger.Query("SELECT status FROM updates WHERE id=9")[0][0] == "accepted" && media.Calls == 3 &&
                 (backend == "claude" ? claude.Sends == 4 : native.Calls.Count == 4), "Scoped participant attachment reaches the exact admitted native route: " + backend);
-            await Dispatch(Message(sender: scopedParticipant, chat: otherChat, text: "/goal forbidden"));
+            await Dispatch(Message(sender: scopedParticipant, chat: otherChat, text: "/approve forbidden"));
             await Dispatch(Message(sender: scopedParticipant, chat: unrelatedChat, attachment: true));
             Check(ledger.Query("SELECT COUNT(*) FROM updates WHERE id IN (10,11) AND status='denied'")[0][0] == "2" && media.Calls == 3 &&
                 (backend == "claude" ? claude.Sends == 4 : native.Calls.Count == 4), "Scoped controls and foreign-forum files fail before dispatch/download: " + backend);
@@ -155,6 +171,18 @@ public static class ParticipantTests
             Check(ledger.Query("SELECT COUNT(*) FROM updates WHERE id IN (13,14) AND status='denied'")[0][0] == "2" && media.Calls == 4 &&
                 (backend == "claude" ? claude.Sends == 5 : native.Calls.Count == 5), "Topic grant cannot trigger controls or another topic's attachment download");
             Check(ledger.Unknown == 0 && ledger.Bindings().Single() == binding, "Participant never changes native binding or owner identity");
+            var repliesBefore = bot.Sends;
+            var bubble = (RollingBubble)type.GetField("Bubble")!.GetValue(session)!;
+            var progressBefore = bubble.Tail;
+            foreach (var sender in new[] { participant, scopedParticipant, topicParticipant })
+            {
+                await Dispatch(Message(sender: sender, chat: otherChat, text: "/help"));
+                Check(ledger.Query("SELECT status FROM updates WHERE id=?", updateId - 1)[0][0] == "control",
+                    "Approved command reaches actual backend control handler: " + backend);
+            }
+            Check(bot.Sends == repliesBefore && bubble.Tail != progressBefore && bubble.Tail.Contains("/status") && media.Calls == 4 &&
+                (backend == "claude" ? claude.Sends == 5 : native.Calls.Count == 5),
+                "Topic commands update the rolling reply, never model prompts or attachments: " + backend);
         }
         return checks;
     }

@@ -14,11 +14,11 @@ public static class ModelSwitchTests
             Check(ModelCommand.TryParse(text, template.BotUsername, out _), "Recognize native legacy model control: " + text);
         foreach (var text in new[] { "say cc model opus", "cc model@other opus", "/cc@other model opus", "/model@other opus", "cc clear" })
             Check(!ModelCommand.TryParse(text, template.BotUsername, out _), "Do not expand unrelated legacy commands: " + text);
-        var policy = template with { LinuxWorkspaceRoot = LinuxCodexRuntime.WorkspaceRoot, StateDirectory = root };
+        var policy = template with { LinuxWorkspaceRoot = LinuxCodexRuntime.WorkspaceRoot, StateDirectory = root, ParticipantIds = [199200674] };
         var binding = new Binding(policy.ChatId, 42, "Model fixture", LinuxCodexRuntime.WorkspaceRoot + "/duts", "saved-codex", Runtime: "linux");
         var flags = BindingFlags.NonPublic | BindingFlags.Instance;
         var type = typeof(Router).GetNestedType("Session", BindingFlags.NonPublic)!;
-        foreach (var scenario in new[] { "roundtrip", "fresh-codex", "busy", "held", "pending-output", "active-goal", "invalid-model", "handoff-unknown", "wrong-slot", "prelaunch-reconciled", "prelaunch-wrong-model", "prelaunch-ambiguous" })
+        foreach (var scenario in new[] { "roundtrip", "participant-switch", "fresh-codex", "busy", "held", "pending-output", "active-goal", "invalid-model", "handoff-unknown", "wrong-slot", "prelaunch-reconciled", "prelaunch-wrong-model", "prelaunch-ambiguous" })
         {
             using var ledger = new Ledger(Path.Combine(root, "model-switch-" + scenario + ".db"));
             var source = scenario == "fresh-codex" ? binding with { Backend = "claude", ThreadId = "ae788b3a-c096-4b34-aa27-7cb02009305f" } : binding;
@@ -60,7 +60,16 @@ public static class ModelSwitchTests
             async Task Switch(object current, string model) => await (Task)typeof(Router).GetMethod("SwitchModel", flags)!.Invoke(router, new[] { current, model, CancellationToken.None, (object)true })!;
             try
             {
-                await Switch(session, source.Backend == "claude" ? "cx" : scenario == "invalid-model" ? "opus\n--continue" : "opus");
+                if (scenario == "participant-switch")
+                {
+                    var command = Json(new { message = new { from = new { id = 199200674L, is_bot = false }, chat = new { id = policy.ChatId, is_forum = true },
+                        message_thread_id = source.Topic, message_id = 2, text = "cc model opus" } });
+                    ledger.Receive(2, command.GetRawText()); ledger.Claim(2);
+                    await (Task)typeof(Router).GetMethod("Handle", flags)!.Invoke(router, new object[] { 2L, command, CancellationToken.None })!;
+                    Check(ledger.Query("SELECT status FROM updates WHERE id=2")[0][0] == "control" &&
+                        !policy.OwnerMessage(command.GetProperty("message")), "Participant model switch traverses actual authorization/dispatch without owner impersonation");
+                }
+                else await Switch(session, source.Backend == "claude" ? "cx" : scenario == "invalid-model" ? "opus\n--continue" : "opus");
                 if (scenario is "held" or "wrong-slot" or "handoff-unknown" or "prelaunch-wrong-model" or "prelaunch-ambiguous") throw new Exception("Unsafe switch accepted");
             }
             catch (InvalidOperationException) when (scenario == "held") { checks++; }
