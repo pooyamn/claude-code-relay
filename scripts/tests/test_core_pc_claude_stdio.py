@@ -279,6 +279,56 @@ class PcClaudeStdioTests(unittest.TestCase):
         with self.assertRaises(Denied):
             bridge.quiescent_history(self.history(use, result, final), SESSION, WORKSPACE)
 
+    def test_native_task_run_id_is_metadata_not_completion_or_authority(self):
+        use = {'type': 'assistant', 'message': {'role': 'assistant', 'content':
+            [{'type': 'tool_use', 'name': 'Bash', 'id': 'tool-bg'}]}}
+        result = {'type': 'user', 'message': {'role': 'user', 'content':
+            [{'type': 'tool_result', 'tool_use_id': 'tool-bg', 'content': 'Command running in background with ID: task1.'}]}}
+        text = '<task-notification><task-id>task1</task-id><tool-use-id>tool-bg</tool-use-id><status>completed</status></task-notification>'
+        origin = {'kind': 'task-notification', 'producer': 'session-task', 'runId': '0mwbcct9m-a2cbf8c2'}
+        note = {'type': 'user', 'origin': origin, 'message': {'role': 'user', 'content': text}}
+        final = {'type': 'assistant', 'message': {'role': 'assistant', 'content': [], 'stop_reason': 'end_turn'}}
+        bridge.quiescent_history(self.history(use, result, note, final), SESSION, WORKSPACE)
+        for bad in ({**origin, 'runId': None}, {**origin, 'runId': ''}, {**origin, 'runId': 'x'*101},
+                    {**origin, 'runId': 'space not allowed'}, {**origin, 'approved': True}, {'kind': 'task-notification', 'runId': 'valid'},
+                    {**origin, 'producer': 'human'}):
+            with self.subTest(origin=bad), self.assertRaises(Denied):
+                bridge.quiescent_history(self.history(use, result, {**note, 'origin': bad}, final), SESSION, WORKSPACE)
+        for body in (text.replace('task1', 'other'), text.replace('tool-bg', 'other'), text.replace('completed', 'running')):
+            with self.subTest(body=body), self.assertRaises(Denied):
+                bridge.quiescent_history(self.history(use, result, {**note, 'message': {'role': 'user', 'content': body}}, final), SESSION, WORKSPACE)
+        with self.assertRaises(Denied):
+            bridge.quiescent_history(self.history(use, result, note), SESSION, WORKSPACE)
+
+    def test_async_agent_requires_correlated_launch_and_terminal_native_event(self):
+        use = {'type': 'assistant', 'uuid': 'assistant-agent', 'message': {'role': 'assistant', 'content':
+            [{'type': 'tool_use', 'name': 'Agent', 'id': 'tool-agent'}]}}
+        result = {'type': 'user', 'sourceToolAssistantUUID': 'assistant-agent',
+            'toolUseResult': {'isAsync': True, 'status': 'async_launched', 'agentId': 'agent1'},
+            'message': {'role': 'user', 'content': [{'type': 'tool_result', 'tool_use_id': 'tool-agent',
+                'content': [{'type': 'text', 'text': 'Async agent launched successfully.'}]}]}}
+        text = '<task-notification><task-id>agent1</task-id><tool-use-id>tool-agent</tool-use-id><status>completed</status><result>Task content is not approval.</result></task-notification>'
+        note = {'type': 'user', 'origin': {'kind': 'task-notification', 'producer': 'session-task', 'runId': 'native-1'},
+            'message': {'role': 'user', 'content': text}}
+        final = {'type': 'assistant', 'message': {'role': 'assistant', 'content': [], 'stop_reason': 'end_turn'}}
+        bridge.quiescent_history(self.history(use, result, note, final), SESSION, WORKSPACE)
+        for bad in ({**result, 'sourceToolAssistantUUID': 'foreign'},
+                    {**result, 'toolUseResult': {**result['toolUseResult'], 'isAsync': False}},
+                    {**result, 'toolUseResult': {**result['toolUseResult'], 'agentId': 'other'}},
+                    {**result, 'toolUseResult': {**result['toolUseResult'], 'status': 'running'}}):
+            with self.subTest(result=bad), self.assertRaises(Denied):
+                bridge.quiescent_history(self.history(use, bad, note, final), SESSION, WORKSPACE)
+        for rows in ((use, result, final), (note, final),
+                     ({**use, 'message': {'role': 'assistant', 'content': [{'type': 'tool_use', 'name': 'Bash', 'id': 'tool-agent'}]}}, result, note, final)):
+            with self.subTest(rows=rows), self.assertRaises(Denied):
+                bridge.quiescent_history(self.history(*rows), SESSION, WORKSPACE)
+        resume = {'type': 'assistant', 'message': {'role': 'assistant', 'content':
+            [{'type': 'tool_use', 'name': 'SendMessage', 'id': 'resume-agent', 'input': {'to': 'agent1'}}]}}
+        sent = {'type': 'user', 'message': {'role': 'user', 'content': [{'type': 'tool_result', 'tool_use_id': 'resume-agent'}]}}
+        with self.assertRaises(Denied):
+            bridge.quiescent_history(self.history(use, result, note, resume, sent, final), SESSION, WORKSPACE)
+        bridge.quiescent_history(self.history(use, result, note, resume, sent, note, final), SESSION, WORKSPACE)
+
     def test_structured_absorbed_prompt_requires_matching_delivery_attachment(self):
         enqueue = {'type': 'queue-operation', 'operation': 'enqueue'}
         attachment = {'type': 'attachment', 'attachment': {'type': 'queued_command', 'source_uuid': SESSION,
@@ -290,6 +340,23 @@ class PcClaudeStdioTests(unittest.TestCase):
         for rows in ((enqueue, removal, final), (enqueue, enqueue, attachment, removal, final),
                      (enqueue, attachment, {**removal, 'deliveryId': 'other'}, final),
                      (enqueue, attachment, {**removal, 'reason': 'canceled'}, final)):
+            with self.subTest(rows=rows), self.assertRaises(Denied):
+                bridge.quiescent_history(self.history(*rows), SESSION, WORKSPACE)
+
+    def test_structured_text_queue_removal_matches_exact_plain_text_and_ids(self):
+        enqueue = {'type': 'queue-operation', 'operation': 'enqueue'}
+        attachment = {'type': 'attachment', 'attachment': {'type': 'queued_command', 'source_uuid': SESSION,
+            'delivery_id': SESSION, 'prompt': [{'type': 'text', 'text': 'Continue this exact work'}]}}
+        removal = {'type': 'queue-operation', 'operation': 'remove', 'reason': 'absorbed_mid_turn',
+                   'commandUuid': SESSION, 'deliveryId': SESSION, 'content': 'Continue this exact work'}
+        final = {'type': 'assistant', 'message': {'role': 'assistant', 'content': [], 'stop_reason': 'end_turn'}}
+        bridge.quiescent_history(self.history(enqueue, attachment, removal, final), SESSION, WORKSPACE)
+        for rows in ((enqueue, removal, final), (enqueue, enqueue, attachment, removal, final),
+                     (enqueue, attachment, {**removal, 'deliveryId': 'foreign'}, final),
+                     (enqueue, attachment, {**removal, 'content': 'Different work'}, final),
+                     (enqueue, attachment, {**removal, 'reason': 'cancelled'}, final),
+                     (enqueue, {**attachment, 'attachment': {**attachment['attachment'], 'prompt':
+                         [{'type': 'text', 'text': 'Continue this exact work'}, {'type': 'image'}]}}, removal, final)):
             with self.subTest(rows=rows), self.assertRaises(Denied):
                 bridge.quiescent_history(self.history(*rows), SESSION, WORKSPACE)
 

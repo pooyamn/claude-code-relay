@@ -470,10 +470,14 @@ def quiescent_history(source, session, workspace, *, initially_terminal=False, r
     """
     reviewed_background = reviewed_background or {}
     tools, queued, terminal = set(), [], initially_terminal
+    tool_origins = {}
     absorbed, background, finished = {}, {}, {}
     def task_notification(text, origin):
         if type(text) is not str or not text.startswith('<task-notification>') or \
-                origin != {'kind': 'task-notification', 'producer': 'session-task'}:
+                type(origin) is not dict or origin.get('kind') != 'task-notification' or \
+                origin.get('producer') != 'session-task' or \
+                set(origin) not in ({'kind', 'producer'}, {'kind', 'producer', 'runId'}) or \
+                'runId' in origin and (type(origin['runId']) is not str or not re.fullmatch('[A-Za-z0-9_-]{1,100}', origin['runId'])):
             raise Denied('Unverified background-task notification')
         def tag(name):
             values = re.findall('<' + name + r'>([^<]+)</' + name + '>', text)
@@ -523,14 +527,22 @@ def quiescent_history(source, session, workspace, *, initially_terminal=False, r
                             for key in ('commandUuid', 'deliveryId')):
                     raise Denied('Unmatched or unknown native queue removal')
                 key = (row['commandUuid'], row['deliveryId'])
+                remove_content = content
                 if content is None:
                     prompt = absorbed.get(key)
                     if queued != [None] or type(prompt) is not list or not prompt:
                         raise Denied('Structured removal lacks an exact native attachment')
+                elif type(content) is str and content and queued == [None] and \
+                        absorbed.get(key) == [{'type': 'text', 'text': content}]:
+                    # Native 2.1.321 enqueues a structured text prompt without
+                    # content, then records its exact plain text on removal.
+                    # UUID pair plus a single exact text block closes only the
+                    # one pending queue entry; never normalize mixed media.
+                    remove_content = None
                 elif type(content) is not str or not content or queued.count(content) != 1 or \
                         key in absorbed and absorbed[key] != content:
                     raise Denied('Unmatched native queue content')
-                queued.remove(content)
+                queued.remove(remove_content)
                 absorbed.pop(key, None)
             else: raise Denied('Unknown or unmatched native queue operation')
         elif kind in ('user', 'assistant'):
@@ -557,10 +569,24 @@ def quiescent_history(source, session, workspace, *, initially_terminal=False, r
                     if kind != 'assistant' or type(identity) is not str or not identity or identity in tools or identity in reviewed_background.values():
                         raise Denied('Unmatched native tool history')
                     tools.add(identity)
+                    tool_origins[identity] = (block.get('name'), row.get('uuid'))
+                    if block.get('name') == 'SendMessage' and type(block.get('input')) is dict:
+                        receiver = block['input'].get('to')
+                        if type(receiver) is str and receiver in background:
+                            finished.pop(receiver, None)  # Resumed agents need another terminal notification.
                 elif block.get('type') == 'tool_result':
                     identity = block.get('tool_use_id')
                     if kind != 'user' or identity not in tools: raise Denied('Unmatched native tool result')
                     tools.remove(identity)
+                    native_result = row.get('toolUseResult')
+                    if tool_origins[identity][0] == 'Agent' and type(native_result) is dict and \
+                            (native_result.get('isAsync') is True or native_result.get('status') == 'async_launched'):
+                        task = native_result.get('agentId')
+                        if native_result.get('isAsync') is not True or native_result.get('status') != 'async_launched' or \
+                                type(task) is not str or not re.fullmatch('[A-Za-z0-9_-]{1,100}', task) or task in background or \
+                                type(tool_origins[identity][1]) is not str or row.get('sourceToolAssistantUUID') != tool_origins[identity][1] or len(blocks) != 1:
+                            raise Denied('Uncorrelated asynchronous agent launch')
+                        background[task] = identity
                     result = block.get('content')
                     if type(result) is str:
                         match = re.search(r'(?:running in background with ID: |moved to the background \(ID: )([A-Za-z0-9_-]+)', result)

@@ -4186,3 +4186,24 @@ startup and one-minute triggers, bounded runtime and no overlapping executions.
 Existing `Oracova-KhadangStartup` was preserved and re-enabled. Guarded native
 acceptance evidence was explicitly reused with annotation; no paid synthetic
 model turn or physical PC reboot was used as a deployment test.
+
+### 2026-11-15 Motorcontrol Plant history-reader recovery
+
+Motorcontrol topic 14439 retained native Claude session
+`8cd2d34c-0805-4705-8197-d11de0728499`. After its worker exited, recovery
+rejected newer native history formats: optional task-origin `runId`, a
+structured text enqueue followed by its exact plain-text removal, and a
+correlated asynchronous `Agent` launch/completion. Added strict compatibility
+and negative fixtures; no history edits, queue replay or blanket hold clearing.
+The exact checkpoint-authenticated transcript now passes the quiescence gate.
+
+All 43 history-reader fixtures and 92 native-runtime fixtures passed. These
+reader fixtures already run in the release-validation workflow. Deployed
+connector SHA256 `70c0bf322da5cf41b9c29f873e8912a62f0470518516ba25944a48580bfe2985`
+through protected `release-motor-history-recovery-20261115`, with fresh SYSTEM
+credential/ACL proof. Verified Motorcontrol connected and unheld, preserving
+bindings, other live native workers, independent host, uncertain receipts and
+startup supervision. Khadang confirmed recovery notice message 18116 in the
+original topic. This verifies native reattachment and Telegram notice delivery,
+not a synthetic model-response round trip. Old held inputs remain retained;
+the owner should send the current instruction again.
