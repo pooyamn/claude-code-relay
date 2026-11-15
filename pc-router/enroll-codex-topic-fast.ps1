@@ -14,7 +14,7 @@ $who=[Security.Principal.WindowsIdentity]::GetCurrent()
 if($env:COMPUTERNAME -ne 'DESKTOP-8SO9HDK' -or -not ([Security.Principal.WindowsPrincipal]::new($who)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator) -or $ThreadId -eq $SourceThreadId -or $Workspace -match '(^|/)\.\.?(/|$)'){throw 'Controller administrator and distinct literal session required'}
 $release=Join-Path $root ('topic-enrollment-'+$ThreadId)
 function Save([string]$Name,$Value){
- $bytes=[Text.Encoding]::UTF8.GetBytes(($Value|ConvertTo-Json -Depth 100 -Compress))
+ $bytes=[Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject $Value -Depth 100 -Compress))
  $f=[IO.File]::Open((Join-Path $release $Name),'CreateNew','Write','None')
  try{$f.Write($bytes,0,$bytes.Length);$f.Flush($true)}finally{$f.Dispose()}
 }
@@ -26,7 +26,7 @@ function LoadType([string]$Path,[string]$Hash,[string]$Class){
  if(-not ($Class -as [type])){& ([ScriptBlock]::Create($def.Extent.Text))}
 }
 LoadType "$nativeRoot\inspect-state.ps1" 'BFF3C4A0D5D7D5A980E41D0FBCF466A5FB3F178F381E87406AA3016C940F15A2' 'RouterReceipts'
-LoadType "$nativeRoot\stage-dut-topic.ps1" '0F0A0998EE4E9A1098262C62E26F28E631C8A11AF63895CDC99960173C506BDF' 'PcbaRegistry'
+LoadType (Join-Path $PSScriptRoot 'topic-registry.ps1') 'EBFD817FDA9391F2CABDA637C0C48721686FC0DE7B27FDDB712CE74BAF298474' 'PcbaRegistry'
 function Original {
  if((Get-FileHash "$root\bin\KhadangRouter.dll").Hash -ne $ExpectedCode -or (Get-FileHash "$root\config.json").Hash -ne $ExpectedPolicy){throw 'Live code or policy changed'}
 }
@@ -54,10 +54,12 @@ function DisconnectedActiveClaude($Sessions,$PreviouslyHeldIds){
 $heldClaudeIds=@($before.nativeSessions|Where-Object {$_.binding.Backend -eq 'claude' -and $_.held}|ForEach-Object {$_.binding.ThreadId})
 if((Get-Service KhadangRouter).Status -ne 'Running' -or [DateTimeOffset]$before.at -lt [DateTimeOffset]::UtcNow.AddMinutes(-2) -or @(DisconnectedActiveClaude $before.nativeSessions $heldClaudeIds).Count){throw 'Fresh live router and connected non-held native Claude required'}
 $binding=[ordered]@{Chat=$created.chat;Topic=$created.topic;Name=$created.name;Workspace=$Workspace;ThreadId=$ThreadId;Backend='codex';Runtime='linux'}
+. (Join-Path $PSScriptRoot 'topic-receipt-admission.ps1')
 function SafeDb($Db){
  if([int]$Db.Read("SELECT COUNT(*) FROM updates WHERE status IN ('received','dispatching','unknown')")[0][0]){throw 'Unsettled incoming delivery; no enrollment'}
- foreach($row in $Db.Read("SELECT kind,payload,status FROM operations WHERE status IN ('attempting','unknown')")){
+ foreach($row in $Db.Read("SELECT kind,payload,status,id FROM operations WHERE status IN ('attempting','unknown')")){
   if($row[0] -eq 'telegram/editMessageText'){continue}
+  if($row[2] -eq 'unknown' -and (Get-TopicReceiptSupersession $row[3] $row[0] $row[1] {param($sql) ,($Db.Read($sql))})){continue}
   if($row[2] -ne 'unknown' -or $row[0] -notin @('telegram/sendMessage','telegram/sendRichMessage','telegram/sendPhoto','telegram/sendDocument')){throw 'Uncertain native or unclassified operation; no enrollment'}
   $effect=$row[1]|ConvertFrom-Json
   if($effect.chat_id -ge 0 -or $effect.message_thread_id -le 0 -or ($effect.chat_id -eq $binding.Chat -and $effect.message_thread_id -eq $binding.Topic) -or $Db.Read("SELECT payload FROM bindings WHERE chat=$([long]$effect.chat_id) AND topic=$([int]$effect.message_thread_id)").Length -ne 1){throw 'Unscoped or target delivery uncertainty; preserve'}

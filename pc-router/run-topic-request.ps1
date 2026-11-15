@@ -62,8 +62,10 @@ if([RouterReceipts]::Read("SELECT key FROM meta WHERE key LIKE 'bubble/%' AND js
 if([RouterReceipts]::Read("SELECT id FROM updates WHERE status IN ('received','dispatching','unknown')").Length){throw 'Unsettled incoming delivery; no topic/session created'}
 $s=Get-Content "$root\state\status.json" -Raw -Encoding UTF8|ConvertFrom-Json
 if((Get-Service KhadangRouter).Status -ne 'Running' -or [DateTimeOffset]$s.at -lt [DateTimeOffset]::UtcNow.AddMinutes(-2)){throw 'Fresh running router required'}
-foreach($row in [RouterReceipts]::Read("SELECT kind,payload,status FROM operations WHERE status IN ('attempting','unknown')")){
+. (Join-Path $PSScriptRoot 'topic-receipt-admission.ps1')
+foreach($row in [RouterReceipts]::Read("SELECT kind,payload,status,id FROM operations WHERE status IN ('attempting','unknown')")){
  if($row[0] -eq 'telegram/editMessageText'){continue}
+ if($row[2] -eq 'unknown' -and (Get-TopicReceiptSupersession $row[3] $row[0] $row[1] {param($sql) ,([RouterReceipts]::Read($sql))})){continue}
  if($row[2] -ne 'unknown' -or $row[0] -notin @('telegram/sendMessage','telegram/sendRichMessage','telegram/sendPhoto','telegram/sendDocument')){throw 'Uncertain native/unclassified effect; no topic/session created'}
  $effect=$row[1]|ConvertFrom-Json
  if($effect.chat_id -ge 0 -or $effect.message_thread_id -le 0 -or [RouterReceipts]::Read("SELECT payload FROM bindings WHERE chat=$([long]$effect.chat_id) AND topic=$([int]$effect.message_thread_id)").Length -ne 1){throw 'Unscoped output uncertainty; no topic/session created'}
