@@ -1,8 +1,9 @@
-param([Parameter(Mandatory=$true)][ValidateSet('Prepare','Run')][string]$Phase,
+param([Parameter(Mandatory=$true)][ValidateSet('Prepare','Run','Resume')][string]$Phase,
  [ValidatePattern('^[A-Fa-f0-9]{64}$')][string]$ManifestSha256)
 # Exact owner-requested coordinated release. Run waits for this controller's
 # final answer and all other work to settle; never interrupts or replays work.
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
+$PSDefaultParameterValues['Get-Content:Encoding']='UTF8'
 $root='C:\ProgramData\KhadangRouter';$native='C:\ProgramData\OracovaNativeRemote'
 $release=$native+'\codex-astra62-20261117'
 $source='C:\Users\pou\AppData\Local\Temp\khadang-astra62-20261117-stage'
@@ -71,7 +72,7 @@ if($Phase -eq 'Prepare'){
   $literal=$release+'\'+$path;$acl=Get-Acl $literal
   $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($ownerSid,'ReadAndExecute','Allow'));Set-Acl $literal $acl
  }
- foreach($operation in @('Preflight','Upgrade','Verify')){
+ foreach($operation in @('Preflight','Upgrade','InspectUpgraded','Verify')){
   $task='Oracova-CodexAstra62-'+$operation
   if(Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue){throw 'Task already exists'}
   $principal=New-ScheduledTaskPrincipal -UserId 'S-1-5-21-71459778-1164188569-2276148161-1001' -LogonType Interactive -RunLevel Limited
@@ -83,8 +84,19 @@ if($Phase -eq 'Prepare'){
  Save ($release+'\prepared.json') @{code=$newCode;previous=$oldCode;policy=$oldPolicy;at=[DateTimeOffset]::UtcNow.ToString('o')}
  'PREPARED: production daemon and router still running';return
 }
-if(Test-Path ($release+'\started.json')){throw 'Existing deployment start: reconcile, never replay'}
+if($Phase -eq 'Run' -and (Test-Path ($release+'\started.json'))){throw 'Existing deployment start: reconcile, never replay'}
 try{
+ if($Phase -eq 'Resume'){
+  if(-not (Test-Path ($release+'\started.json')) -or (Test-Path ($release+'\staged.json')) -or
+   (Get-Service KhadangRouter).Status -ne 'Stopped' -or
+   (Get-FileHash ($root+'\bin\KhadangRouter.dll')).Hash -ne $oldCode -or
+   (Get-FileHash ($root+'\config.json')).Hash -ne $oldPolicy){throw 'Expected stopped observer and unstaged release'}
+  $priorRun=Get-Content ($release+'\owner-upgrade.json') -Raw|ConvertFrom-Json
+  if(-not $priorRun.lifecycleStarted -or $priorRun.activation.binarySha256 -ne 'b452ca20f838a8855a88a41050ee4a694033fff4ea3ecdad5633e6e0e8d13f2b'){throw 'Missing exact daemon activation receipt'}
+  $before=Get-Content ($release+'\before.json') -Raw|ConvertFrom-Json
+  $tasks=@{}
+  foreach($entry in $before.tasks.PSObject.Properties){$tasks[$entry.Name]=[bool]$entry.Value}
+ }else{
  $deadline=[DateTimeOffset]::UtcNow.AddMinutes(15)
  do{
   $status=Status
@@ -104,11 +116,12 @@ try{
  foreach($name in $tasks.Keys){(ExactTask $name).Enabled=$false}
  Save ($release+'\started.json') @{at=[DateTimeOffset]::UtcNow.ToString('o')}
  StopObserver
+ }
  $lease=[IO.File]::Open($root+'\state\exclusive.lock','Open','ReadWrite','None')
  try{
   if([RouterReceipts]::Read("SELECT id FROM updates WHERE status IN ('received','dispatching') LIMIT 1").Length -or
    [RouterReceipts]::Read("SELECT id FROM operations WHERE status='attempting' AND kind<>'telegram/editMessageText' LIMIT 1").Length){throw 'Work arrived during fencing; no native restart'}
-  $upgraded=OwnerTask 'Upgrade'
+  if($Phase -eq 'Resume'){$upgraded=OwnerTask 'InspectUpgraded'}else{$upgraded=OwnerTask 'Upgrade'}
   $policy=Get-Content ($root+'\config.json') -Raw|ConvertFrom-Json
   $connector=$policy.LinuxCodex.PackageRoot+'\pc_native_stdio.py'
   $observer=$native+'\codex-wsl-observer-CgBorX\pc_native_stdio.py'
@@ -169,6 +182,8 @@ try{
  if($hostTask.State -eq 4){$hostTask.Stop(0)}
  Start-ScheduledTask -TaskName Oracova-CodexWslRemote
  Save ($release+'\verified.json') @{at=[DateTimeOffset]::UtcNow.ToString('o');version='0.169.0';model='gpt-6.2-astra';threads=$verified.native.threads;bindingsPreserved=$true;unknownPreserved=$true;claudeHostPreserved=$true;inputReplay=0}
+ # The live recovery turn reports its result directly to the user.
+ if($Phase -eq 'Resume'){'VERIFIED: recovered observer and live Astra 6.2 catalog';return}
  # One completion notice, only after native/catalog/continuity verification.
  # Retain uncertain delivery; never retry the Telegram send automatically.
  $noticeAttempt=$release+'\completion-notice-attempt.json';$noticeResult=$release+'\completion-notice-result.json'

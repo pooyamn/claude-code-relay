@@ -1,6 +1,7 @@
-param([Parameter(Mandatory=$true)][ValidateSet('Preflight','Upgrade','Verify')][string]$Phase)
+param([Parameter(Mandatory=$true)][ValidateSet('Preflight','Upgrade','InspectUpgraded','Verify')][string]$Phase)
 # Scheduled as Interactive/Limited. Never run native providers through elevated SSH.
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
+$PSDefaultParameterValues['Get-Content:Encoding']='UTF8'
 $who=[Security.Principal.WindowsIdentity]::GetCurrent()
 $owner='S-1-5-21-71459778-1164188569-2276148161-1001'
 if($env:COMPUTERNAME -ne 'DESKTOP-8SO9HDK' -or $who.User.Value -ne $owner -or $who.IsSystem -or

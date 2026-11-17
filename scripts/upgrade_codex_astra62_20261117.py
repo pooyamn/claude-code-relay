@@ -5,6 +5,7 @@ Daemon lifecycle is deliberately separate, under the limited Windows owner.
 """
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -24,6 +25,19 @@ MODEL = 'gpt-6.2-astra'
 CONTROLLER = '01a0facd-1bc0-7d23-95d6-c32fde0c62db'
 EVIDENCE = OWNER / '.migration/astra62-default-20261117'
 OLD_ADAPTER = '/mnt/c/ProgramData/OracovaNativeRemote/codex-connector-fa07dcaa2ff24f828d78f1a745ac862d'
+
+
+def load_adapter(directory):
+    # Python's directory-based import finder needs a directory listing. The
+    # release root deliberately allows traversal only. Load its two exact
+    # entry points by filename and let the readable package resolve its modules.
+    for name, path in [('relay_core', directory / 'relay_core/__init__.py'),
+                       ('pc_native_stdio', directory / 'pc_native_stdio.py')]:
+        spec = importlib.util.spec_from_file_location(name, path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+    return module
 
 
 def save(name, value):
@@ -116,10 +130,9 @@ def activate_package():
 
 class Native:
     def __init__(self, old_runtime=False):
-        if old_runtime:
-            sys.path.insert(0, OLD_ADAPTER)
-        from pc_native_stdio import connect, SOCKET
-        self.channel, self.verify, self.peer = connect(str(SOCKET))
+        directory = Path(OLD_ADAPTER) if old_runtime else Path(__file__).resolve().parent
+        adapter = load_adapter(directory)
+        self.channel, self.verify, self.peer = adapter.connect(str(adapter.SOCKET))
         self.sequence = 0
         self.call('initialize', {'clientInfo': {'name': 'astra62_owner_migration', 'version': '1'},
                                  'capabilities': {'experimentalApi': True}})
@@ -162,13 +175,14 @@ def run(mode, old_runtime=False, snapshot=False):
             if MODEL not in [item['model'] for item in models['data']]:
                 raise RuntimeError('New remote catalog must advertise Astra 6.2')
             expected = expected_threads()
-            validate_snapshot(before, expected, require_idle=True)
+            validate_snapshot(before, expected)
             for desired in expected:
                 actual = next(item for item in before if item['id'] == desired['id'])
                 if actual.get('model') == desired['model']:
                     continue
-                if actual.get('status', {}).get('type') != 'idle':
-                    raise RuntimeError('Wait for the connector to load this topic; no history resume here')
+                state = actual.get('status', {}).get('type')
+                if state != 'idle' and not (desired['id'] == CONTROLLER and state == 'active'):
+                    raise RuntimeError('Topic must be loaded and idle to restore its model')
                 parameters = {'threadId': desired['id'], 'model': desired['model']}
                 if desired['model'] == MODEL:
                     parameters['serviceTier'] = 'default'

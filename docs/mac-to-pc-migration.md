@@ -4290,3 +4290,13 @@ predicate fixtures passed; the latter also run in `validate-release.ps1`.
 A completion notice in controller topic 816 is sent only after a live 6.2
 catalog, connected Remote, preserved identities, and model readbacks pass.
 `verified.json` (not preparation or task registration) remains the success gate.
+
+The retry activated 0.169.0 and reconnected the remote app, then stopped before
+staging Telegram because Python could not list the traversal-only release root
+to discover its adapter. Load the reviewed adapter and package by literal
+filename from that root. The observer recovery resumes at the post-activation
+probe without another daemon restart. Read deployment receipts explicitly as
+UTF-8 on Windows PowerShell so non-ASCII topic names compare correctly. All 11
+Linux Codex routes reattached and passed identity and model readback, including
+the eight Astra 6.2 selections. The router security probe passed and the prior
+binding ledger, uncertain operation records and independent Claude host matched.
