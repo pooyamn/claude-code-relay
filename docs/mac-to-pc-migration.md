@@ -4273,3 +4273,20 @@ until the controller reply finishes. This paragraph records preparation, not a
 claim that the restart succeeded: require protected `verified.json`, or inspect
 `failure-*.json` before any retry. The one-shot maintenance tasks have no recurring
 triggers, and all new Windows launches are hidden at creation.
+
+The first deferred attempt rejected an invalid fixed loaded-topic count after
+stopping the observer (which intentionally unloads its native subscriptions).
+It never reached daemon stop or package activation. The unchanged observer and
+its supervision were restored; exact failed-attempt evidence is preserved in
+`attempt1-pre-lifecycle`, including the definitive pre-lifecycle owner receipt.
+
+The retry inspects the saved native IDs/workspaces even when `notLoaded`,
+rejects active work rather than unloaded state, and restores/verifies model
+selections after reattachment. A definitive pre-lifecycle failure automatically
+restores the unchanged observer; an uncertain or started lifecycle stays fenced
+for inspection. Supervision is restored as soon as the new OS security proof
+is accepted. Forty-nine Python checks and seven actual PowerShell recovery
+predicate fixtures passed; the latter also run in `validate-release.ps1`.
+A completion notice in controller topic 816 is sent only after a live 6.2
+catalog, connected Remote, preserved identities, and model readbacks pass.
+`verified.json` (not preparation or task registration) remains the success gate.

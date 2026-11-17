@@ -26,7 +26,7 @@ function Native([string[]]$Arguments){
   return $text.Trim()
  }finally{$process.Dispose()}
 }
-$result=@{phase=$Phase;success=$false;at=[DateTimeOffset]::UtcNow.ToString('o');inputReplay=0}
+$result=@{phase=$Phase;success=$false;lifecycleStarted=$false;at=[DateTimeOffset]::UtcNow.ToString('o');inputReplay=0}
 try{
  if((Native @('/usr/bin/id','-u')) -ne '1000'){throw 'Unexpected native UID'}
  if($Phase -eq 'Preflight'){
@@ -37,24 +37,27 @@ try{
  }
  if($Phase -eq 'Upgrade'){
   if((Get-Service KhadangRouter).Status -ne 'Stopped'){throw 'Router must be fenced first'}
-  $before=Native @('/usr/bin/python3','-I','-B',$python,'inspect','--old-runtime')|ConvertFrom-Json
-  if(@($before.threads|Where-Object {$_.status.type -ne 'idle'}).Count){throw 'Native work still active; no daemon restart'}
-  if(@($before.threads|Where-Object {$_.model -eq 'gpt-6.2-astra'}).Count -ne 8){throw 'Expected migrated eight topics'}
+  $before=Native @('/usr/bin/python3','-I','-B',$python,'inspect','--old-runtime','--snapshot')|ConvertFrom-Json
+  if(@($before.threads|Where-Object {$_.status.type -notin @('idle','notLoaded')}).Count){throw 'Native work still active; no daemon restart'}
+  # Exact saved IDs/workspaces are read even when the observer has unloaded
+  # them. A loaded-thread count is never an identity or continuity check.
   $result.before=$before
+  $result.lifecycleStarted=$true
   $null=Native @($old,'app-server','daemon','stop')
   $result.activation=Native @('/usr/bin/python3','-I','-B',$python,'activate-package')|ConvertFrom-Json
   $null=Native @($new,'app-server','daemon','start')
  }
  $result.version=Native @($new,'app-server','daemon','version')|ConvertFrom-Json
  if($result.version.appServerVersion -ne '0.169.0' -or $result.version.cliVersion -ne '0.169.0'){throw 'Expected upgraded shared server'}
- $result.native=Native @('/usr/bin/python3','-I','-B',$python,'inspect')|ConvertFrom-Json
+ if($Phase -eq 'Verify'){$result.modelRestore=Native @('/usr/bin/python3','-I','-B',$python,'restore-models')|ConvertFrom-Json}
+ $result.native=Native @('/usr/bin/python3','-I','-B',$python,'inspect','--snapshot')|ConvertFrom-Json
  if('gpt-6.2-astra' -notin $result.native.models){throw 'Remote catalog does not advertise requested model'}
  if($Phase -eq 'Verify'){
   if($result.native.remote.status -ne 'connected' -or -not $result.native.remote.environmentPresent){throw 'Remote app connection is not healthy'}
   $prior=Get-Content 'C:\Users\pou\.native-remote\astra62-upgrade.json' -Raw|ConvertFrom-Json
   foreach($thread in @($prior.before.threads)){
    $actual=@($result.native.threads|Where-Object id -eq $thread.id)
-   if($actual.Count -ne 1 -or $actual[0].cwd -cne $thread.cwd -or $actual[0].model -cne $thread.model){throw 'Thread identity/model was not preserved across restart'}
+   if($actual.Count -ne 1 -or $actual[0].cwd -cne $thread.cwd){throw 'Thread identity/workspace was not preserved across restart'}
   }
  }
  $result.success=$true

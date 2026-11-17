@@ -61,3 +61,39 @@ class UpgradeTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'package copy differs'):
                 upgrade.activate_package()
             replace.assert_not_called()
+
+    def test_unloaded_topics_are_verified_by_identity_not_loaded_count(self):
+        expected = [self.thread(tid=str(index)) for index in range(11)]
+        actual = [dict(item, status={'type': 'notLoaded'}) for item in expected]
+        upgrade.validate_snapshot(actual, expected, require_idle=True)
+
+    def test_unloaded_topic_with_changed_workspace_is_rejected(self):
+        previous = self.thread()
+        actual = dict(previous, cwd='/tmp/unexpected', status={'type': 'notLoaded'})
+        with self.assertRaises(RuntimeError):
+            upgrade.validate_snapshot([actual], [previous], require_idle=True)
+
+    def test_missing_saved_topic_is_rejected(self):
+        with self.assertRaises(RuntimeError):
+            upgrade.validate_snapshot([], [self.thread()])
+
+    def test_active_unrelated_thread_blocks_restart(self):
+        saved = self.thread()
+        active = self.thread(tid='unrelated', state='active')
+        with self.assertRaisesRegex(RuntimeError, 'still active'):
+            upgrade.validate_snapshot([saved, active], [saved], require_idle=True)
+
+    def test_model_restoration_is_verified_not_assumed(self):
+        saved = self.thread(model=upgrade.MODEL)
+        with self.assertRaisesRegex(RuntimeError, 'selection differs'):
+            upgrade.validate_snapshot([self.thread()], [saved], require_models=True)
+
+    def test_inspection_of_unloaded_astra_topic_never_attempts_a_write(self):
+        native = mock.Mock()
+        native.threads.return_value = [self.thread(state='notLoaded')]
+        native.call.side_effect = [{'data': [{'model': upgrade.MODEL}]}, {'status': 'connected'}]
+        with mock.patch.object(upgrade, 'Native', return_value=native):
+            result = upgrade.run('inspect')
+        self.assertEqual(result['threads'][0]['status']['type'], 'notLoaded')
+        self.assertEqual([call.args[0] for call in native.call.call_args_list],
+                         ['model/list', 'remoteControl/status/read'])

@@ -29,6 +29,10 @@ function ServiceMode([bool]$Probe){
  if($change.ReturnValue){throw 'Service mode rejected'}
 }
 function StopObserver{Stop-Service KhadangRouter;(Get-Service KhadangRouter).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(30))}
+function CanRestoreUnchangedObserver($Receipt,[bool]$Staged,[string]$ObservedCode,[string]$ObservedPolicy){
+ return -not $Staged -and -not $Receipt.success -and $Receipt.lifecycleStarted -ceq $false -and
+  $ObservedCode -eq $oldCode -and $ObservedPolicy -eq $oldPolicy
+}
 function ReplaceFile([string]$Source,[string]$Destination){
  $temporary=$Destination+'.astra62-20261117';Copy-Item $Source $temporary;Set-Acl $temporary (Get-Acl $Destination)
  [IO.File]::Replace($temporary,$Destination,[System.Management.Automation.Language.NullString]::Value)
@@ -139,6 +143,9 @@ try{
  $proof|Add-Member nativeLinuxClaudeAcceptanceReuse @{reason='Only Linux Codex package identity changed; independent Claude host, binaries, policy and connector unchanged';modelTestsRerun=$false} -Force
  Save ($root+'\state\probe.json') $proof
  ServiceMode $false;Start-Service KhadangRouter
+ # Once the new OS/security proof is accepted, supervision is safe to restore
+ # even if a later model/readback or completion-notice check needs attention.
+ foreach($name in $tasks.Keys){(ExactTask $name).Enabled=[bool]$tasks[$name]}
  $deadline=[DateTimeOffset]::UtcNow.AddSeconds(90)
  do{
   Start-Sleep -Seconds 1;$current=Status
@@ -162,8 +169,40 @@ try{
  if($hostTask.State -eq 4){$hostTask.Stop(0)}
  Start-ScheduledTask -TaskName Oracova-CodexWslRemote
  Save ($release+'\verified.json') @{at=[DateTimeOffset]::UtcNow.ToString('o');version='0.169.0';model='gpt-6.2-astra';threads=$verified.native.threads;bindingsPreserved=$true;unknownPreserved=$true;claudeHostPreserved=$true;inputReplay=0}
+ # One completion notice, only after native/catalog/continuity verification.
+ # Retain uncertain delivery; never retry the Telegram send automatically.
+ $noticeAttempt=$release+'\completion-notice-attempt.json';$noticeResult=$release+'\completion-notice-result.json'
+ if((Test-Path $noticeAttempt) -or (Test-Path $noticeResult)){throw 'Existing notice receipt; no automatic resend'}
+ $plain=$null;$token=$null
+ try{
+  $route=@($current.nativeSessions|Where-Object {$_.binding.ThreadId -eq '01a0facd-1bc0-7d23-95d6-c32fde0c62db'})
+  if($route.Count -ne 1 -or $route[0].binding.Chat -ne -1003550185469 -or $route[0].binding.Topic -ne 816){throw 'Controller notice route differs'}
+  Add-Type -AssemblyName System.Security
+  $plain=[Security.Cryptography.ProtectedData]::Unprotect([IO.File]::ReadAllBytes($policy.CredentialFile),[Text.Encoding]::UTF8.GetBytes('khadang-pc-router-v1'),[Security.Cryptography.DataProtectionScope]::LocalMachine)
+  $token=[Text.Encoding]::UTF8.GetString($plain).Trim()
+  if($token -notmatch '^8735489806:[A-Za-z0-9_-]{20,100}$'){throw 'Wrong protected bot credential'}
+  Save $noticeAttempt @{chat=-1003550185469;topic=816;at=[DateTimeOffset]::UtcNow.ToString('o')}
+  $body=@{chat_id=-1003550185469;message_thread_id=816;disable_notification=$true;text='Verified: the remote Codex server is now 0.169.0 and Astra 6.2 is in its live model list. Astra topics and this topic are set to 6.2 at Standard speed. Histories and bindings are preserved. Reopen the model picker or reconnect the remote computer if the app still shows its old list.'}
+  $response=Invoke-WebRequest -Uri ('https://api.telegram.org/bot'+$token+'/sendMessage') -Method Post -ContentType 'application/json' -Body ([Text.Encoding]::UTF8.GetBytes(($body|ConvertTo-Json -Compress))) -UseBasicParsing -MaximumRedirection 0 -TimeoutSec 30
+  $notice=$response.Content|ConvertFrom-Json
+  if(-not $notice.ok -or $notice.result.chat.id -ne -1003550185469 -or $notice.result.message_thread_id -ne 816 -or $notice.result.message_id -le 0){throw 'Notice delivery unconfirmed'}
+  Save $noticeResult @{telegramConfirmed=$true;message=$notice.result.message_id;at=[DateTimeOffset]::UtcNow.ToString('o')}
+ }catch{Save ($release+'\completion-notice-unconfirmed.json') @{at=[DateTimeOffset]::UtcNow.ToString('o');retries=0}}
+ finally{if($plain){[Array]::Clear($plain,0,$plain.Length)};$token=$null}
  'VERIFIED: remote model picker and eight migrated topics; same histories, bindings and independent Claude host'
 }catch{
  Save ($release+'\failure-'+[DateTime]::UtcNow.ToString('yyyyMMddHHmmss')+'.json') @{at=[DateTimeOffset]::UtcNow.ToString('o');error=$_.Exception.Message;phase='Inspect before any retry; no automatic replay'}
+ # A definitive pre-lifecycle rejection can restore the unchanged observer.
+ # Missing/ambiguous receipts or any changed native package stay fenced.
+ $ownerReceipt='C:\Users\pou\.native-remote\astra62-upgrade.json'
+ if((Test-Path $ownerReceipt) -and -not (Test-Path ($release+'\staged.json'))){
+  $rejected=Get-Content $ownerReceipt -Raw|ConvertFrom-Json
+  if(CanRestoreUnchangedObserver $rejected $false (Get-FileHash ($root+'\bin\KhadangRouter.dll')).Hash (Get-FileHash ($root+'\config.json')).Hash){
+   ServiceMode $false
+   if((Get-Service KhadangRouter).Status -eq 'Stopped'){Start-Service KhadangRouter}
+   if($tasks){foreach($name in $tasks.Keys){(ExactTask $name).Enabled=[bool]$tasks[$name]}}
+   Save ($release+'\unchanged-observer-restored.json') @{at=[DateTimeOffset]::UtcNow.ToString('o');nativeLifecycleStarted=$false}
+  }
+ }
  throw
 }

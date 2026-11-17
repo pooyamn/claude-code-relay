@@ -48,6 +48,26 @@ def changes(thread):
     return {'threadId': thread['id'], 'model': MODEL, 'serviceTier': 'default'}
 
 
+def expected_threads():
+    original = json.loads((EVIDENCE / 'topics-before.json').read_text())['threads']
+    return [{**item, 'model': MODEL if target(item) else item['model']} for item in original]
+
+
+def validate_snapshot(actual, expected, require_idle=False, require_models=False):
+    """Unloaded is not missing: connector disconnect unloads its subscriptions."""
+    index = {item['id']: item for item in actual}
+    if len(index) != len(actual):
+        raise RuntimeError('Duplicate native identities')
+    if require_idle and any(item.get('status', {}).get('type') not in ('idle', 'notLoaded') for item in actual):
+        raise RuntimeError('Native work still active; no daemon restart')
+    for previous in expected:
+        current = index.get(previous['id'])
+        if current is None or current.get('cwd') != previous.get('cwd'):
+            raise RuntimeError('Expected saved native identity/workspace is missing')
+        if require_models and current.get('model') != previous.get('model'):
+            raise RuntimeError('Native model selection differs')
+
+
 def package_inventory(root):
     result = {}
     for path in sorted(root.rglob('*')):
@@ -118,30 +138,64 @@ class Native:
                     raise RuntimeError(str(frame['error']))
                 return frame['result']
 
-    def threads(self):
+    def threads(self, snapshot=False):
         loaded = self.call('thread/loaded/list', {})
         if loaded.get('nextCursor'):
             raise RuntimeError('Unexpected additional loaded-thread page')
+        identifiers = list(loaded['data'])
+        if snapshot:
+            identifiers += [item['id'] for item in expected_threads() if item['id'] not in identifiers]
         return [self.call('thread/read', {'threadId': value, 'includeTurns': False})['thread']
-                for value in loaded['data']]
+                for value in identifiers]
 
 
-def run(mode, old_runtime=False):
+def run(mode, old_runtime=False, snapshot=False):
     if mode == 'activate-package':
         return activate_package()
     native = Native(old_runtime)
     try:
         models = native.call('model/list', {'includeHidden': False})
-        before = native.threads()
-        selected = [changes(thread) for thread in before]
-        selected = [value for value in selected if value]
+        before = native.threads(snapshot=snapshot or mode == 'restore-models')
+        if snapshot:
+            validate_snapshot(before, expected_threads())
+        if mode == 'restore-models':
+            if MODEL not in [item['model'] for item in models['data']]:
+                raise RuntimeError('New remote catalog must advertise Astra 6.2')
+            expected = expected_threads()
+            validate_snapshot(before, expected, require_idle=True)
+            for desired in expected:
+                actual = next(item for item in before if item['id'] == desired['id'])
+                if actual.get('model') == desired['model']:
+                    continue
+                if actual.get('status', {}).get('type') != 'idle':
+                    raise RuntimeError('Wait for the connector to load this topic; no history resume here')
+                parameters = {'threadId': desired['id'], 'model': desired['model']}
+                if desired['model'] == MODEL:
+                    parameters['serviceTier'] = 'default'
+                native.call('thread/settings/update', parameters)
+                deadline = time.monotonic() + 10
+                while time.monotonic() < deadline:
+                    readback = native.call('thread/read', {'threadId': desired['id'], 'includeTurns': False})['thread']
+                    if readback.get('model') == desired['model']:
+                        break
+                    time.sleep(.1)
+                else:
+                    raise RuntimeError('Model metadata did not settle; no repeated write')
+            validate_snapshot(native.threads(snapshot=True), expected, require_models=True)
+            return {'modelsVerified': len(expected), 'newWorkTurns': 0, 'historiesReplaced': 0}
         if mode == 'inspect':
+            # Read-only discovery must work for unloaded or busy topics. The
+            # idle gate belongs to an actual settings write/restart, not here.
+            selected = [{'threadId': item['id'], 'model': MODEL, 'serviceTier': 'default'}
+                        for item in before if target(item) and item.get('model') != MODEL]
             remote = native.call('remoteControl/status/read', {})
             return {'peer': native.peer, 'models': [item['model'] for item in models['data']],
                     'remote': {'status': remote.get('status'), 'serverName': remote.get('serverName'),
                                'environmentPresent': bool(remote.get('environmentId'))},
                     'threads': [{key: item.get(key) for key in ('id', 'name', 'model', 'cwd', 'status')}
                                 for item in before], 'plannedSettingsUpdates': selected}
+        selected = [changes(thread) for thread in before]
+        selected = [value for value in selected if value]
         if not old_runtime and MODEL not in [item['model'] for item in models['data']]:
             raise RuntimeError('New remote catalog must advertise Astra 6.2')
         configuration = tomllib.loads((OWNER / '.codex/config.toml').read_text())
@@ -178,7 +232,8 @@ def run(mode, old_runtime=False):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('mode', choices=['inspect', 'migrate', 'activate-package'])
+    parser.add_argument('mode', choices=['inspect', 'migrate', 'activate-package', 'restore-models'])
     parser.add_argument('--old-runtime', action='store_true')
+    parser.add_argument('--snapshot', action='store_true')
     args = parser.parse_args()
-    print(json.dumps(run(args.mode, args.old_runtime)))
+    print(json.dumps(run(args.mode, args.old_runtime, args.snapshot)))
