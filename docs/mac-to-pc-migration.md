@@ -4207,3 +4207,31 @@ startup supervision. Khadang confirmed recovery notice message 18116 in the
 original topic. This verifies native reattachment and Telegram notice delivery,
 not a synthetic model-response round trip. Old held inputs remain retained;
 the owner should send the current instruction again.
+
+### 2026-11-16 inbound PDF access: DrvFS ancestor permissions
+
+Trivial Topics 5564 received both PDFs successfully (updates 759325588 and
+759325589); their bounded cached bytes and SHA256 manifests were intact.
+The native Linux session could not reach them: file/cache ACLs granted owner
+read access, but the two protected ancestors, `C:\ProgramData\KhadangRouter`
+and its `state` directory, had no ordinary-owner lookup grant. A Windows-only
+attachment read probe did not expose this DrvFS ancestor-lookup difference.
+
+The hot repair grants only `Traverse | ReadAttributes` to the existing owner
+SID on those two directories, with **no inheritance**. No directory listing,
+private-file read, write, deletion, or permission-management grant was added.
+Existing attachment read-only ACLs, credential/configuration/database ACLs,
+bindings, file bytes, native sessions and service processes were not changed.
+The DACL repair persists across restart; future protection/deployment helpers
+must preserve the non-inheritable lookup ACE, not replace it with broad read
+access or remove it while re-sealing these ancestors.
+
+`repair-attachment-traversal-20261116.ps1` retains protected before/after
+evidence under `OracovaNativeRemote\attachment-traversal-20261116`.
+`probe_attachment_access_20261116.py` passed 15 actual UID-1000 checks: both
+PDF headers/lengths/hashes match, attachment writes fail, four protected files
+cannot be opened, and neither private ancestor can be listed. No credential
+bytes were read. No downloads, model inputs, historical deliveries, or service
+restarts were replayed. Re-run the ordinary-owner DrvFS acceptance check when
+changing attachment/ancestor ACLs; do not substitute an elevated WSL process
+or a successful Windows-only probe.
