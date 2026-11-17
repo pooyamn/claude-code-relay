@@ -4235,3 +4235,41 @@ bytes were read. No downloads, model inputs, historical deliveries, or service
 restarts were replayed. Re-run the ordinary-owner DrvFS acceptance check when
 changing attachment/ancestor ACLs; do not substitute an elevated WSL process
 or a successful Windows-only probe.
+
+### 2026-11-17 Astra 6.2: CLI defaults are not a remote-server upgrade
+
+Updating the CLI symlink/configuration alone left the shared Remote daemon on
+0.160.0. Its account catalog omitted `gpt-6.2-astra`, and existing native topics
+retained their saved models. The 0.169.0 CLI successfully ran a tiny read-only
+Astra 6.2 response, establishing actual account access rather than guessing an ID.
+
+Eight existing loaded Linux topics (the prior Astra topics plus the controller)
+now read back `gpt-6.2-astra` through native `thread/settings/update`, using
+Standard speed. The three explicitly Sol-selected topics were preserved, as
+were Claude and native Windows topics. No work turns, histories, or bindings
+were created/replaced. Metadata publication is asynchronous: after an ACK,
+poll readback rather than repeating the settings write. Private before/after
+evidence is under `.migration/astra62-default-20261117`.
+
+The coordinated server release is prepared under protected
+`OracovaNativeRemote\codex-astra62-20261117`. It upgrades the managed package,
+Python peer-image pin, C# attestation pin, and Windows owner supervisor together;
+otherwise a CLI-only daemon restart would fail the Telegram connector's image
+checks. The complete npm package copy is compared file-by-file, and old packages
+remain available. Package auto-update stays off. The new image SHA256 is
+`b452ca20f838a8855a88a41050ee4a694033fff4ea3ecdad5633e6e0e8d13f2b`.
+
+`deploy-codex-astra62-20261117.ps1` waits for settled delivery/idle topics before
+fencing the observer. Native stop/start runs only through a hidden, limited
+interactive-owner task, not elevated SSH/SYSTEM. A fresh OS credential/code
+isolation probe must pass before reactivating Telegram. Final verification
+requires the remote catalog to list 6.2, Remote to be connected, the same native
+IDs/workspaces/model selections, unchanged bindings/uncertain receipts, and an
+unchanged independent Claude host. It does not replay inputs or clear holds.
+
+Before activation, 2,259 actual Windows router checks, 43 Python fixtures, and
+an actual limited-owner preflight passed. Activation is intentionally deferred
+until the controller reply finishes. This paragraph records preparation, not a
+claim that the restart succeeded: require protected `verified.json`, or inspect
+`failure-*.json` before any retry. The one-shot maintenance tasks have no recurring
+triggers, and all new Windows launches are hidden at creation.

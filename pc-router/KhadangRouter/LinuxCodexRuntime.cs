@@ -17,7 +17,7 @@ public sealed record LinuxCodexRuntime(string PackageRoot, string WslSha256, Dic
     internal static bool AdmittedWorkspace(string path) =>
         path == AndroidWorkspace || path.StartsWith(WorkspaceRoot + "/", StringComparison.Ordinal);
     public const string Socket = "/Users/pouya/.codex/app-server-control/app-server-control.sock";
-    public const string BinarySha256 = "12eb3e81114588aca3b7998f4f19e8997b056aca08e57a7ca7c8a3ec8c652aad";
+    public const string BinarySha256 = "b452ca20f838a8855a88a41050ee4a694033fff4ea3ecdad5633e6e0e8d13f2b";
     internal static readonly string[] PackageFiles = [ "pc_native_stdio.py", "relay_core/__init__.py", "relay_core/contracts.py",
         "relay_core/identity.py", "relay_core/native_rpc.py", "relay_core/native_ws.py" ];
     public void Validate()

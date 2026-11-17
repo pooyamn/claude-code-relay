@@ -23,9 +23,9 @@ from relay_core.native_rpc import IOTimedOut, JSONLChannel
 from relay_core.native_ws import UnixWSChannel
 
 OWNER = Path('/Users/pouya')
-BINARY = OWNER / '.local/share/pc-migration-native/codex-0.160.0/package/bin/codex'
-MANAGED_BINARY = OWNER / '.codex/packages/app-server-daemon/releases/local-45a1f15dbce3c1e4ba0d0eb5d8026f1fc75a42f173fad82a6c7520861a9f0f28-x86_64-unknown-linux-musl/bin/codex'
-BINARY_SHA256 = '12eb3e81114588aca3b7998f4f19e8997b056aca08e57a7ca7c8a3ec8c652aad'
+BINARY = OWNER / '.local/share/pc-migration-native/codex-0.169.0/package/vendor/x86_64-unknown-linux-musl/bin/codex'
+MANAGED_BINARY = OWNER / '.codex/packages/app-server-daemon/releases/0.169.0-x86_64-unknown-linux-musl/bin/codex'
+BINARY_SHA256 = 'b452ca20f838a8855a88a41050ee4a694033fff4ea3ecdad5633e6e0e8d13f2b'
 SOCKET = OWNER / '.codex/app-server-control/app-server-control.sock'
 MAX_FRAME = 2_097_152
 DAEMON_DIRECTORY = Path('/tmp/codex-daemon-1000')

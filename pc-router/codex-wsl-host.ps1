@@ -19,8 +19,8 @@ if($env:COMPUTERNAME -ne 'DESKTOP-8SO9HDK' -or $identity.User.Value -ne $ownerSi
 }
 $state='C:\Users\pou\.native-remote'
 $wsl='C:\Windows\System32\wsl.exe'
-$native='/Users/pouya/.local/share/pc-migration-native/codex-0.160.0/package/bin/codex'
-$expected='12eb3e81114588aca3b7998f4f19e8997b056aca08e57a7ca7c8a3ec8c652aad'
+$native='/Users/pouya/.local/share/pc-migration-native/codex-0.169.0/package/vendor/x86_64-unknown-linux-musl/bin/codex'
+$expected='b452ca20f838a8855a88a41050ee4a694033fff4ea3ecdad5633e6e0e8d13f2b'
 $utf8=[Text.UTF8Encoding]::new($false)
 if(-not (Test-Path -LiteralPath $state)){throw 'Existing private owner state required'}
 function Save-HostState($stateName,$details){
@@ -69,7 +69,7 @@ try{
    Invoke-Wsl @($native,'app-server','daemon','start') 'codex-wsl-start'|Out-Null
    $version=Invoke-Wsl @($native,'app-server','daemon','version') 'codex-wsl-version'|ConvertFrom-Json
   }
-  if($version.status -ne 'running' -or $version.cliVersion -ne '0.160.0' -or $version.appServerVersion -ne '0.160.0' -or
+  if($version.status -ne 'running' -or $version.cliVersion -ne '0.169.0' -or $version.appServerVersion -ne '0.169.0' -or
    $version.socketPath -ne '/Users/pouya/.codex/app-server-control/app-server-control.sock'){
    throw 'Expected pinned shared native daemon/socket unavailable'
   }
