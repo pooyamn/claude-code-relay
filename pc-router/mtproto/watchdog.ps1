@@ -18,12 +18,27 @@ function Choose-Recovery([string]$Status,[bool]$LocalOk,[bool]$TelegramOk,[bool]
  if($Failures -ge 3 -and $SinceRestart -ge 300){return 'restart'}
  return 'suspect'
 }
-try {
- $state=@{}
- if(Test-Path $statePath){
-  $loaded=Get-Content -LiteralPath $statePath -Raw|ConvertFrom-Json
-  foreach($p in $loaded.services.psobject.Properties){$state[$p.Name]=$p.Value}
+function Read-RecoveryState([string]$Path){
+ foreach($candidate in @($Path,($Path+'.previous'))){
+  if(-not [IO.File]::Exists($candidate)){continue}
+  $json=[IO.File]::ReadAllText($candidate)
+  try{
+   $loaded=$json|ConvertFrom-Json -ErrorAction Stop
+   $state=@{}
+   foreach($name in @('OracovaMTProto','OracovaMTProto8443')){
+    $row=$loaded.services.$name
+    if($null -eq $row -or $null -eq $row.failures -or [int]$row.failures -lt 0){throw 'Invalid counters'}
+    if($row.lastRestart){$null=[DateTime]::Parse($row.lastRestart)}
+    $state[$name]=$row
+   }
+   return $state
+  }catch{continue}
  }
+ # Fresh probes rebuild the counters if neither receipt survived.
+ return @{}
+}
+try {
+ $state=Read-RecoveryState $statePath
  $rows=@{}
  foreach($name in @('OracovaMTProto','OracovaMTProto8443')){
   $phase='service-check'
@@ -69,7 +84,9 @@ try {
  $log=Join-Path $PSScriptRoot 'watchdog.log'
  $receipt=[pscustomobject]@{at=[DateTime]::UtcNow.ToString('o');services=$rows}
  $json=$receipt|ConvertTo-Json -Depth 5 -Compress
- [IO.File]::WriteAllText($statePath+'.new',$json)
+ $bytes=[Text.Encoding]::UTF8.GetBytes($json)
+ $file=[IO.File]::Open($statePath+'.new','Create','Write','None')
+ try{$file.Write($bytes,0,$bytes.Length);$file.Flush($true)}finally{$file.Dispose()}
  # Windows PowerShell binds $null string arguments as empty strings. Supply
  # an explicit bounded backup path, otherwise the second run fails to persist
  # its failure count and a hung proxy would never reach the retry threshold.

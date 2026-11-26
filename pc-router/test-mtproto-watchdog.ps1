@@ -5,6 +5,8 @@ if($errors.Count){throw 'Parse failed'}
 $fn=@($ast.FindAll({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Choose-Recovery'},$true))
 if($fn.Count -ne 1){throw 'Pure recovery decision missing'}
 . ([ScriptBlock]::Create($fn[0].Extent.Text))
+$reader=$ast.Find({param($n)$n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Read-RecoveryState'},$true)
+. ([ScriptBlock]::Create($reader.Extent.Text))
 $checks=0
 function Assert([bool]$Value,[string]$Label){if(-not $Value){throw $Label};$script:checks++}
 Assert ((Choose-Recovery 'Stopped' $false $false $false 1 9999 9999) -eq 'start') 'Clean stop is automatically started'
@@ -34,6 +36,15 @@ try {
   Assert ([IO.File]::ReadAllText($state) -eq [string]$i) 'Repeated receipt write succeeds'
   Assert ([IO.File]::ReadAllText($state+'.previous') -eq [string]($i-1)) 'Previous receipt retained'
  }
+ $good='{"services":{"OracovaMTProto":{"failures":0},"OracovaMTProto8443":{"failures":2,"lastRestart":"2026-11-25T00:00:00Z"}}}'
+ [IO.File]::WriteAllText($state+'.previous',$good)
+ [IO.File]::WriteAllBytes($state,[byte[]]::new(420))
+ Assert ((Read-RecoveryState $state).OracovaMTProto8443.failures -eq 2) 'Zero-filled primary recovers counters from backup'
+ [IO.File]::WriteAllText($state,$good.Replace('"failures":2','"failures":1'))
+ Assert ((Read-RecoveryState $state).OracovaMTProto8443.failures -eq 1) 'Valid primary wins'
+ [IO.File]::WriteAllText($state,'{}')
+ [IO.File]::WriteAllText($state+'.previous','{"services":')
+ Assert ((Read-RecoveryState $state).Count -eq 0) 'Two unusable receipts still allow fresh probes'
 } finally {
  # Exact ephemeral files created above; never touch a user data directory.
  foreach($f in @($state,($state+'.new'),($state+'.previous'))){if([IO.File]::Exists($f)){[IO.File]::Delete($f)}}
