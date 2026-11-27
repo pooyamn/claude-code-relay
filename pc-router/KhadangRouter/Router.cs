@@ -179,7 +179,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                     throw new IOException("Observer background task stopped; supervised same-session reattachment required");
                 JsonElement batch;
                 try { lock(statusGate) lastPollAttempt = DateTimeOffset.UtcNow;
-                    batch = await telegram.Call("getUpdates", new { offset = ledger.Offset, timeout = 25, limit = 50,
+                    batch = await telegram.Call("getUpdates", new { offset = ledger.Offset, timeout = collectingAlbums.Count == 0 ? 25 : 1, limit = 50,
                     allowed_updates = new[] { "message" } }, stop); }
                 catch (TelegramFailure error) when (error.Code is 0 or 429)
                 {
@@ -190,12 +190,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 }
                 int newlyReceived = 0;
                 foreach (var update in batch.EnumerateArray()) if (ledger.Receive(update.GetProperty("update_id").GetInt64(), update.GetRawText())) newlyReceived++;
-                foreach (var item in ledger.Pending())
-                {
-                    if (!ledger.Claim(item.Id)) continue;
-                    var task = Handle(item.Id, item.Payload, stop);
-                    handlers[item.Id] = task;
-                }
+                DispatchPending(stop);
                 foreach (var done in handlers.Where(pair => pair.Value.IsCompleted).ToArray()) handlers.TryRemove(done.Key, out _);
                 RequestStatus();
                 if (newlyReceived == 0) await Task.Delay(10, stop); // Bound empty/duplicate-only proxy polls.
@@ -317,7 +312,9 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         RequestStatus();
     }
 
-    private async Task Handle(long updateId, JsonElement update, CancellationToken stop)
+    private Task Handle(long updateId, JsonElement update, CancellationToken stop) => HandleInput(updateId, update, stop, null, null);
+
+    private async Task HandleInput(long updateId, JsonElement update, CancellationToken stop, IReadOnlyList<AlbumPart>? album, Binding? albumBinding)
     {
         Session? target = null;
         var preparedStart = false;
@@ -331,6 +328,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 ledger.Finish(updateId, "unbound"); return;
             }
             target = session;
+            if (album != null && session.Binding != albumBinding) throw new AttachmentFailure("Album binding changed");
             if (session.Initializing)
             {
                 ledger.Finish(updateId, "retained-connecting");
@@ -402,18 +400,18 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                     modelText.GetString()!.TrimStart().StartsWith("/cc", StringComparison.OrdinalIgnoreCase)); ledger.Finish(updateId, "control"); return; }
                 finally { session.Dispatch.Release(); }
             }
-            if (session.Claude != null) { await HandleClaude(updateId, message, session, stop); return; }
+            if (session.Claude != null) { await HandleClaude(updateId, message, session, stop, album); return; }
             IReadOnlyList<AttachmentReference> references;
             try { references = Attachments.References(message); }
             catch (Exception error) when (error is InvalidOperationException or KeyNotFoundException) { throw new AttachmentFailure("Malformed attachment metadata; original update retained"); }
             var hasText = message.TryGetProperty("text", out var textElement);
             var hasCaption = message.TryGetProperty("caption", out var caption);
-            if (references.Count > 0 && message.TryGetProperty("media_group_id", out _))
+            if (album == null && message.TryGetProperty("media_group_id", out _))
                 throw new AttachmentFailure("Album references retained; atomic multi-message assembly is pending. No partial album sent.");
             if (hasText && hasCaption || hasText && textElement.ValueKind != JsonValueKind.String || hasCaption && caption.ValueKind != JsonValueKind.String)
                 throw new AttachmentFailure("Malformed message text/caption; original update retained");
             if (!hasText && references.Count == 0) throw new AttachmentFailure("Unsupported message content; original update retained. No empty prompt sent.");
-            var text = hasText ? textElement.GetString()! : hasCaption ? caption.GetString()! : "";
+            var text = album != null ? AlbumCaption(album) : hasText ? textElement.GetString()! : hasCaption ? caption.GetString()! : "";
             if (references.Count == 0 && text.TrimStart().StartsWith('/'))
             {
                 // Account reads do not mutate a turn. Don't hold the session
@@ -442,7 +440,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
                 // Do not hold the turn/control lock during a network download.
                 // Recheck the arrival turn below; never convert stale media
                 // steering into a fresh model turn after it ends.
-                try { files = await attachmentStore.Stage(message, session.Binding, updateId, stop); }
+                try { files = await StageInput(updateId, message, session.Binding, album, stop); }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException or TelegramFailure or NotSupportedException or
                     JsonException or InvalidOperationException or KeyNotFoundException)
                 { throw new AttachmentFailure("Attachment download/staging failed (" + error.GetType().Name + "); original reference retained"); }
@@ -576,7 +574,7 @@ public sealed partial class Router(RouterPolicy policy, Ledger ledger, IBot tele
         string answer;
         switch (command[0].ToLowerInvariant())
         {
-            case "/help": answer = "PC Codex controls: /status, /limits, /remote, /cancel, /goal [objective | pause | resume | clear], /model [id], /effort <level>, /approve <nonce>, /deny <nonce>, /answer <nonce> <question-id> <text>. Photos and files download into a protected read-only cache (hosted Telegram limit 20 MB); captions stay with them. Images use native localImage; audio/video are files, not verified transcripts. Native Claude routing, large-file transport and albums remain pending; no Mac fallback is permitted."; break;
+            case "/help": answer = "PC Codex controls: /status, /limits, /remote, /cancel, /goal [objective | pause | resume | clear], /model [id], /effort <level>, /approve <nonce>, /deny <nonce>, /answer <nonce> <question-id> <text>. Photos and files download into a protected read-only cache (hosted Telegram limit 20 MB); captions stay with them. Images use native localImage; audio/video are files, not verified transcripts. Native Claude routing, large-file transport remains pending; no Mac fallback is permitted."; break;
             case "/status": answer = "PC session: " + session.Binding.Name + "\nNative thread: " + session.Binding.ThreadId + "\n" +
                 (session.Held ? "Held — reconcile native/transport receipts before continuing." : session.Busy ? "Working; new messages steer this turn." : "Idle.") + "\nInput-blocking unknowns here: " + ledger.InputUnknown(session.Binding) + "\nUnknown operations across relay: " + ledger.Unknown; break;
             case "/cancel":

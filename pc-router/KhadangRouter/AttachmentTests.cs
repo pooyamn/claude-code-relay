@@ -62,7 +62,7 @@ public static class AttachmentTests
             Check(ledger.Get("attachments/1")!.Value.GetProperty("state").GetString() == "staged", "Actual cache manifest links source/binding/bytes before native input");
             try { await store.Stage(message, binding, 1, CancellationToken.None); throw new Exception("Staging receipt replayed"); } catch (AttachmentFailure) { checks++; }
         }
-        foreach (var scenario in new[] { "image", "document", "caption-slash", "failed", "failed-json", "slow", "ended", "album", "unsupported" })
+        foreach (var scenario in new[] { "image", "document", "caption-slash", "failed", "failed-json", "slow", "ended", "album", "album-failed", "unsupported" })
         {
             var directory = Path.Combine(root, "attachment-" + scenario); Directory.CreateDirectory(directory);
             var workspace = OperatingSystem.IsWindows() ? Path.Combine(directory, "workspaces") : "C:\\AttachmentWorkspaces";
@@ -79,14 +79,20 @@ public static class AttachmentTests
             Check(bot.Sends == 1 && bot.Last!.Length <= 3900, "New native turn gets one bubble; attachment controls/errors amend it: " + scenario);
             Check(!ledger.Get("bubble/attachment-thread")!.Value.GetProperty("held").GetBoolean() && ledger.Unknown == 0, "Known pre-native media failures do not hold session or create uncertain effects: " + scenario);
             Check(native.Starts == 0 && native.Calls.All(c => c.Method != "thread/start"), "Attachments never create new sessions or convert stale media into new turns");
-            if (scenario is "failed" or "failed-json" or "ended" or "album" or "unsupported") Check(native.Steers == 0 && bot.Last!.Contains("held:"), "No partial/failed/stale/unsupported attachment input sent");
+            if (scenario is "failed" or "failed-json" or "ended" or "album-failed" or "unsupported") Check(native.Steers == 0 && bot.Last!.Contains("held:"), "No partial/failed/stale/unsupported attachment input sent");
             else
             {
                 Check(native.Steers == 1 && native.LastInput!.Value[0].GetProperty("text").GetString()!.Contains(scenario == "caption-slash" ? "/goal clear" : "Owner Caption"), "Caption stays with exactly one native steering input");
                 Check(native.LastExpected == "arrival-turn" && !native.Calls.Any(c => c.Method == "thread/goal/clear"), "Exact arrival turn retained; caption never becomes a command");
             }
             if (scenario == "slow") Check(native.Interrupts == 1, "Interrupt RPC can acknowledge while file staging waits");
-            Check(store.Calls <= 1, "Foreign owner input cannot download an attachment");
+            if (scenario == "album")
+            {
+                Check(native.LastInput!.Value.GetArrayLength() == 3 && store.Calls == 2, "Both album members in a single native input");
+                Check(ledger.Query("SELECT status FROM updates WHERE id=103")[0][0] == "album-member/100" &&
+                    ledger.Query("SELECT status FROM updates WHERE id=100")[0][0] == "accepted", "Album receipt links every update to the native result");
+            }
+            Check(store.Calls <= (scenario.StartsWith("album") ? 2 : 1), "Foreign owner input cannot download an attachment");
         }
         return checks;
     }
@@ -122,7 +128,7 @@ public static class AttachmentTests
         public async Task<IReadOnlyList<StagedAttachment>> Stage(JsonElement message, Binding binding, long updateId, CancellationToken stop)
         {
             Calls++;
-            if (scenario == "failed") throw new IOException("Credential URL must never be mirrored");
+            if (scenario == "failed" || scenario == "album-failed" && Calls == 2) throw new IOException("Credential URL must never be mirrored");
             if (scenario == "failed-json") throw new JsonException("Credential URL must never be mirrored");
             if (scenario == "slow") await native.Interrupted.Task.WaitAsync(stop);
             if (scenario == "ended") native.Event("turn/completed", new { threadId = binding.ThreadId, turn = new { id = "arrival-turn", status = "completed" } });
@@ -145,10 +151,15 @@ public static class AttachmentTests
             {
                 native.Event("turn/started", new { threadId = "attachment-thread", turn = new { id = "arrival-turn" } });
                 native.Event("item/agentMessage/delta", new { threadId = "attachment-thread", turnId = "arrival-turn", itemId = "history", delta = "Current tool history\n" });
-                var media = Message(policy, 100, document: scenario == "document" ? File() : null, photo: scenario is "document" or "unsupported" ? null : Photos, caption: scenario == "caption-slash" ? "/goal clear" : "Owner Caption", album: scenario == "album" ? "fixture-album" : null);
+                var media = Message(policy, 100, document: scenario == "document" ? File() : null, photo: scenario is "document" or "unsupported" ? null : Photos, caption: scenario == "caption-slash" ? "/goal clear" : "Owner Caption", album: scenario.StartsWith("album") ? "fixture-album" : null);
                 object Update(int id, JsonElement message) => new { update_id = id, message };
                 var control = Json(new { from = new { id = policy.OwnerId, is_bot = false }, chat = new { id = policy.ChatId, is_forum = true }, message_thread_id = 42, message_id = 102, text = scenario == "slow" ? "/cancel" : "/status" });
                 return Json(new[] { Update(100, media), Update(101, Message(policy, 101, photo: Photos, owner: policy.OwnerId + 1)), Update(102, control) });
+            }
+            if (scenario.StartsWith("album"))
+            {
+                if (polls == 2) return Json(new[] { new { update_id = 103, message = Message(policy, 103, photo: Photos, album: "fixture-album") } });
+                await Task.Delay(150, stop); return Json(Array.Empty<object>());
             }
             await Task.Delay(Timeout.Infinite, stop); return Json(Array.Empty<object>());
         }

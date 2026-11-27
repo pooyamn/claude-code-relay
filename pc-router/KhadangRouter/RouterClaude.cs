@@ -26,7 +26,7 @@ public sealed partial class Router
         JsonElement Request, bool Question, bool Reviewable, Dictionary<int, string> Answers, ClaudeQuestionNotice Notice);
     private readonly ConcurrentDictionary<string, ClaudeRequest> claudeRequests = new();
 
-    private async Task HandleClaude(long updateId, JsonElement message, Session session, CancellationToken stop)
+    private async Task HandleClaude(long updateId, JsonElement message, Session session, CancellationToken stop, IReadOnlyList<AlbumPart>? album)
     {
         var references = Attachments.References(message);
         var hasText = message.TryGetProperty("text", out var text);
@@ -34,9 +34,9 @@ public sealed partial class Router
         if (hasText && hasCaption || hasText && text.ValueKind != JsonValueKind.String || hasCaption && caption.ValueKind != JsonValueKind.String)
             throw new AttachmentFailure("Malformed text/caption; original update retained");
         if (!hasText && references.Count == 0) throw new AttachmentFailure("Unsupported content; no empty Claude prompt sent");
-        if (references.Count > 0 && message.TryGetProperty("media_group_id", out _))
+        if (album == null && message.TryGetProperty("media_group_id", out _))
             throw new AttachmentFailure("Album references retained; no partial album sent");
-        var body = hasText ? text.GetString()! : hasCaption ? caption.GetString()! : "";
+        var body = album != null ? AlbumCaption(album) : hasText ? text.GetString()! : hasCaption ? caption.GetString()! : "";
         if (references.Count == 0 && body.TrimStart().StartsWith('/'))
         {
             // A usage read must not lock out the owner's interrupt or message.
@@ -62,7 +62,7 @@ public sealed partial class Router
         IReadOnlyList<StagedAttachment> files = [];
         if (references.Count > 0)
         {
-            try { files = await attachmentStore.Stage(message, session.Binding, updateId, stop); }
+            try { files = await StageInput(updateId, message, session.Binding, album, stop); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or TelegramFailure or NotSupportedException or
                 JsonException or InvalidOperationException or KeyNotFoundException)
             { throw new AttachmentFailure("Attachment staging failed (" + error.GetType().Name + "); original reference retained"); }
@@ -127,7 +127,7 @@ public sealed partial class Router
         switch (command[0].ToLowerInvariant())
         {
             case "/help":
-                answer = "PC Claude controls: /status, /limits, /remote, /cancel, /model [native id], /effort <level>, /approve <nonce>, /deny <nonce>, /answer <nonce> <question-number> <answer>. Messages use native priority: now, without Codex turn IDs. Images use native image blocks; files retain exact paths and hashes. Native reset rebinding and albums are still pending. /goal belongs to Codex; unsupported commands are never prompts."; break;
+                answer = "PC Claude controls: /status, /limits, /remote, /cancel, /model [native id], /effort <level>, /approve <nonce>, /deny <nonce>, /answer <nonce> <question-number> <answer>. Messages use native priority: now, without Codex turn IDs. Images use native image blocks; files retain exact paths and hashes. Native reset rebinding is still pending. /goal belongs to Codex; unsupported commands are never prompts."; break;
             case "/status":
                 lock (session.Gate) answer = "PC Claude session: " + session.Binding.Name + "\nNative session: " + session.Binding.ThreadId +
                     "\nRuntime: " + session.Binding.Runtime + "\nState: " + session.ClaudeState +
@@ -456,7 +456,7 @@ public static class ClaudeInput
     }
     public static JsonElement Create(long owner, long message, string text, IReadOnlyList<StagedAttachment> files, string runtime)
     {
-        if (files.Count > 8 || files.Any(f => f.Size < 0 || f.Size > Attachments.MaximumBytes))
+        if (files.Count > 10 || files.Any(f => f.Size < 0 || f.Size > Attachments.MaximumBytes))
             throw new AttachmentFailure("Invalid staged attachment bounds; no native send");
         if (files.Where(f => f.Image).Sum(f => f.Size) * 4 / 3 + Encoding.UTF8.GetByteCount(text) + 8192 > ClaudeNativeStream.MaximumFrameBytes)
             throw new AttachmentFailure("Native Claude image frame exceeds 2 MiB; complete staged input retained, no partial send");
